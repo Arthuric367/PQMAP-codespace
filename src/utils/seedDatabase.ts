@@ -212,10 +212,6 @@ export const generatePQEvents = (substations: Substation[], meters: PQMeter[]): 
     'Maintenance activity', 'Power plant dispatch', 'Harmonic resonance'
   ];
   
-  // For grouping logic
-  const motherEventGroups: any[] = [];
-  let eventIdCounter = 1;
-
   // Generate events for the past 6 months
   const startDate = new Date();
   startDate.setMonth(startDate.getMonth() - 6);
@@ -239,15 +235,14 @@ export const generatePQEvents = (substations: Substation[], meters: PQMeter[]): 
       const groupCause = rootCauses[Math.floor(Math.random() * rootCauses.length)];
       
       // Mother event
-      const motherId = `mother_${Date.now()}_${eventIdCounter}`;
-      const motherEvent = createEvent(groupSubstation, meters, groupTimestamp, groupCause, true, null, eventIdCounter++, motherId);
+      const motherEvent = createEvent(groupSubstation, meters, groupTimestamp, groupCause, true, null);
       events.push(motherEvent);
       
       // Child events (2-4 related events within 5 minutes)
       const childCount = Math.floor(Math.random() * 3) + 2;
       for (let c = 0; c < childCount; c++) {
         const childTimestamp = new Date(groupTimestamp.getTime() + (c + 1) * 60000 + Math.random() * 180000); // 1-4 minutes later
-        const childEvent = createEvent(groupSubstation, meters, childTimestamp, groupCause, false, motherId, eventIdCounter++);
+        const childEvent = createEvent(groupSubstation, meters, childTimestamp, groupCause, false, null);
         events.push(childEvent);
       }
     } else {
@@ -259,13 +254,13 @@ export const generatePQEvents = (substations: Substation[], meters: PQMeter[]): 
         const substation = substations[Math.floor(Math.random() * substations.length)];
         const cause = rootCauses[Math.floor(Math.random() * rootCauses.length)];
         
-        events.push(createEvent(substation, meters, eventDate, cause, false, null, eventIdCounter++));
+        events.push(createEvent(substation, meters, eventDate, cause, false, null));
       }
     }
   }
 
   // Helper function to create individual events
-  function createEvent(substation: any, meters: any[], timestamp: Date, rootCause: string, isMotherEvent: boolean, parentId: string | null, eventNumber: number, customId?: string) {
+  function createEvent(substation: any, meters: any[], timestamp: Date, rootCause: string, isMotherEvent: boolean, parentId: string | null) {
     const substationMeters = meters.filter(m => m.substation_id === substation.id);
     const meter = substationMeters.length > 0 ? substationMeters[Math.floor(Math.random() * substationMeters.length)] : null;
     
@@ -274,7 +269,6 @@ export const generatePQEvents = (substations: Substation[], meters: PQMeter[]): 
     const status = statuses[Math.floor(Math.random() * statuses.length)];
     
     return {
-      id: customId || `event_${Date.now()}_${eventNumber}`,
       event_type: eventType,
       substation_id: substation.id,
       meter_id: meter?.id || null,
@@ -295,14 +289,6 @@ export const generatePQEvents = (substations: Substation[], meters: PQMeter[]): 
       affected_phases: Math.random() < 0.7 ? ['A', 'B', 'C'] : 
         Math.random() < 0.5 ? ['A'] : 
         Math.random() < 0.5 ? ['B'] : ['C'],
-      // Enhanced fields for advanced filtering
-      idr_number: Math.random() < 0.3 ? `IDR-${new Date().getFullYear()}-${String(eventNumber).padStart(4, '0')}` : null,
-      remaining_voltage: eventType === 'voltage_dip' ? Math.floor(Math.random() * 40) + 50 : null, // 50-90%
-      circuit_id: `CKT-${substation.code}-${Math.floor(Math.random() * 10) + 1}`,
-      voltage_level: substation.voltage_level,
-      customer_count: Math.floor(Math.random() * 500) + 50, // 50-550 customers affected
-      validated_by_adms: Math.random() < 0.8, // 80% validated
-      is_false_positive: Math.random() < 0.05, // 5% false positives
       waveform_data: {
         voltage: Array.from({length: 200}, (_, i) => ({
           time: i * 0.1,
@@ -417,20 +403,64 @@ export async function seedDatabase() {
   console.log('Starting database seeding...');
 
   try {
-    // 1. Insert substations
+    // Check if data already exists
+    console.log('Checking existing data...');
+    const { data: existingSubstations } = await supabase
+      .from('substations')
+      .select('count')
+      .limit(1);
+    
+    if (existingSubstations && existingSubstations.length > 0) {
+      console.log('⚠️ Data already exists. Clearing database first...');
+      await clearDatabase();
+      console.log('✅ Database cleared. Starting fresh seeding...');
+    }
+
+    // 1. Insert substations with conflict handling
     console.log('Seeding substations...');
     const substationData = generateSubstations();
-    const { data: substations, error: substationError } = await supabase
-      .from('substations')
-      .insert(substationData)
-      .select();
+    
+    // Insert substations one by one to handle conflicts
+    const substations = [];
+    for (const substation of substationData) {
+      const { data, error } = await supabase
+        .from('substations')
+        .insert(substation)
+        .select()
+        .single();
+      
+      if (error && error.code === '23505') {
+        // Duplicate key - try to get existing record
+        console.log(`ℹ️ Substation ${substation.code} already exists, fetching existing...`);
+        const { data: existing } = await supabase
+          .from('substations')
+          .select('*')
+          .eq('code', substation.code)
+          .single();
+        if (existing) {
+          substations.push(existing);
+        }
+      } else if (error) {
+        throw error;
+      } else if (data) {
+        substations.push(data);
+      }
+    }
 
-    if (substationError) throw substationError;
-    console.log(`✅ Inserted ${substations.length} substations`);
+    console.log(`✅ Processed ${substations.length} substations`);
 
     // 2. Insert PQ meters
     console.log('Seeding PQ meters...');
     const meterData = generatePQMeters(substations);
+    
+    // Clear existing meters for these substations first
+    for (const substation of substations) {
+      await supabase
+        .from('pq_meters')
+        .delete()
+        .eq('substation_id', substation.id);
+    }
+    
     const { data: meters, error: meterError } = await supabase
       .from('pq_meters')
       .insert(meterData)
@@ -442,6 +472,15 @@ export async function seedDatabase() {
     // 3. Insert customers
     console.log('Seeding customers...');
     const customerData = generateCustomers(substations);
+    
+    // Clear existing customers for these substations first
+    for (const substation of substations) {
+      await supabase
+        .from('customers')
+        .delete()
+        .eq('substation_id', substation.id);
+    }
+    
     const { data: customers, error: customerError } = await supabase
       .from('customers')
       .insert(customerData)
@@ -504,24 +543,49 @@ export async function seedDatabase() {
 export async function clearDatabase() {
   console.log('Clearing database...');
   
-  const tables = [
-    'notifications',
-    'event_customer_impact',
-    'pq_events',
-    'pq_service_records',
-    'reports',
-    'notification_rules',
-    'sarfi_metrics',
-    'system_health',
-    'customers',
-    'pq_meters',
-    'substations'
+  // Define tables with their respective timestamp columns
+  const tableConfigs = [
+    { name: 'notifications', timeField: 'created_at' },
+    { name: 'event_customer_impact', timeField: 'created_at' },
+    { name: 'pq_events', timeField: 'created_at' },
+    { name: 'pq_service_records', timeField: 'created_at' },
+    { name: 'reports', timeField: 'created_at' },
+    { name: 'notification_rules', timeField: 'created_at' },
+    { name: 'sarfi_metrics', timeField: 'created_at' },
+    { name: 'system_health', timeField: 'checked_at' }, // Different field name!
+    { name: 'customers', timeField: 'created_at' },
+    { name: 'pq_meters', timeField: 'created_at' },
+    { name: 'substations', timeField: 'created_at' }
   ];
 
-  for (const table of tables) {
-    const { error } = await supabase.from(table).delete().neq('id', 0);
-    if (error) console.error(`Error clearing ${table}:`, error);
-    else console.log(`✅ Cleared ${table}`);
+  for (const { name: table, timeField } of tableConfigs) {
+    try {
+      console.log(`🧹 Clearing ${table} using ${timeField}...`);
+      const { error, count } = await supabase
+        .from(table)
+        .delete()
+        .lt(timeField, '2030-01-01');
+      
+      if (error) {
+        console.error(`❌ Error clearing ${table}:`, error);
+        // Try alternative - delete all without condition (dangerous but needed for development)
+        console.log(`🔄 Trying alternative clear for ${table}...`);
+        const { error: altError } = await supabase
+          .from(table)
+          .delete()
+          .neq(timeField, '1800-01-01');
+        
+        if (altError) {
+          console.error(`❌ Alternative clear failed for ${table}:`, altError);
+        } else {
+          console.log(`✅ Alternative cleared ${table}`);
+        }
+      } else {
+        console.log(`✅ Cleared ${table} (${count || 0} rows)`);
+      }
+    } catch (err) {
+      console.error(`❌ Error clearing ${table}:`, err);
+    }
   }
 
   console.log('🧹 Database cleared!');
