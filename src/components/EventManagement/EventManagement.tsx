@@ -37,14 +37,15 @@ export default function EventManagement() {
     statusOptions: [],
     voltageLevels: [],
     minDuration: 0,
-    maxDuration: 10000,
+    maxDuration: 300000, // 5 minutes (300 seconds) to accommodate sustained events
     minCustomers: 0,
     maxCustomers: 1000,
     minRemainingVoltage: 0,
     maxRemainingVoltage: 100,
     circuitIds: [],
     showOnlyUnvalidated: false,
-    showOnlyMotherEvents: false
+    showOnlyMotherEvents: false,
+    hideFalseEvents: true
   });
 
   useEffect(() => {
@@ -133,58 +134,142 @@ export default function EventManagement() {
 
   // Apply filters to events
   const applyFilters = (events: PQEvent[]): PQEvent[] => {
-    return events.filter(event => {
+    const motherEventsInput = events.filter(e => e.is_mother_event);
+    console.log('🔍 applyFilters INPUT - Total events:', events.length, 'Mother events:', motherEventsInput.length);
+    
+    const filtered = events.filter(event => {
+      const isMotherEvent = event.is_mother_event;
+      
       // Date range filter
-      if (filters.startDate && new Date(event.timestamp) < new Date(filters.startDate)) return false;
-      if (filters.endDate && new Date(event.timestamp) > new Date(filters.endDate)) return false;
+      if (filters.startDate && new Date(event.timestamp) < new Date(filters.startDate)) {
+        if (isMotherEvent) console.log('❌ Mother event filtered by START DATE:', event.id.substring(0, 8), event.timestamp);
+        return false;
+      }
+      if (filters.endDate && new Date(event.timestamp) > new Date(filters.endDate)) {
+        if (isMotherEvent) console.log('❌ Mother event filtered by END DATE:', event.id.substring(0, 8), event.timestamp);
+        return false;
+      }
       
       // Event type filter
-      if (filters.eventTypes.length > 0 && !filters.eventTypes.includes(event.event_type)) return false;
+      if (filters.eventTypes.length > 0 && !filters.eventTypes.includes(event.event_type)) {
+        if (isMotherEvent) console.log('❌ Mother event filtered by TYPE:', event.id.substring(0, 8), event.event_type);
+        return false;
+      }
       
       // Severity filter
-      if (filters.severityLevels.length > 0 && !filters.severityLevels.includes(event.severity)) return false;
+      if (filters.severityLevels.length > 0 && !filters.severityLevels.includes(event.severity)) {
+        if (isMotherEvent) console.log('❌ Mother event filtered by SEVERITY:', event.id.substring(0, 8), event.severity);
+        return false;
+      }
       
       // Status filter
-      if (filters.statusOptions.length > 0 && !filters.statusOptions.includes(event.status)) return false;
+      if (filters.statusOptions.length > 0 && !filters.statusOptions.includes(event.status)) {
+        if (isMotherEvent) console.log('❌ Mother event filtered by STATUS:', event.id.substring(0, 8), event.status);
+        return false;
+      }
       
       // Voltage level filter
-      if (filters.voltageLevels.length > 0 && !filters.voltageLevels.includes(event.voltage_level)) return false;
+      if (filters.voltageLevels.length > 0 && !filters.voltageLevels.includes(event.voltage_level)) {
+        if (isMotherEvent) console.log('❌ Mother event filtered by VOLTAGE:', event.id.substring(0, 8), event.voltage_level);
+        return false;
+      }
       
       // Duration filter
-      if (event.duration_ms < filters.minDuration || event.duration_ms > filters.maxDuration) return false;
+      if (event.duration_ms !== null && (event.duration_ms < filters.minDuration || event.duration_ms > filters.maxDuration)) {
+        if (isMotherEvent) console.log('❌ Mother event filtered by DURATION:', event.id.substring(0, 8), event.duration_ms, 'range:', filters.minDuration, '-', filters.maxDuration);
+        return false;
+      }
       
       // Customer count filter
       const customerCount = event.customer_count || 0;
-      if (customerCount < filters.minCustomers || customerCount > filters.maxCustomers) return false;
+      if (customerCount < filters.minCustomers || customerCount > filters.maxCustomers) {
+        if (isMotherEvent) console.log('❌ Mother event filtered by CUSTOMER COUNT:', event.id.substring(0, 8), customerCount, 'range:', filters.minCustomers, '-', filters.maxCustomers);
+        return false;
+      }
       
       // Remaining voltage filter
       if (event.remaining_voltage !== null && event.remaining_voltage !== undefined) {
-        if (event.remaining_voltage < filters.minRemainingVoltage || event.remaining_voltage > filters.maxRemainingVoltage) return false;
+        if (event.remaining_voltage < filters.minRemainingVoltage || event.remaining_voltage > filters.maxRemainingVoltage) {
+          if (isMotherEvent) console.log('❌ Mother event filtered by REMAINING VOLTAGE:', event.id.substring(0, 8), event.remaining_voltage, 'range:', filters.minRemainingVoltage, '-', filters.maxRemainingVoltage);
+          return false;
+        }
       }
       
       // Circuit ID filter
-      if (filters.circuitIds.length > 0 && !filters.circuitIds.includes(event.circuit_id)) return false;
+      if (filters.circuitIds.length > 0 && !filters.circuitIds.includes(event.circuit_id)) {
+        if (isMotherEvent) console.log('❌ Mother event filtered by CIRCUIT ID:', event.id.substring(0, 8), event.circuit_id, 'allowed:', filters.circuitIds);
+        return false;
+      }
       
       // Validation filter
-      if (filters.showOnlyUnvalidated && event.validated_by_adms) return false;
+      if (filters.showOnlyUnvalidated && event.validated_by_adms) {
+        if (isMotherEvent) console.log('❌ Mother event filtered by VALIDATION:', event.id.substring(0, 8), 'validated_by_adms=true');
+        return false;
+      }
       
       // Mother event filter
       if (filters.showOnlyMotherEvents && !event.is_mother_event) return false;
 
       return true;
     });
+    
+    const motherEventsOutput = filtered.filter(e => e.is_mother_event);
+    console.log('🔍 applyFilters OUTPUT - Total events:', filtered.length, 'Mother events:', motherEventsOutput.length);
+    console.log('📊 Mother events LOST in filtering:', motherEventsInput.length - motherEventsOutput.length);
+    
+    return filtered;
   };
 
   const filteredEvents = applyFilters(events);
   const eventTree = buildEventTree(filteredEvents);
 
+  // === COMPREHENSIVE DEBUGGING ===
+  console.log('🔍 EVENT FILTERING DEBUG:');
+  console.log('📊 Total events loaded from DB:', events.length);
+  console.log('🔍 Events after applyFilters:', filteredEvents.length);
+  
+  // Count mother events at each stage
+  const motherEventsInDB = events.filter(e => e.is_mother_event);
+  const motherEventsAfterFilter = filteredEvents.filter(e => e.is_mother_event);
+  console.log('👑 Mother events in DB:', motherEventsInDB.length);
+  console.log('👑 Mother events after applyFilters:', motherEventsAfterFilter.length);
+  
+  // Log filter state
+  console.log('⚙️ Filter settings:', {
+    showOnlyMotherEvents: filters.showOnlyMotherEvents,
+    hideFalseEvents: filters.hideFalseEvents,
+    showOnlyUnvalidated: filters.showOnlyUnvalidated
+  });
+
   // Apply false event detection
   const eventsWithFalseDetection = falseEventDetector.applyConfiguredRules(filteredEvents, falseEventRules);
   
-  // Filter out events marked as false (if user chooses to hide them)
-  const finalEvents = filters.showOnlyMotherEvents 
+  // Count events with shouldBeHidden
+  const hiddenEvents = eventsWithFalseDetection.filter(e => e.shouldBeHidden);
+  const hiddenMotherEvents = eventsWithFalseDetection.filter(e => e.is_mother_event && e.shouldBeHidden);
+  console.log('🚫 Events marked shouldBeHidden:', hiddenEvents.length);
+  console.log('🚫 Mother events marked shouldBeHidden:', hiddenMotherEvents.length);
+  
+  if (hiddenMotherEvents.length > 0) {
+    console.log('🔍 Hidden mother events details:', hiddenMotherEvents.map(e => ({
+      id: e.id.substring(0, 8),
+      type: e.event_type,
+      circuit: e.circuit_id,
+      timestamp: e.timestamp,
+      shouldBeHidden: e.shouldBeHidden,
+      falseEventRules: e.falseEventRules?.map((r: any) => r.name)
+    })));
+  }
+  
+  // Filter out events marked as false (based on user preference)
+  const finalEvents = filters.hideFalseEvents 
     ? eventsWithFalseDetection.filter(e => !e.shouldBeHidden)
     : eventsWithFalseDetection;
+  
+  const finalMotherEvents = finalEvents.filter(e => e.is_mother_event);
+  console.log('✅ Final events to display:', finalEvents.length);
+  console.log('✅ Final mother events to display:', finalMotherEvents.length);
+  console.log('==========================================\n');
 
   // False event detection handlers
   const handleFalseEventRulesChange = (rules: any[]) => {
@@ -609,6 +694,16 @@ export default function EventManagement() {
                   />
                   <span className="text-sm">Only mother events</span>
                 </label>
+                
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={filters.hideFalseEvents}
+                    onChange={(e) => setFilters((prev: any) => ({ ...prev, hideFalseEvents: e.target.checked }))}
+                    className="rounded"
+                  />
+                  <span className="text-sm">Hide false events</span>
+                </label>
               </div>
             </div>
           )}
@@ -731,7 +826,7 @@ export default function EventManagement() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {eventsWithFalseDetection.map((event) => {
+                  {finalEvents.map((event) => {
                     const substation = substations.find(s => s.id === event.substation_id);
                     return (
                       <div

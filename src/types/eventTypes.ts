@@ -36,6 +36,7 @@ export interface EventFilter {
   circuitIds: string[];
   showOnlyUnvalidated: boolean;
   showOnlyMotherEvents: boolean;
+  hideFalseEvents: boolean;
   filter_rules?: {
     duration_min_ms?: number;
     duration_max_ms?: number;

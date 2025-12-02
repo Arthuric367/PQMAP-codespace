@@ -1,5 +1,7 @@
-import { Clock, MapPin, Zap, AlertTriangle, Users } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Clock, MapPin, Zap, AlertTriangle, Users, ArrowLeft, GitBranch } from 'lucide-react';
 import { PQEvent, Substation, EventCustomerImpact } from '../../types/database';
+import { supabase } from '../../lib/supabase';
 import WaveformDisplay from './WaveformDisplay';
 
 interface EventDetailsProps {
@@ -9,30 +11,224 @@ interface EventDetailsProps {
   onStatusChange: (eventId: string, status: string) => void;
 }
 
-export default function EventDetails({ event, substation, impacts, onStatusChange }: EventDetailsProps) {
+export default function EventDetails({ event: initialEvent, substation: initialSubstation, impacts: initialImpacts, onStatusChange }: EventDetailsProps) {
+  // Navigation state
+  const [currentEvent, setCurrentEvent] = useState<PQEvent>(initialEvent);
+  const [currentSubstation, setCurrentSubstation] = useState<Substation | undefined>(initialSubstation);
+  const [currentImpacts, setCurrentImpacts] = useState<EventCustomerImpact[]>(initialImpacts);
+  const [navigationStack, setNavigationStack] = useState<Array<{
+    event: PQEvent;
+    substation?: Substation;
+    impacts: EventCustomerImpact[];
+  }>>([]);
+  
+  // Child events state
+  const [childEvents, setChildEvents] = useState<PQEvent[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Update state when props change
+  useEffect(() => {
+    setCurrentEvent(initialEvent);
+    setCurrentSubstation(initialSubstation);
+    setCurrentImpacts(initialImpacts);
+    // Clear navigation stack when switching to a new top-level event
+    setNavigationStack([]);
+  }, [initialEvent, initialSubstation, initialImpacts]);
+
+  // Load child events for mother events
+  useEffect(() => {
+    if (currentEvent.is_mother_event) {
+      loadChildEvents(currentEvent.id);
+    } else {
+      setChildEvents([]);
+    }
+  }, [currentEvent.id, currentEvent.is_mother_event]);
+
+  const loadChildEvents = async (motherEventId: string) => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('pq_events')
+        .select(`
+          *,
+          substation:substation_id (
+            id,
+            name,
+            voltage_level
+          )
+        `)
+        .eq('parent_event_id', motherEventId)
+        .order('timestamp', { ascending: true });
+
+      if (error) {
+        console.error('Error loading child events:', error);
+      } else {
+        setChildEvents(data || []);
+      }
+    } catch (error) {
+      console.error('Error loading child events:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChildEventClick = async (childEvent: PQEvent) => {
+    // Save current state to navigation stack
+    setNavigationStack(prev => [...prev, {
+      event: currentEvent,
+      substation: currentSubstation,
+      impacts: currentImpacts
+    }]);
+
+    // Load child event details
+    try {
+      const { data: substationData } = await supabase
+        .from('substations')
+        .select('*')
+        .eq('id', childEvent.substation_id)
+        .single();
+
+      const { data: impactsData } = await supabase
+        .from('event_customer_impact')
+        .select(`
+          *,
+          customer (
+            id,
+            name,
+            account_number,
+            address
+          )
+        `)
+        .eq('event_id', childEvent.id);
+
+      setCurrentEvent(childEvent);
+      setCurrentSubstation(substationData || undefined);
+      setCurrentImpacts(impactsData || []);
+    } catch (error) {
+      console.error('Error loading child event details:', error);
+    }
+  };
+
+  const handleBackNavigation = () => {
+    if (navigationStack.length > 0) {
+      const previous = navigationStack[navigationStack.length - 1];
+      setCurrentEvent(previous.event);
+      setCurrentSubstation(previous.substation);
+      setCurrentImpacts(previous.impacts);
+      setNavigationStack(prev => prev.slice(0, -1));
+    }
+  };
+
   const generateMockWaveform = () => {
     const samples = 200;
-    const voltage = Array.from({ length: samples }, (_, i) => {
-      const base = event.magnitude;
-      const noise = (Math.random() - 0.5) * 5;
-      return base + noise;
-    });
+    const baseVoltage = currentEvent.magnitude || 100;
+    
+    const voltage: { time: number; value: number }[] = Array.from({ length: samples }, (_, idx) => ({
+      time: idx * 0.001,
+      value: baseVoltage + (Math.random() - 0.5) * 5
+    }));
+
+    const current: { time: number; value: number }[] = voltage.map(point => ({
+      time: point.time,
+      value: point.value * 0.8
+    }));
 
     return {
       voltage,
-      current: voltage.map(v => v * 0.8),
-      timestamps: Array.from({ length: samples }, (_, i) => i * 0.001),
-      sampling_rate: 1000,
+      current
     };
   };
 
-  const waveformData = event.waveform_data || generateMockWaveform();
+  const waveformData = currentEvent.waveform_data || generateMockWaveform();
 
   return (
     <div className="space-y-6">
+      {/* Back Navigation - only show when viewing child event */}
+      {navigationStack.length > 0 && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleBackNavigation}
+            className="flex items-center gap-2 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-all"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Go back
+          </button>
+        </div>
+      )}
+
+      {/* Child Events Tab - only show for mother events */}
+      {currentEvent.is_mother_event && navigationStack.length === 0 && (
+        <div className="border-b border-slate-200">
+          <div className="flex items-center gap-4">
+            <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+              <GitBranch className="w-5 h-5 text-purple-600" />
+              Child Events ({childEvents.length})
+            </h3>
+          </div>
+          
+          {loading ? (
+            <div className="py-8 text-center text-slate-500">
+              Loading child events...
+            </div>
+          ) : childEvents.length > 0 ? (
+            <div className="grid gap-3 py-4">
+              {childEvents.map((childEvent) => (
+                <div
+                  key={childEvent.id}
+                  onClick={() => handleChildEventClick(childEvent)}
+                  className="p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded">
+                        Child
+                      </span>
+                      <div>
+                        <p className="font-semibold text-slate-900 capitalize">
+                          {childEvent.event_type.replace('_', ' ')}
+                        </p>
+                        <p className="text-sm text-slate-600">
+                          {new Date(childEvent.timestamp).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className={`px-2 py-1 rounded text-xs font-bold ${
+                        childEvent.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                        childEvent.severity === 'high' ? 'bg-orange-100 text-orange-700' :
+                        childEvent.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-green-100 text-green-700'
+                      }`}>
+                        {childEvent.severity}
+                      </span>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {childEvent.circuit_id}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-8 text-center text-slate-500">
+              No child events found
+            </div>
+          )}
+        </div>
+      )}
+
       <div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Event Details</h2>
-        <p className="text-sm text-slate-600">ID: {event.id.substring(0, 8)}</p>
+        <div className="flex items-center gap-2">
+          <h2 className="text-2xl font-bold text-slate-900">
+            Event Details
+          </h2>
+          {currentEvent.parent_event_id && (
+            <span className="px-2 py-1 bg-blue-100 text-blue-700 text-sm font-semibold rounded">
+              Child
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-slate-600 mt-1">ID: {currentEvent.id.substring(0, 8)}</p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -41,8 +237,8 @@ export default function EventDetails({ event, substation, impacts, onStatusChang
             <MapPin className="w-4 h-4" />
             <span className="text-sm font-semibold">Location</span>
           </div>
-          <p className="text-slate-900 font-medium">{substation?.name}</p>
-          <p className="text-sm text-slate-600">{substation?.voltage_level}</p>
+          <p className="text-slate-900 font-medium">{currentSubstation?.name}</p>
+          <p className="text-sm text-slate-600">{currentSubstation?.voltage_level}</p>
         </div>
 
         <div className="p-4 bg-slate-50 rounded-lg">
@@ -51,10 +247,10 @@ export default function EventDetails({ event, substation, impacts, onStatusChang
             <span className="text-sm font-semibold">Timestamp</span>
           </div>
           <p className="text-slate-900 font-medium">
-            {new Date(event.timestamp).toLocaleDateString()}
+            {new Date(currentEvent.timestamp).toLocaleDateString()}
           </p>
           <p className="text-sm text-slate-600">
-            {new Date(event.timestamp).toLocaleTimeString()}
+            {new Date(currentEvent.timestamp).toLocaleTimeString()}
           </p>
         </div>
 
@@ -63,7 +259,7 @@ export default function EventDetails({ event, substation, impacts, onStatusChang
             <Zap className="w-4 h-4" />
             <span className="text-sm font-semibold">Magnitude</span>
           </div>
-          <p className="text-2xl font-bold text-slate-900">{event.magnitude.toFixed(2)}%</p>
+          <p className="text-2xl font-bold text-slate-900">{currentEvent.magnitude?.toFixed(2)}%</p>
         </div>
 
         <div className="p-4 bg-slate-50 rounded-lg">
@@ -72,9 +268,9 @@ export default function EventDetails({ event, substation, impacts, onStatusChang
             <span className="text-sm font-semibold">Duration</span>
           </div>
           <p className="text-2xl font-bold text-slate-900">
-            {event.duration_ms < 1000
-              ? `${event.duration_ms}ms`
-              : `${(event.duration_ms / 1000).toFixed(2)}s`
+            {currentEvent.duration_ms && currentEvent.duration_ms < 1000
+              ? `${currentEvent.duration_ms}ms`
+              : `${((currentEvent.duration_ms || 0) / 1000).toFixed(2)}s`
             }
           </p>
         </div>
@@ -89,37 +285,37 @@ export default function EventDetails({ event, substation, impacts, onStatusChang
           <div>
             <span className="text-slate-600">Type:</span>
             <span className="ml-2 font-semibold text-slate-900 capitalize">
-              {event.event_type.replace('_', ' ')}
+              {currentEvent.event_type.replace('_', ' ')}
             </span>
           </div>
           <div>
             <span className="text-slate-600">Severity:</span>
             <span className={`ml-2 font-semibold capitalize ${
-              event.severity === 'critical' ? 'text-red-700' :
-              event.severity === 'high' ? 'text-orange-700' :
-              event.severity === 'medium' ? 'text-yellow-700' :
+              currentEvent.severity === 'critical' ? 'text-red-700' :
+              currentEvent.severity === 'high' ? 'text-orange-700' :
+              currentEvent.severity === 'medium' ? 'text-yellow-700' :
               'text-green-700'
             }`}>
-              {event.severity}
+              {currentEvent.severity}
             </span>
           </div>
           <div>
             <span className="text-slate-600">Affected Phases:</span>
             <span className="ml-2 font-semibold text-slate-900">
-              {event.affected_phases.join(', ')}
+              {currentEvent.affected_phases.join(', ')}
             </span>
           </div>
           <div>
             <span className="text-slate-600">Mother Event:</span>
             <span className="ml-2 font-semibold text-slate-900">
-              {event.is_mother_event ? 'Yes' : 'No'}
+              {currentEvent.is_mother_event ? 'Yes' : 'No'}
             </span>
           </div>
         </div>
-        {event.root_cause && (
+        {currentEvent.root_cause && (
           <div className="mt-3 pt-3 border-t border-slate-200">
             <span className="text-slate-600 text-sm">Root Cause:</span>
-            <p className="font-semibold text-slate-900 mt-1">{event.root_cause}</p>
+            <p className="font-semibold text-slate-900 mt-1">{currentEvent.root_cause}</p>
           </div>
         )}
       </div>
@@ -132,9 +328,9 @@ export default function EventDetails({ event, substation, impacts, onStatusChang
           {['new', 'acknowledged', 'investigating', 'resolved'].map((status) => (
             <button
               key={status}
-              onClick={() => onStatusChange(event.id, status)}
+              onClick={() => onStatusChange(currentEvent.id, status)}
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                event.status === status
+                currentEvent.status === status
                   ? 'bg-blue-600 text-white shadow-lg'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
@@ -147,14 +343,14 @@ export default function EventDetails({ event, substation, impacts, onStatusChang
 
       <WaveformDisplay data={waveformData} />
 
-      {impacts.length > 0 && (
+      {currentImpacts.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Users className="w-5 h-5 text-slate-700" />
-            <h3 className="font-semibold text-slate-900">Affected Customers ({impacts.length})</h3>
+            <h3 className="font-semibold text-slate-900">Affected Customers ({currentImpacts.length})</h3>
           </div>
           <div className="space-y-2 max-h-60 overflow-y-auto">
-            {impacts.map((impact) => (
+            {currentImpacts.map((impact) => (
               <div key={impact.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                 <div className="flex items-start justify-between">
                   <div>

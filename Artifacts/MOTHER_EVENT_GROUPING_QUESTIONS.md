@@ -48,11 +48,19 @@ This document contains questions that need stakeholder input to refine the Mothe
 ## **3. User Interface & Workflow**
 
 ### 3.1 Manual Grouping Interface
-- [ ] Should users be able to drag-and-drop events to create groups?
-- [ ] What information should be displayed during manual grouping selection?
-- [ ] Should the system show recommendations for potential groupings?
+- [x] **IMPLEMENTED**: Users can drag-and-drop events to create groups via multi-select in event list
+- [x] **IMPLEMENTED**: Event information displayed during manual grouping selection
+- [x] **IMPLEMENTED**: System shows recommendations for potential groupings via auto-group function
 
-### 3.2 Validation & Warnings
+### 3.2 Event Detail Interface
+- [x] **DECIDED**: Children event tab appears at top section of EventDetails component for mother events only
+- [x] **DECIDED**: Child events display exactly like mother events with "Child" label
+- [x] **DECIDED**: Clicking child event replaces current view, with back arrow navigation
+- [x] **DECIDED**: No multi-select function in event detail (operations done in event list)
+- [x] **DECIDED**: Child event details are view/edit only, no grouping operations
+- [x] **DECIDED**: When child event selected from event list, show as individual with "Child" label
+
+### 3.3 Validation & Warnings
 - [ ] Should the system warn users when grouping events from different:
   - Time periods (beyond 10 minutes)?
   - Substations?
@@ -60,8 +68,8 @@ This document contains questions that need stakeholder input to refine the Mothe
   - Event types?
 - [ ] What confirmation should be required for ungrouping automatic groups?
 
-### 3.3 Visual Representation
-- [ ] How should grouped events be visually distinguished in the event list?
+### 3.4 Visual Representation
+- [x] **DECIDED**: No special visual indicators for child events beyond "Child" label
 - [ ] Should the tree view show additional metadata (timing, relationship strength)?
 - [ ] What icons or colors should represent different grouping states?
 
