@@ -6,36 +6,60 @@ interface WaveformDisplayProps {
 }
 
 export default function WaveformDisplay({ data }: WaveformDisplayProps) {
-  const { voltage, current, timestamps } = data;
+  const { voltage, current } = data;
 
-  const maxVoltage = Math.max(...voltage);
-  const minVoltage = Math.min(...voltage);
-  const maxCurrent = Math.max(...current);
-  const minCurrent = Math.min(...current);
+  // Extract values from WaveformPoint arrays
+  const voltageValues = voltage.map(point => point.value);
+  const currentValues = current.map(point => point.value);
+
+  // Handle empty arrays or invalid data
+  if (voltageValues.length === 0 || currentValues.length === 0) {
+    return (
+      <div className="p-8 text-center text-slate-500">
+        No waveform data available
+      </div>
+    );
+  }
+
+  const maxVoltage = Math.max(...voltageValues);
+  const minVoltage = Math.min(...voltageValues);
+  const maxCurrent = Math.max(...currentValues);
+  const minCurrent = Math.min(...currentValues);
 
   const normalizeVoltage = (v: number) => {
-    return ((v - minVoltage) / (maxVoltage - minVoltage)) * 80 + 10;
+    // Handle case where all values are the same
+    const range = maxVoltage - minVoltage;
+    if (range === 0) return 50; // Center of chart
+    return ((v - minVoltage) / range) * 80 + 10;
   };
 
   const normalizeCurrent = (c: number) => {
-    return ((c - minCurrent) / (maxCurrent - minCurrent)) * 80 + 10;
+    // Handle case where all values are the same
+    const range = maxCurrent - minCurrent;
+    if (range === 0) return 50; // Center of chart
+    return ((c - minCurrent) / range) * 80 + 10;
   };
 
-  const voltagePath = voltage
+  const voltagePath = voltageValues
     .map((v, i) => {
-      const x = (i / voltage.length) * 100;
+      const x = (i / voltageValues.length) * 100;
       const y = 100 - normalizeVoltage(v);
       return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
     })
     .join(' ');
 
-  const currentPath = current
+  const currentPath = currentValues
     .map((c, i) => {
-      const x = (i / current.length) * 100;
+      const x = (i / currentValues.length) * 100;
       const y = 100 - normalizeCurrent(c);
       return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
     })
     .join(' ');
+
+  // Calculate sampling rate from timestamps if available
+  const samplingRate = voltage.length > 1 && voltage[1].time > voltage[0].time
+    ? Math.round(1 / (voltage[1].time - voltage[0].time))
+    : 1000;
 
   return (
     <div className="space-y-4">
@@ -129,7 +153,7 @@ export default function WaveformDisplay({ data }: WaveformDisplayProps) {
         </div>
         <div className="p-3 bg-slate-50 rounded-lg">
           <p className="text-xs text-slate-600 mb-1">Sampling Rate</p>
-          <p className="text-lg font-bold text-slate-900">{data.sampling_rate}Hz</p>
+          <p className="text-lg font-bold text-slate-900">{samplingRate}Hz</p>
         </div>
       </div>
     </div>

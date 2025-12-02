@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { PQEvent, Substation, EventCustomerImpact } from '../../types/database';
-import { EventTreeNode, EventOperation, EventFilter } from '../../types/eventTypes';
+import { EventTreeNode, EventFilter } from '../../types/eventTypes';
 import EventDetails from './EventDetails';
 import FalseEventConfig from './FalseEventConfig';
 import FalseEventAnalytics from './FalseEventAnalytics';
 import { falseEventDetector } from '../../utils/falseEventDetection';
 import { MotherEventGroupingService } from '../../services/mother-event-grouping';
-import { Activity, Plus, GitBranch, Filter, Search, Calendar, MapPin, Zap, Users, AlertTriangle, Shield, BarChart3, Group, Ungroup, Check, X } from 'lucide-react';
+import { Activity, Plus, GitBranch, Filter, Search, Calendar, Users, AlertTriangle, Shield, BarChart3, Group, Ungroup, Check, X } from 'lucide-react';
 
 export default function EventManagement() {
   const [events, setEvents] = useState<PQEvent[]>([]);
@@ -19,7 +19,6 @@ export default function EventManagement() {
   const [showFilters, setShowFilters] = useState(true);
   const [showOperations, setShowOperations] = useState(false);
   const [activeTab, setActiveTab] = useState<'events' | 'false-detection' | 'analytics'>('events');
-  const [eventOperations, setEventOperations] = useState<EventOperation[]>([]);
   const [falseEventRules, setFalseEventRules] = useState<any[]>([]);
   const [falseEventResults, setFalseEventResults] = useState<any[]>([]);
   
@@ -276,7 +275,7 @@ export default function EventManagement() {
     setFalseEventRules(rules);
   };
 
-  const handleApplyFalseEventRules = (rules: any[]) => {
+  const handleApplyFalseEventRules = () => {
     const results = filteredEvents.map(event => {
       return falseEventDetector.detectFalseEvents(event, {
         recentEvents: events,
@@ -291,102 +290,6 @@ export default function EventManagement() {
   const handleRuleOptimize = (ruleId: string) => {
     // Implement rule optimization logic
     console.log('Optimizing rule:', ruleId);
-  };
-
-  // Event operations handlers
-  const handleCreateEvent = async (eventData: Partial<PQEvent>) => {
-    const operation: EventOperation = {
-      id: Date.now().toString(),
-      type: 'create',
-      timestamp: new Date().toISOString(),
-      eventData,
-      status: 'pending'
-    };
-    setEventOperations(prev => [...prev, operation]);
-    
-    try {
-      const { data, error } = await supabase
-        .from('pq_events')
-        .insert([eventData])
-        .select()
-        .single();
-      
-      if (!error) {
-        setEventOperations(prev => 
-          prev.map(op => op.id === operation.id ? { ...op, status: 'completed' } : op)
-        );
-        loadData();
-      } else {
-        throw error;
-      }
-    } catch (error) {
-      setEventOperations(prev => 
-        prev.map(op => op.id === operation.id ? { ...op, status: 'failed', error: error as Error } : op)
-      );
-    }
-  };
-
-  const handleUpdateEvent = async (eventId: string, eventData: Partial<PQEvent>) => {
-    const operation: EventOperation = {
-      id: Date.now().toString(),
-      type: 'update',
-      timestamp: new Date().toISOString(),
-      eventId,
-      eventData,
-      status: 'pending'
-    };
-    setEventOperations(prev => [...prev, operation]);
-    
-    try {
-      const { error } = await supabase
-        .from('pq_events')
-        .update(eventData)
-        .eq('id', eventId);
-      
-      if (!error) {
-        setEventOperations(prev => 
-          prev.map(op => op.id === operation.id ? { ...op, status: 'completed' } : op)
-        );
-        loadData();
-      } else {
-        throw error;
-      }
-    } catch (error) {
-      setEventOperations(prev => 
-        prev.map(op => op.id === operation.id ? { ...op, status: 'failed', error: error as Error } : op)
-      );
-    }
-  };
-
-  const handleDeleteEvent = async (eventId: string) => {
-    const operation: EventOperation = {
-      id: Date.now().toString(),
-      type: 'delete',
-      timestamp: new Date().toISOString(),
-      eventId,
-      status: 'pending'
-    };
-    setEventOperations(prev => [...prev, operation]);
-    
-    try {
-      const { error } = await supabase
-        .from('pq_events')
-        .delete()
-        .eq('id', eventId);
-      
-      if (!error) {
-        setEventOperations(prev => 
-          prev.map(op => op.id === operation.id ? { ...op, status: 'completed' } : op)
-        );
-        loadData();
-      } else {
-        throw error;
-      }
-    } catch (error) {
-      setEventOperations(prev => 
-        prev.map(op => op.id === operation.id ? { ...op, status: 'failed', error: error as Error } : op)
-      );
-    }
   };
 
   const handleGroupEvents = async (eventIds: string[]) => {
