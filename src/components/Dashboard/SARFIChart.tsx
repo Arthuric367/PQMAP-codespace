@@ -10,10 +10,13 @@ interface SARFIChartProps {
   tableData?: SARFIDataPoint[];
 }
 
-export default function SARFIChart({ metrics, profiles: profilesProp = [], tableData = [] }: SARFIChartProps) {
+export default function SARFIChart({ metrics, profiles: profilesProp = [], tableData: initialTableData = [] }: SARFIChartProps) {
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [profiles, setProfiles] = useState<SARFIProfile[]>(profilesProp);
+  const [tableData, setTableData] = useState<SARFIDataPoint[]>(initialTableData);
+  const [isLoadingTable, setIsLoadingTable] = useState(false);
+  const [profilesFetched, setProfilesFetched] = useState(false); // Flag to prevent re-fetching
   const [filters, setFilters] = useState<SARFIFilters>(() => {
     // Load saved filters from localStorage
     const saved = localStorage.getItem('sarfi_filters');
@@ -33,19 +36,24 @@ export default function SARFIChart({ metrics, profiles: profilesProp = [], table
     };
   });
 
-  // Fetch profiles from database
+  // Fetch profiles from database (only once)
   useEffect(() => {
+    // Skip if already fetched or profiles provided as prop
+    if (profilesFetched || profilesProp.length > 0) {
+      return;
+    }
+
     async function fetchProfiles() {
       const { fetchSARFIProfiles } = await import('../../services/sarfiService');
       try {
-        console.log('🔄 Fetching SARFI profiles...');
         const data = await fetchSARFIProfiles();
-        console.log('✅ Fetched SARFI profiles:', data.length, 'profiles');
         setProfiles(data);
-        // If no profile selected yet, select the active one
-        if (!filters.profileId && data.length > 0) {
+        setProfilesFetched(true); // Mark as fetched to prevent re-fetching
+        
+        // Auto-select active profile if none selected
+        const currentFilters = JSON.parse(localStorage.getItem('sarfi_filters') || '{}');
+        if (!currentFilters.profileId && data.length > 0) {
           const activeProfile = data.find(p => p.is_active) || data[0];
-          console.log('📌 Auto-selecting profile:', activeProfile.name);
           setFilters(prev => ({ ...prev, profileId: activeProfile.id }));
         }
       } catch (error) {
@@ -53,20 +61,40 @@ export default function SARFIChart({ metrics, profiles: profilesProp = [], table
       }
     }
 
-    if (profilesProp.length === 0) {
-      fetchProfiles();
-    }
-  }, [profilesProp, filters.profileId]);
+    fetchProfiles();
+  }, []); // Empty dependency array - only run once on mount
 
   // Save filters to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem('sarfi_filters', JSON.stringify(filters));
   }, [filters]);
 
+  // Fetch table data when showDataTable is enabled and filters change
+  useEffect(() => {
+    async function fetchTableData() {
+      if (!filters.showDataTable || !filters.profileId) {
+        setTableData([]);
+        return;
+      }
+
+      setIsLoadingTable(true);
+      try {
+        const { fetchFilteredSARFIData } = await import('../../services/sarfiService');
+        const data = await fetchFilteredSARFIData(filters);
+        setTableData(data);
+      } catch (error) {
+        console.error('❌ Error fetching SARFI table data:', error);
+        setTableData([]);
+      } finally {
+        setIsLoadingTable(false);
+      }
+    }
+
+    fetchTableData();
+  }, [filters.showDataTable, filters.profileId, filters.voltageLevel, filters.excludeSpecialEvents]);
+
   const handleApplyFilters = (newFilters: SARFIFilters) => {
     setFilters(newFilters);
-    // In a real implementation, you would fetch new data here
-    // For now, we'll just update the state
   };
 
   const aggregatedData = metrics.reduce((acc, metric) => {
@@ -187,8 +215,24 @@ export default function SARFIChart({ metrics, profiles: profilesProp = [], table
       </div>
 
       {/* Data Table (conditional) */}
-      {filters.showDataTable && tableData.length > 0 && (
-        <SARFIDataTable data={tableData} />
+      {filters.showDataTable && (
+        <>
+          {isLoadingTable ? (
+            <div className="mt-6 bg-white rounded-xl border border-slate-200 p-12 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+              <p className="text-slate-600">Loading SARFI data table...</p>
+            </div>
+          ) : tableData.length > 0 ? (
+            <SARFIDataTable data={tableData} />
+          ) : (
+            <div className="mt-6 bg-white rounded-xl border border-slate-200 p-8 text-center">
+              <p className="text-slate-500">No data available for the selected filters</p>
+              <p className="text-sm text-slate-400 mt-2">
+                Try adjusting the voltage level or profile selection
+              </p>
+            </div>
+          )}
+        </>
       )}
 
       {/* Configuration Modal */}

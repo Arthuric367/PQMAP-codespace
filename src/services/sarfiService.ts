@@ -100,7 +100,7 @@ export async function deleteSARFIProfile(profileId: string): Promise<void> {
  * Fetch weighting factors for a profile
  */
 export async function fetchProfileWeights(profileId: string): Promise<SARFIProfileWeight[]> {
-  const { data, error } = await supabase
+  const { data, error} = await supabase
     .from('sarfi_profile_weights')
     .select(`
       *,
@@ -117,7 +117,7 @@ export async function fetchProfileWeights(profileId: string): Promise<SARFIProfi
     .order('created_at', { ascending: true });
 
   if (error) {
-    console.error('Error fetching profile weights:', error);
+    console.error('❌ Error fetching profile weights:', error);
     throw error;
   }
 
@@ -190,65 +190,103 @@ export async function deleteProfileWeight(weightId: string): Promise<void> {
  * Fetch SARFI data with filters applied
  */
 export async function fetchFilteredSARFIData(filters: SARFIFilters): Promise<SARFIDataPoint[]> {
-  // Build query with filters
-  let query = supabase
+  // Validate profile ID
+  if (!filters.profileId) {
+    console.warn('⚠️ No profile ID provided, returning empty data');
+    return [];
+  }
+
+  // Step 1: Fetch weights for the profile to get the list of meters
+  const weights = await fetchProfileWeights(filters.profileId);
+  
+  if (weights.length === 0) {
+    console.warn('⚠️ No weights found for profile:', filters.profileId);
+    return [];
+  }
+
+  const weightMap = new Map(weights.map(w => [w.meter_id, w.weight_factor]));
+  const meterIds = Array.from(weightMap.keys());
+
+  // Step 2: Fetch meter details with voltage level filtering
+  let meterQuery = supabase
+    .from('pq_meters')
+    .select(`
+      id,
+      meter_id,
+      location,
+      voltage_level,
+      substation_id,
+      substations(voltage_level)
+    `)
+    .in('id', meterIds);
+
+  // Apply voltage level filter on pq_events.voltage_level column directly
+  // (We'll filter meters based on events that match the voltage level)
+  
+  const { data: meters, error: meterError } = await meterQuery;
+
+  if (meterError) {
+    console.error('❌ Error fetching meters:', meterError);
+    throw meterError;
+  }
+
+  // Step 3: Fetch events for these meters
+  let eventQuery = supabase
     .from('pq_events')
     .select(`
       id,
       event_type,
       magnitude,
-      duration,
+      remaining_voltage,
+      duration_ms,
       meter_id,
+      voltage_level,
       is_special_event,
-      meter:pq_meters(
-        id,
-        meter_id,
-        location,
-        substation:substations(
-          voltage_level
-        )
-      )
-    `);
+      timestamp
+    `)
+    .in('meter_id', meterIds)
+    .eq('event_type', 'voltage_dip'); // Only voltage dips count for SARFI
 
-  // Filter by voltage level
+  // Filter by voltage level from pq_events table
   if (filters.voltageLevel !== 'All') {
-    query = query.eq('meter.substation.voltage_level', filters.voltageLevel);
+    eventQuery = eventQuery.eq('voltage_level', filters.voltageLevel);
   }
 
   // Exclude special events if requested
   if (filters.excludeSpecialEvents) {
-    query = query.or('is_special_event.is.null,is_special_event.eq.false');
+    eventQuery = eventQuery.or('is_special_event.is.null,is_special_event.eq.false');
   }
 
-  // Filter by date range based on profile year
-  // TODO: Extract year from profile
-  // query = query.gte('timestamp', `${year}-01-01`).lt('timestamp', `${year + 1}-01-01`);
+  const { data: events, error: eventError } = await eventQuery;
 
-  const { data: events, error } = await query;
-
-  if (error) {
-    console.error('Error fetching filtered SARFI data:', error);
-    throw error;
+  if (eventError) {
+    console.error('❌ Error fetching events:', eventError);
+    throw eventError;
   }
 
-  // Fetch weights for the profile
-  const weights = await fetchProfileWeights(filters.profileId);
-  const weightMap = new Map(weights.map(w => [w.meter_id, w.weight_factor]));
+  // Step 4: Create meter lookup map
+  const meterDetailsMap = new Map(
+    meters?.map(m => [
+      m.id,
+      {
+        meter_id: m.meter_id,
+        location: m.location,
+        voltage_level: m.voltage_level || (m.substations as any)?.voltage_level || 'Unknown'
+      }
+    ]) || []
+  );
 
-  // Group events by meter and calculate SARFI indices
+  // Step 5: Group events by meter and calculate SARFI indices
   const meterMap = new Map<string, SARFIDataPoint>();
 
-  events?.forEach(event => {
-    if (!event.meter_id) return;
-
-    const meterId = event.meter_id;
-    const meter = event.meter as any;
-
-    if (!meterMap.has(meterId)) {
+  // Initialize all meters from the profile
+  meterIds.forEach(meterId => {
+    const meterDetails = meterDetailsMap.get(meterId);
+    if (meterDetails) {
       meterMap.set(meterId, {
         meter_id: meterId,
-        meter_no: meter?.meter_id || meterId,
-        location: meter?.location || 'Unknown',
+        meter_no: meterDetails.meter_id,
+        location: meterDetails.location,
         sarfi_10: 0,
         sarfi_30: 0,
         sarfi_50: 0,
@@ -258,12 +296,20 @@ export async function fetchFilteredSARFIData(filters: SARFIFilters): Promise<SAR
         weight_factor: weightMap.get(meterId) || 1.0,
       });
     }
+  });
 
-    const dataPoint = meterMap.get(meterId)!;
-    const magnitude = event.magnitude || 100;
-    const remainingVoltage = magnitude;
+  // Process events and count SARFI thresholds
+  events?.forEach(event => {
+    if (!event.meter_id) return;
+
+    const dataPoint = meterMap.get(event.meter_id);
+    if (!dataPoint) return;
+
+    // Use remaining_voltage if available, otherwise use magnitude
+    const remainingVoltage = event.remaining_voltage ?? event.magnitude ?? 100;
 
     // Calculate SARFI thresholds (remaining voltage %)
+    // SARFI-X counts events where remaining voltage is <= (100 - X)%
     if (remainingVoltage <= 90) dataPoint.sarfi_10++;
     if (remainingVoltage <= 70) dataPoint.sarfi_30++;
     if (remainingVoltage <= 50) dataPoint.sarfi_50++;
@@ -272,7 +318,10 @@ export async function fetchFilteredSARFIData(filters: SARFIFilters): Promise<SAR
     if (remainingVoltage <= 10) dataPoint.sarfi_90++;
   });
 
-  return Array.from(meterMap.values());
+  const result = Array.from(meterMap.values());
+  console.log(`✅ SARFI data ready: ${result.length} meters, ${events?.length || 0} events processed`);
+  
+  return result;
 }
 
 /**

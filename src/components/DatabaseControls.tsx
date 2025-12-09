@@ -3,6 +3,7 @@ import { Database, Trash2, RefreshCcw, Zap } from 'lucide-react';
 import { seedDatabase, clearDatabase } from '../utils/seedDatabase';
 import { generateMotherEventDemoDataSimple } from '../utils/generateMotherEventDemoDataSimple';
 import MotherEventDebugger from './MotherEventDebugger';
+import SARFIDataSeeder from './Dashboard/SARFIDataSeeder';
 
 interface DatabaseControlsProps {
   onUpdate?: () => void;
@@ -183,6 +184,9 @@ export default function DatabaseControls({ onUpdate }: DatabaseControlsProps) {
         </div>
         </div>
       </div>
+      
+      {/* SARFI Data Seeder */}
+      <SARFIDataSeeder />
       
       {/* Mother Event Debugger */}
       <MotherEventDebugger />
