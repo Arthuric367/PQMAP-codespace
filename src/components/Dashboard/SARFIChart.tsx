@@ -1,12 +1,73 @@
-import { TrendingUp } from 'lucide-react';
-import { SARFIMetrics } from '../../types/database';
+import { useState, useEffect } from 'react';
+import { TrendingUp, Settings2 } from 'lucide-react';
+import { SARFIMetrics, SARFIFilters, SARFIProfile, SARFIDataPoint } from '../../types/database';
+import SARFIConfigModal from './SARFIConfigModal';
+import SARFIDataTable from './SARFIDataTable';
 
 interface SARFIChartProps {
   metrics: SARFIMetrics[];
+  profiles?: SARFIProfile[];
+  tableData?: SARFIDataPoint[];
 }
 
-export default function SARFIChart({ metrics }: SARFIChartProps) {
+export default function SARFIChart({ metrics, profiles: profilesProp = [], tableData = [] }: SARFIChartProps) {
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [profiles, setProfiles] = useState<SARFIProfile[]>(profilesProp);
+  const [filters, setFilters] = useState<SARFIFilters>(() => {
+    // Load saved filters from localStorage
+    const saved = localStorage.getItem('sarfi_filters');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // Fall through to default
+      }
+    }
+    return {
+      profileId: '',
+      voltageLevel: 'All',
+      excludeSpecialEvents: false,
+      dataType: 'magnitude',
+      showDataTable: false,
+    };
+  });
+
+  // Fetch profiles from database
+  useEffect(() => {
+    async function fetchProfiles() {
+      const { fetchSARFIProfiles } = await import('../../services/sarfiService');
+      try {
+        console.log('🔄 Fetching SARFI profiles...');
+        const data = await fetchSARFIProfiles();
+        console.log('✅ Fetched SARFI profiles:', data.length, 'profiles');
+        setProfiles(data);
+        // If no profile selected yet, select the active one
+        if (!filters.profileId && data.length > 0) {
+          const activeProfile = data.find(p => p.is_active) || data[0];
+          console.log('📌 Auto-selecting profile:', activeProfile.name);
+          setFilters(prev => ({ ...prev, profileId: activeProfile.id }));
+        }
+      } catch (error) {
+        console.error('❌ Error fetching SARFI profiles:', error);
+      }
+    }
+
+    if (profilesProp.length === 0) {
+      fetchProfiles();
+    }
+  }, [profilesProp, filters.profileId]);
+
+  // Save filters to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('sarfi_filters', JSON.stringify(filters));
+  }, [filters]);
+
+  const handleApplyFilters = (newFilters: SARFIFilters) => {
+    setFilters(newFilters);
+    // In a real implementation, you would fetch new data here
+    // For now, we'll just update the state
+  };
 
   const aggregatedData = metrics.reduce((acc, metric) => {
     const key = `${metric.period_year}-${metric.period_month}`;
@@ -39,30 +100,40 @@ export default function SARFIChart({ metrics }: SARFIChartProps) {
   );
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 p-6 border border-slate-100">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <TrendingUp className="w-6 h-6 text-slate-700" />
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">SARFI Metrics Trend</h2>
-            <p className="text-sm text-slate-600">System Average RMS Variation Frequency Index</p>
+    <>
+      <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 p-6 border border-slate-100">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <TrendingUp className="w-6 h-6 text-slate-700" />
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">SARFI Metrics Trend</h2>
+              <p className="text-sm text-slate-600">System Average RMS Variation Frequency Index</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 mr-4">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                <span className="text-xs text-slate-600">SARFI-70</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-cyan-500"></div>
+                <span className="text-xs text-slate-600">SARFI-80</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-teal-500"></div>
+                <span className="text-xs text-slate-600">SARFI-90</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsConfigOpen(true)}
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors group"
+              title="Configure SARFI filters"
+            >
+              <Settings2 className="w-5 h-5 text-slate-600 group-hover:text-blue-600 transition-colors" />
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-            <span className="text-xs text-slate-600">SARFI-70</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-cyan-500"></div>
-            <span className="text-xs text-slate-600">SARFI-80</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-teal-500"></div>
-            <span className="text-xs text-slate-600">SARFI-90</span>
-          </div>
-        </div>
-      </div>
 
       <div className="relative h-64">
         <div className="absolute inset-0 flex items-end justify-between gap-2">
@@ -113,6 +184,21 @@ export default function SARFIChart({ metrics }: SARFIChartProps) {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+
+      {/* Data Table (conditional) */}
+      {filters.showDataTable && tableData.length > 0 && (
+        <SARFIDataTable data={tableData} />
+      )}
+
+      {/* Configuration Modal */}
+      <SARFIConfigModal
+        isOpen={isConfigOpen}
+        onClose={() => setIsConfigOpen(false)}
+        filters={filters}
+        onApply={handleApplyFilters}
+        profiles={profiles}
+      />
+    </>
   );
 }

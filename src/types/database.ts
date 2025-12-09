@@ -189,6 +189,49 @@ export interface SARFIMetrics {
   substation?: Substation;
 }
 
+export interface SARFIProfile {
+  id: string;
+  name: string;
+  description: string | null;
+  year: number;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SARFIProfileWeight {
+  id: string;
+  profile_id: string;
+  meter_id: string;
+  weight_factor: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  meter?: PQMeter;
+}
+
+export interface SARFIDataPoint {
+  meter_id: string;
+  meter_no: string;
+  location: string;
+  sarfi_10: number;
+  sarfi_30: number;
+  sarfi_50: number;
+  sarfi_70: number;
+  sarfi_80: number;
+  sarfi_90: number;
+  weight_factor: number;
+}
+
+export interface SARFIFilters {
+  profileId: string;
+  voltageLevel: '400kV' | '132kV' | '11kV' | '380V' | 'Others' | 'All';
+  excludeSpecialEvents: boolean;
+  dataType: 'magnitude' | 'duration';
+  showDataTable: boolean;
+}
+
 // Dashboard Statistics Interface
 export interface DashboardStats {
   totalEvents: number;
