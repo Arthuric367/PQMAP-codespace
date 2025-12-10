@@ -1,7 +1,7 @@
 export type UserRole = 'admin' | 'operator' | 'viewer';
 export type EventType = 'voltage_dip' | 'voltage_swell' | 'harmonic' | 'interruption' | 'transient' | 'flicker';
 export type SeverityLevel = 'critical' | 'high' | 'medium' | 'low';
-export type EventStatus = 'new' | 'acknowledged' | 'investigating' | 'resolved' | 'false';
+export type EventStatus = 'new' | 'acknowledged' | 'investigating' | 'resolved';
 export type MeterStatus = 'active' | 'abnormal' | 'inactive';
 export type SubstationStatus = 'operational' | 'maintenance' | 'offline';
 export type CustomerType = 'residential' | 'commercial' | 'industrial';
@@ -101,6 +101,42 @@ export interface PQEvent {
   remaining_voltage: number | null;
   validated_by_adms: boolean;
   is_special_event: boolean;
+  // False Event Tracking (replaces status='false')
+  false_event: boolean;
+  // Metadata Fields
+  oc: string | null;
+  remarks: string | null;
+  idr_no: string | null;
+  // Location & Equipment Details
+  address: string | null;
+  equipment_type: string | null;
+  // Cause Analysis
+  cause_group: string | null;
+  cause: string | null;
+  description: string | null;
+  // Equipment Fault Details
+  object_part_group: string | null;
+  object_part_code: string | null;
+  damage_group: string | null;
+  damage_code: string | null;
+  // Event Context
+  outage_type: string | null;
+  weather: string | null;
+  total_cmi: number | null;
+  // Voltage Measurements (V1, V2, V3)
+  v1: number | null;
+  v2: number | null;
+  v3: number | null;
+  // SARFI Indices
+  sarfi_10: number | null;
+  sarfi_20: number | null;
+  sarfi_30: number | null;
+  sarfi_40: number | null;
+  sarfi_50: number | null;
+  sarfi_60: number | null;
+  sarfi_70: number | null;
+  sarfi_80: number | null;
+  sarfi_90: number | null;
   substation?: Substation;
   meter?: PQMeter;
   customer_impacts?: EventCustomerImpact[];

@@ -7,7 +7,8 @@ import FalseEventConfig from './FalseEventConfig';
 import FalseEventAnalytics from './FalseEventAnalytics';
 import { falseEventDetector } from '../../utils/falseEventDetection';
 import { MotherEventGroupingService } from '../../services/mother-event-grouping';
-import { Activity, Plus, GitBranch, Filter, Search, Calendar, Users, AlertTriangle, Shield, BarChart3, Group, Ungroup, Check, X, Save, Edit2, Trash2, RotateCcw, ChevronDown } from 'lucide-react';
+import { ExportService } from '../../services/exportService';
+import { Activity, Plus, GitBranch, Filter, Search, Calendar, Users, AlertTriangle, Shield, BarChart3, Group, Check, X, Save, Edit2, Trash2, RotateCcw, ChevronDown, Download } from 'lucide-react';
 
 export default function EventManagement() {
   const [events, setEvents] = useState<PQEvent[]>([]);
@@ -60,6 +61,10 @@ export default function EventManagement() {
   const [meterSearchQuery, setMeterSearchQuery] = useState('');
   const [selectedVoltageLevelsForMeters, setSelectedVoltageLevelsForMeters] = useState<string[]>([]);
   const [showVoltageLevelDropdown, setShowVoltageLevelDropdown] = useState(false);
+  
+  // Export states
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -79,11 +84,14 @@ export default function EventManagement() {
       if (showVoltageLevelDropdown && !target.closest('.voltage-dropdown-container')) {
         setShowVoltageLevelDropdown(false);
       }
+      if (showExportDropdown && !target.closest('.export-dropdown-container')) {
+        setShowExportDropdown(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showMeterDropdown, showProfileDropdown, showVoltageLevelDropdown]);
+  }, [showMeterDropdown, showProfileDropdown, showVoltageLevelDropdown, showExportDropdown]);
 
   const loadData = async () => {
     try {
@@ -343,6 +351,41 @@ export default function EventManagement() {
     setSelectedProfileId(null);
   };
 
+  // Export functions
+  const handleExport = async (format: 'excel' | 'csv' | 'pdf') => {
+    setIsExporting(true);
+    setShowExportDropdown(false);
+    
+    try {
+      // Use finalEvents (the filtered and displayed events)
+      const eventsToExport = finalEvents;
+      
+      // Create substations map
+      const substationsMap = new Map<string, Substation>();
+      substations.forEach(sub => substationsMap.set(sub.id, sub));
+      
+      // Export based on format
+      switch (format) {
+        case 'excel':
+          await ExportService.exportToExcel(eventsToExport, substationsMap);
+          break;
+        case 'csv':
+          await ExportService.exportToCSV(eventsToExport, substationsMap);
+          break;
+        case 'pdf':
+          await ExportService.exportToPDF(eventsToExport, substationsMap);
+          break;
+      }
+      
+      console.log(`✅ Successfully exported ${eventsToExport.length} events as ${format.toUpperCase()}`);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert(`Failed to export events as ${format.toUpperCase()}. Please try again.`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   // Build tree structure for mother events
   const buildEventTree = (events: PQEvent[]): EventTreeNode[] => {
     const nodeMap = new Map<string, EventTreeNode>();
@@ -490,14 +533,17 @@ export default function EventManagement() {
     showOnlyUnvalidated: filters.showOnlyUnvalidated
   });
 
-  // Apply false event detection
-  const eventsWithFalseDetection = falseEventDetector.applyConfiguredRules(filteredEvents, falseEventRules);
+  // Apply false event detection using database false_event field
+  const eventsWithFalseDetection = filteredEvents.map(event => ({
+    ...event,
+    shouldBeHidden: event.false_event === true
+  }));
   
   // Count events with shouldBeHidden
   const hiddenEvents = eventsWithFalseDetection.filter(e => e.shouldBeHidden);
   const hiddenMotherEvents = eventsWithFalseDetection.filter(e => e.is_mother_event && e.shouldBeHidden);
-  console.log('🚫 Events marked shouldBeHidden:', hiddenEvents.length);
-  console.log('🚫 Mother events marked shouldBeHidden:', hiddenMotherEvents.length);
+  console.log('🚫 Events marked shouldBeHidden (false_event=TRUE):', hiddenEvents.length);
+  console.log('🚫 Mother events marked shouldBeHidden (false_event=TRUE):', hiddenMotherEvents.length);
   
   if (hiddenMotherEvents.length > 0) {
     console.log('🔍 Hidden mother events details:', hiddenMotherEvents.map(e => ({
@@ -506,7 +552,7 @@ export default function EventManagement() {
       circuit: e.circuit_id,
       timestamp: e.timestamp,
       shouldBeHidden: e.shouldBeHidden,
-      falseEventRules: e.falseEventRules?.map((r: any) => r.name)
+      false_event: e.false_event
     })));
   }
   
@@ -572,30 +618,6 @@ export default function EventManagement() {
     } catch (error) {
       console.error('Error grouping events:', error);
       alert('Failed to group events. Please try again.');
-    } finally {
-      setGroupingInProgress(false);
-    }
-  };
-
-  const handleUngroupEvents = async (parentEventId: string) => {
-    if (!confirm('Are you sure you want to ungroup these events?')) {
-      return;
-    }
-
-    setGroupingInProgress(true);
-    
-    try {
-      const success = await MotherEventGroupingService.ungroupEvents(parentEventId);
-      
-      if (success) {
-        console.log('Events ungrouped successfully');
-        await loadData(); // Reload events to show ungrouping
-      } else {
-        alert('Failed to ungroup events. Please try again.');
-      }
-    } catch (error) {
-      console.error('Error ungrouping events:', error);
-      alert('Failed to ungroup events. Please try again.');
     } finally {
       setGroupingInProgress(false);
     }
@@ -1150,28 +1172,69 @@ export default function EventManagement() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 p-6 max-h-[800px] overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-slate-900">
-                  {viewMode === 'tree' ? 'Event Tree View' : 'Event List'}
-                  <span className="text-sm font-normal text-slate-500 ml-2">
-                    ({eventsWithFalseDetection.length} events)
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+            <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 p-4 max-h-[800px] overflow-y-auto xl:col-span-1">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-bold text-slate-900">
+                  {viewMode === 'tree' ? 'Event Tree' : 'Events'}
+                  <span className="text-xs font-normal text-slate-500 ml-2">
+                    ({eventsWithFalseDetection.length})
                   </span>
                 </h2>
+                
+                {/* Export Button */}
+                <div className="relative export-dropdown-container">
+                  <button
+                    onClick={() => setShowExportDropdown(!showExportDropdown)}
+                    disabled={isExporting || finalEvents.length === 0}
+                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Export Events"
+                  >
+                    <Download className="w-5 h-5" />
+                  </button>
+                  
+                  {showExportDropdown && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-2 z-50">
+                      <button
+                        onClick={() => handleExport('excel')}
+                        disabled={isExporting}
+                        className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                      >
+                        <Download className="w-4 h-4" />
+                        Export to Excel
+                      </button>
+                      <button
+                        onClick={() => handleExport('csv')}
+                        disabled={isExporting}
+                        className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                      >
+                        <Download className="w-4 h-4" />
+                        Export to CSV
+                      </button>
+                      <button
+                        onClick={() => handleExport('pdf')}
+                        disabled={isExporting}
+                        className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                      >
+                        <Download className="w-4 h-4" />
+                        Export to PDF
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
               
               {viewMode === 'tree' ? (
-                <div className="space-y-4">
-                  <div className="text-sm text-slate-600 mb-4">
-                    Tree view shows mother events with their related child events. Events marked as potential false positives are highlighted.
+                <div className="space-y-2">
+                  <div className="text-xs text-slate-500 mb-2">
+                    Mother events with child events
                   </div>
                   {/* Tree View Component would go here */}
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     {eventTree.map((node) => (
-                      <div key={node.id} className="border rounded-lg p-4">
+                      <div key={node.id} className="border rounded-lg p-2">
                         <div
-                          className={`p-3 rounded transition-all ${
+                          className={`p-1.5 rounded transition-all ${
                             selectedEvent?.id === node.id
                               ? 'bg-blue-50 border-blue-300'
                               : 'bg-white hover:bg-slate-50'
@@ -1195,59 +1258,51 @@ export default function EventManagement() {
                               />
                             )}
                             
-                            {/* Mother event indicator and ungroup button */}
+                            {/* Mother event indicator */}
                             {node.event.is_mother_event && (
-                              <div className="flex items-center gap-2">
-                                <GitBranch className="w-4 h-4 text-purple-600" />
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleUngroupEvents(node.id);
-                                  }}
-                                  disabled={groupingInProgress}
-                                  className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-50"
-                                >
-                                  <Ungroup className="w-3 h-3" />
-                                </button>
-                              </div>
+                              <GitBranch className="w-4 h-4 text-purple-600 flex-shrink-0" />
                             )}
                             
                             <div
                               onClick={() => handleEventSelect(node.event)}
                               className="flex-1 cursor-pointer"
                             >
-                              {node.event.isFlaggedAsFalse && (
-                                <AlertTriangle className="w-4 h-4 text-orange-500" />
-                              )}
-                              <div className="flex-1">
-                                <p className="font-semibold text-slate-900 capitalize">
-                                  {node.event.event_type.replace('_', ' ')}
-                                </p>
-                                <p className="text-sm text-slate-600">{node.event.circuit_id}</p>
-                                <p className="text-xs text-slate-500">
-                                  {new Date(node.event.timestamp).toLocaleString()}
-                                </p>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    {node.event.isFlaggedAsFalse && (
+                                      <AlertTriangle className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                                    )}
+                                    <p className="font-semibold text-sm text-slate-900 capitalize truncate">
+                                      {node.event.event_type.replace('_', ' ')}
+                                    </p>
+                                  </div>
+                                  <p className="text-xs text-slate-600 truncate">{node.event.circuit_id}</p>
+                                  <p className="text-xs text-slate-500">
+                                    {new Date(node.event.timestamp).toLocaleTimeString()}
+                                  </p>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded text-xs font-bold flex-shrink-0 ${
+                                  node.event.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                                  node.event.severity === 'high' ? 'bg-orange-100 text-orange-700' :
+                                  node.event.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                                  'bg-green-100 text-green-700'
+                                }`}>
+                                  {node.event.severity}
+                                </span>
                               </div>
-                              <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                node.event.severity === 'critical' ? 'bg-red-100 text-red-700' :
-                                node.event.severity === 'high' ? 'bg-orange-100 text-orange-700' :
-                                node.event.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                                'bg-green-100 text-green-700'
-                              }`}>
-                                {node.event.severity}
-                              </span>
                             </div>
                           </div>
                         </div>
                         
                         {/* Child events */}
                         {node.children.length > 0 && (
-                          <div className="ml-8 mt-2 space-y-1">
+                          <div className="ml-6 mt-1 space-y-1">
                             {node.children.map((child) => (
                               <div
                                 key={child.id}
                                 onClick={() => handleEventSelect(child.event)}
-                                className={`p-2 text-sm bg-slate-50 rounded cursor-pointer hover:bg-slate-100 ${
+                                className={`p-1.5 text-xs bg-slate-50 rounded cursor-pointer hover:bg-slate-100 ${
                                   child.event.isFlaggedAsFalse ? 'border-l-2 border-l-orange-400' : ''
                                 }`}
                               >
@@ -1267,18 +1322,18 @@ export default function EventManagement() {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1">
                   {finalEvents.map((event) => {
                     const substation = substations.find(s => s.id === event.substation_id);
                     return (
                       <div
                         key={event.id}
-                        className={`p-4 rounded-lg border-2 transition-all ${
+                        className={`p-2 rounded-lg border-2 transition-all ${
                           selectedEvent?.id === event.id
                             ? 'border-blue-500 bg-blue-50'
                             : 'border-slate-200 hover:border-slate-300 bg-white'
                         } ${
-                          event.isFlaggedAsFalse ? 'border-l-4 border-l-orange-500' : ''
+                          event.false_event ? 'border-l-4 border-l-orange-500' : ''
                         } ${
                           selectedEventIds.has(event.id) ? 'bg-green-50 border-green-500' : ''
                         }`}
@@ -1298,62 +1353,51 @@ export default function EventManagement() {
                               />
                             )}
 
-                            {/* Mother event indicator and ungroup button */}
+                            {/* Mother event indicator */}
                             {event.is_mother_event && (
-                              <div className="flex items-center gap-2">
-                                <GitBranch className="w-4 h-4 text-purple-600 mt-1" />
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleUngroupEvents(event.id);
-                                  }}
-                                  disabled={groupingInProgress}
-                                  className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-50"
-                                >
-                                  <Ungroup className="w-3 h-3" />
-                                </button>
-                              </div>
+                              <GitBranch className="w-4 h-4 text-purple-600 flex-shrink-0" />
                             )}
 
                             <div
                               onClick={() => handleEventSelect(event)}
                               className="flex-1 cursor-pointer"
                             >
-                              {!event.validated_by_adms && (
-                                <AlertTriangle className="w-4 h-4 text-yellow-500 mt-1" />
-                              )}
-                              {event.isFlaggedAsFalse && (
-                                <AlertTriangle className="w-4 h-4 text-orange-500 mt-1" />
-                              )}
-                              <div>
-                                <p className="font-semibold text-slate-900">{substation?.name || event.circuit_id}</p>
-                                <p className="text-sm text-slate-600 capitalize">{event.event_type.replace('_', ' ')}</p>
-                                <p className="text-xs text-slate-500 mt-1">
-                                  {new Date(event.timestamp).toLocaleString()}
-                                </p>
-                                {event.customer_count && (
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1">
+                                    {!event.validated_by_adms && (
+                                      <AlertTriangle className="w-3 h-3 text-yellow-500 flex-shrink-0" />
+                                    )}
+                                    {event.false_event && (
+                                      <AlertTriangle className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                                    )}
+                                    <p className="font-semibold text-sm text-slate-900 truncate">{substation?.name || event.circuit_id}</p>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-2 mt-0.5">
+                                    <p className="text-sm text-slate-600 capitalize">{event.event_type.replace('_', ' ')}</p>
+                                    <span className={`px-2 py-0.5 rounded text-xs font-bold flex-shrink-0 ${
+                                      event.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                                      event.severity === 'high' ? 'bg-orange-100 text-orange-700' :
+                                      event.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                                      'bg-green-100 text-green-700'
+                                    }`}>
+                                      {event.severity}
+                                    </span>
+                                  </div>
                                   <p className="text-xs text-slate-500">
-                                    <Users className="w-3 h-3 inline mr-1" />
-                                    {event.customer_count} customers
+                                    {new Date(event.timestamp).toLocaleTimeString()} • {event.duration_ms && (event.duration_ms < 1000 ? `${event.duration_ms}ms` : `${(event.duration_ms/1000).toFixed(1)}s`)}
                                   </p>
-                                )}
-                                {event.isFlaggedAsFalse && (
-                                  <p className="text-xs text-orange-600 mt-1">
-                                    ⚠ Potential false positive
-                                  </p>
-                                )}
+                                  {event.customer_count && (
+                                    <p className="text-xs text-slate-500">
+                                      <Users className="w-3 h-3 inline mr-1" />
+                                      {event.customer_count} customers
+                                    </p>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
-                              event.severity === 'critical' ? 'bg-red-100 text-red-700' :
-                              event.severity === 'high' ? 'bg-orange-100 text-orange-700' :
-                              event.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-green-100 text-green-700'
-                            }`}>
-                              {event.severity}
-                            </span>
+                          <div className="text-right hidden">
                             {event.duration_ms && (
                               <p className="text-xs text-slate-500 mt-1">
                                 {event.duration_ms < 1000 ? `${event.duration_ms}ms` : `${(event.duration_ms/1000).toFixed(1)}s`}
@@ -1368,7 +1412,7 @@ export default function EventManagement() {
               )}
             </div>
 
-            <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 p-6 max-h-[800px] overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 p-6 max-h-[800px] overflow-y-auto xl:col-span-3">
               {selectedEvent ? (
                 <EventDetails
                   event={selectedEvent}
@@ -1376,6 +1420,7 @@ export default function EventManagement() {
                   impacts={impacts}
                   onStatusChange={updateEventStatus}
                   onEventDeleted={handleEventDeleted}
+                  onEventUpdated={loadData}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-slate-400">

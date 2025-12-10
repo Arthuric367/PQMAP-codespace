@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Clock, MapPin, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle } from 'lucide-react';
+import { Clock, MapPin, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download } from 'lucide-react';
 import { PQEvent, Substation, EventCustomerImpact } from '../../types/database';
 import { supabase } from '../../lib/supabase';
 import WaveformDisplay from './WaveformDisplay';
+import { MotherEventGroupingService } from '../../services/mother-event-grouping';
+import { ExportService } from '../../services/exportService';
 
 type TabType = 'overview' | 'technical' | 'impact' | 'children' | 'timeline';
 
@@ -12,9 +14,10 @@ interface EventDetailsProps {
   impacts: EventCustomerImpact[];
   onStatusChange: (eventId: string, status: string) => void;
   onEventDeleted?: () => void;
+  onEventUpdated?: () => void;
 }
 
-export default function EventDetails({ event: initialEvent, substation: initialSubstation, impacts: initialImpacts, onStatusChange, onEventDeleted }: EventDetailsProps) {
+export default function EventDetails({ event: initialEvent, substation: initialSubstation, impacts: initialImpacts, onStatusChange, onEventDeleted, onEventUpdated }: EventDetailsProps) {
   // Navigation state
   const [currentEvent, setCurrentEvent] = useState<PQEvent>(initialEvent);
   const [currentSubstation, setCurrentSubstation] = useState<Substation | undefined>(initialSubstation);
@@ -36,6 +39,13 @@ export default function EventDetails({ event: initialEvent, substation: initialS
   // Delete confirmation state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  
+  // Ungroup state
+  const [ungrouping, setUngrouping] = useState(false);
+  
+  // Export states
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Update state when props change
   useEffect(() => {
@@ -54,6 +64,19 @@ export default function EventDetails({ event: initialEvent, substation: initialS
       setChildEvents([]);
     }
   }, [currentEvent.id, currentEvent.is_mother_event]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (showExportDropdown && !target.closest('.export-dropdown-container')) {
+        setShowExportDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showExportDropdown]);
 
   const loadChildEvents = async (motherEventId: string) => {
     setLoading(true);
@@ -173,6 +196,95 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     }
   };
 
+  const handleUngroupEvents = async () => {
+    if (!confirm('Are you sure you want to ungroup these events? All child events will become independent events.')) {
+      return;
+    }
+
+    setUngrouping(true);
+    try {
+      const success = await MotherEventGroupingService.ungroupEvents(currentEvent.id);
+      
+      if (success) {
+        console.log('Events ungrouped successfully');
+        if (onEventUpdated) {
+          onEventUpdated();
+        }
+      } else {
+        alert('Failed to ungroup events. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error ungrouping events:', error);
+      alert('Failed to ungroup events. Please try again.');
+    } finally {
+      setUngrouping(false);
+    }
+  };
+
+  const handleExport = async (format: 'excel' | 'csv' | 'pdf') => {
+    setIsExporting(true);
+    setShowExportDropdown(false);
+    
+    try {
+      // Export current event and its children (if mother event)
+      const eventsToExport: PQEvent[] = [currentEvent];
+      if (currentEvent.is_mother_event && childEvents.length > 0) {
+        eventsToExport.push(...childEvents);
+      }
+      
+      // Create substations map
+      const substationsMap = new Map<string, Substation>();
+      if (currentSubstation) {
+        substationsMap.set(currentSubstation.id, currentSubstation);
+      }
+      
+      // Load substations for child events
+      for (const child of childEvents) {
+        if (child.substation_id && !substationsMap.has(child.substation_id)) {
+          const { data } = await supabase
+            .from('substations')
+            .select('*')
+            .eq('id', child.substation_id)
+            .single();
+          if (data) substationsMap.set(data.id, data);
+        }
+      }
+      
+      // Export based on format
+      switch (format) {
+        case 'excel':
+          await ExportService.exportToExcel(
+            eventsToExport, 
+            substationsMap,
+            `Event_${currentEvent.id.substring(0, 8)}_Export_${Date.now()}.xlsx`
+          );
+          break;
+        case 'csv':
+          await ExportService.exportToCSV(
+            eventsToExport,
+            substationsMap,
+            `Event_${currentEvent.id.substring(0, 8)}_Export_${Date.now()}.csv`
+          );
+          break;
+        case 'pdf':
+          await ExportService.exportToPDF(
+            eventsToExport,
+            substationsMap,
+            `Event_${currentEvent.id.substring(0, 8)}_Export_${Date.now()}.pdf`,
+            true
+          );
+          break;
+      }
+      
+      console.log(`✅ Successfully exported event and ${childEvents.length} children as ${format.toUpperCase()}`);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert(`Failed to export event as ${format.toUpperCase()}. Please try again.`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const generateMockWaveform = () => {
     const samples = 200;
     const baseVoltage = currentEvent.magnitude || 100;
@@ -244,13 +356,66 @@ export default function EventDetails({ event: initialEvent, substation: initialS
               </span>
             )}
           </div>
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all"
-            title="Delete Event"
-          >
-            <Trash2 className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Export Button */}
+            <div className="relative export-dropdown-container">
+              <button
+                onClick={() => setShowExportDropdown(!showExportDropdown)}
+                disabled={isExporting}
+                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all disabled:opacity-50"
+                title="Export Event"
+              >
+                <Download className="w-5 h-5" />
+              </button>
+              
+              {showExportDropdown && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-2 z-50">
+                  <button
+                    onClick={() => handleExport('excel')}
+                    disabled={isExporting}
+                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export to Excel
+                  </button>
+                  <button
+                    onClick={() => handleExport('csv')}
+                    disabled={isExporting}
+                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export to CSV
+                  </button>
+                  <button
+                    onClick={() => handleExport('pdf')}
+                    disabled={isExporting}
+                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export to PDF
+                  </button>
+                </div>
+              )}
+            </div>
+            
+            {currentEvent.is_mother_event && (
+              <button
+                onClick={handleUngroupEvents}
+                disabled={ungrouping}
+                className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-all disabled:opacity-50"
+                title="Ungroup Events"
+              >
+                <Ungroup className="w-5 h-5" />
+              </button>
+            )}
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all"
+              title="Delete Event"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+          </div>
         </div>
         <p className="text-sm text-slate-600 mt-1">ID: {currentEvent.id.substring(0, 8)}</p>
       </div>
@@ -509,6 +674,22 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                     )}
                   </dd>
                 </div>
+                <div>
+                  <dt className="text-sm text-slate-600">False Event:</dt>
+                  <dd className="flex items-center gap-2 mt-1">
+                    {currentEvent.false_event ? (
+                      <>
+                        <XCircle className="w-5 h-5 text-red-600" />
+                        <span className="font-semibold text-red-700">Yes</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                        <span className="font-semibold text-green-700">No</span>
+                      </>
+                    )}
+                  </dd>
+                </div>
                 {currentEvent.grouping_type && (
                   <div className="col-span-2">
                     <dt className="text-sm text-slate-600">Grouping Info:</dt>
@@ -652,6 +833,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">#</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Type</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Time</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Meter</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Severity</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Circuit</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">V. Level</th>
@@ -673,6 +855,9 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                           </td>
                           <td className="px-4 py-3 text-sm text-slate-600">
                             {new Date(childEvent.timestamp).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600 font-mono">
+                            {childEvent.meter_id || 'N/A'}
                           </td>
                           <td className="px-4 py-3">
                             <span className={`px-2 py-1 rounded text-xs font-bold ${
