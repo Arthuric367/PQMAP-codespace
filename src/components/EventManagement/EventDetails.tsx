@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Clock, MapPin, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2 } from 'lucide-react';
+import { Clock, MapPin, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle } from 'lucide-react';
 import { PQEvent, Substation, EventCustomerImpact } from '../../types/database';
 import { supabase } from '../../lib/supabase';
 import WaveformDisplay from './WaveformDisplay';
+
+type TabType = 'overview' | 'technical' | 'impact' | 'children' | 'timeline';
 
 interface EventDetailsProps {
   event: PQEvent;
@@ -23,9 +25,13 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     impacts: EventCustomerImpact[];
   }>>([]);
   
+  // Tab state - remembers last viewed tab
+  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  
   // Child events state
   const [childEvents, setChildEvents] = useState<PQEvent[]>([]);
   const [loading, setLoading] = useState(false);
+  const [childEventsExpanded, setChildEventsExpanded] = useState(false);
   
   // Delete confirmation state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -189,6 +195,22 @@ export default function EventDetails({ event: initialEvent, substation: initialS
 
   const waveformData = currentEvent.waveform_data || generateMockWaveform();
 
+  // Calculate child events severity distribution for preview
+  const getChildEventsSummary = () => {
+    const severityCounts = childEvents.reduce((acc, child) => {
+      acc[child.severity] = (acc[child.severity] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    const parts = [];
+    if (severityCounts.critical) parts.push(`${severityCounts.critical} Critical`);
+    if (severityCounts.high) parts.push(`${severityCounts.high} High`);
+    if (severityCounts.medium) parts.push(`${severityCounts.medium} Medium`);
+    if (severityCounts.low) parts.push(`${severityCounts.low} Low`);
+    
+    return parts.join(', ');
+  };
+
   return (
     <div className="space-y-6">
       {/* Back Navigation - only show when viewing child event */}
@@ -204,67 +226,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
         </div>
       )}
 
-      {/* Child Events Tab - only show for mother events */}
-      {currentEvent.is_mother_event && navigationStack.length === 0 && (
-        <div className="border-b border-slate-200">
-          <div className="flex items-center gap-4">
-            <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-              <GitBranch className="w-5 h-5 text-purple-600" />
-              Child Events ({childEvents.length})
-            </h3>
-          </div>
-          
-          {loading ? (
-            <div className="py-8 text-center text-slate-500">
-              Loading child events...
-            </div>
-          ) : childEvents.length > 0 ? (
-            <div className="grid gap-3 py-4">
-              {childEvents.map((childEvent) => (
-                <div
-                  key={childEvent.id}
-                  onClick={() => handleChildEventClick(childEvent)}
-                  className="p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-all"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded">
-                        Child
-                      </span>
-                      <div>
-                        <p className="font-semibold text-slate-900 capitalize">
-                          {childEvent.event_type.replace('_', ' ')}
-                        </p>
-                        <p className="text-sm text-slate-600">
-                          {new Date(childEvent.timestamp).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <span className={`px-2 py-1 rounded text-xs font-bold ${
-                        childEvent.severity === 'critical' ? 'bg-red-100 text-red-700' :
-                        childEvent.severity === 'high' ? 'bg-orange-100 text-orange-700' :
-                        childEvent.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        {childEvent.severity}
-                      </span>
-                      <p className="text-xs text-slate-500 mt-1">
-                        {childEvent.circuit_id}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="py-8 text-center text-slate-500">
-              No child events found
-            </div>
-          )}
-        </div>
-      )}
-
+      {/* Header with Title and Delete Button */}
       <div>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -274,6 +236,11 @@ export default function EventDetails({ event: initialEvent, substation: initialS
             {currentEvent.parent_event_id && (
               <span className="px-2 py-1 bg-blue-100 text-blue-700 text-sm font-semibold rounded">
                 Child
+              </span>
+            )}
+            {currentEvent.is_mother_event && (
+              <span className="px-2 py-1 bg-purple-100 text-purple-700 text-sm font-semibold rounded">
+                Mother
               </span>
             )}
           </div>
@@ -288,153 +255,593 @@ export default function EventDetails({ event: initialEvent, substation: initialS
         <p className="text-sm text-slate-600 mt-1">ID: {currentEvent.id.substring(0, 8)}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="p-4 bg-slate-50 rounded-lg">
-          <div className="flex items-center gap-2 text-slate-600 mb-2">
-            <MapPin className="w-4 h-4" />
-            <span className="text-sm font-semibold">Location</span>
-          </div>
-          <p className="text-slate-900 font-medium">{currentSubstation?.name}</p>
-          <p className="text-sm text-slate-600">{currentSubstation?.voltage_level}</p>
-        </div>
-
-        <div className="p-4 bg-slate-50 rounded-lg">
-          <div className="flex items-center gap-2 text-slate-600 mb-2">
-            <Clock className="w-4 h-4" />
-            <span className="text-sm font-semibold">Timestamp</span>
-          </div>
-          <p className="text-slate-900 font-medium">
-            {new Date(currentEvent.timestamp).toLocaleDateString()}
-          </p>
-          <p className="text-sm text-slate-600">
-            {new Date(currentEvent.timestamp).toLocaleTimeString()}
-          </p>
-        </div>
-
-        <div className="p-4 bg-slate-50 rounded-lg">
-          <div className="flex items-center gap-2 text-slate-600 mb-2">
-            <Zap className="w-4 h-4" />
-            <span className="text-sm font-semibold">Magnitude</span>
-          </div>
-          <p className="text-2xl font-bold text-slate-900">{currentEvent.magnitude?.toFixed(2)}%</p>
-        </div>
-
-        <div className="p-4 bg-slate-50 rounded-lg">
-          <div className="flex items-center gap-2 text-slate-600 mb-2">
-            <Clock className="w-4 h-4" />
-            <span className="text-sm font-semibold">Duration</span>
-          </div>
-          <p className="text-2xl font-bold text-slate-900">
-            {currentEvent.duration_ms && currentEvent.duration_ms < 1000
-              ? `${currentEvent.duration_ms}ms`
-              : `${((currentEvent.duration_ms || 0) / 1000).toFixed(2)}s`
-            }
-          </p>
-        </div>
-      </div>
-
-      <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg">
-        <div className="flex items-center gap-2 mb-3">
-          <AlertTriangle className="w-5 h-5 text-slate-700" />
-          <span className="font-semibold text-slate-900">Event Information</span>
-        </div>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <span className="text-slate-600">Type:</span>
-            <span className="ml-2 font-semibold text-slate-900 capitalize">
-              {currentEvent.event_type.replace('_', ' ')}
-            </span>
-          </div>
-          <div>
-            <span className="text-slate-600">Severity:</span>
-            <span className={`ml-2 font-semibold capitalize ${
-              currentEvent.severity === 'critical' ? 'text-red-700' :
-              currentEvent.severity === 'high' ? 'text-orange-700' :
-              currentEvent.severity === 'medium' ? 'text-yellow-700' :
-              'text-green-700'
-            }`}>
-              {currentEvent.severity}
-            </span>
-          </div>
-          <div>
-            <span className="text-slate-600">Affected Phases:</span>
-            <span className="ml-2 font-semibold text-slate-900">
-              {currentEvent.affected_phases.join(', ')}
-            </span>
-          </div>
-          <div>
-            <span className="text-slate-600">Mother Event:</span>
-            <span className="ml-2 font-semibold text-slate-900">
-              {currentEvent.is_mother_event ? 'Yes' : 'No'}
-            </span>
-          </div>
-        </div>
-        {currentEvent.root_cause && (
-          <div className="mt-3 pt-3 border-t border-slate-200">
-            <span className="text-slate-600 text-sm">Root Cause:</span>
-            <p className="font-semibold text-slate-900 mt-1">{currentEvent.root_cause}</p>
-          </div>
-        )}
-      </div>
-
-      <div>
-        <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
-          <span>Status Management</span>
-        </h3>
-        <div className="flex gap-2">
-          {['new', 'acknowledged', 'investigating', 'resolved'].map((status) => (
+      {/* Tab Navigation */}
+      <div className="border-b border-slate-200">
+        <div className="flex gap-1 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`px-4 py-2 font-semibold text-sm whitespace-nowrap transition-all ${
+              activeTab === 'overview'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('technical')}
+            className={`px-4 py-2 font-semibold text-sm whitespace-nowrap transition-all ${
+              activeTab === 'technical'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Technical
+          </button>
+          <button
+            onClick={() => setActiveTab('impact')}
+            className={`px-4 py-2 font-semibold text-sm whitespace-nowrap transition-all ${
+              activeTab === 'impact'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Customer Impact
+          </button>
+          {currentEvent.is_mother_event && (
             <button
-              key={status}
-              onClick={() => onStatusChange(currentEvent.id, status)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                currentEvent.status === status
-                  ? 'bg-blue-600 text-white shadow-lg'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              onClick={() => setActiveTab('children')}
+              className={`px-4 py-2 font-semibold text-sm whitespace-nowrap transition-all ${
+                activeTab === 'children'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              {status.charAt(0).toUpperCase() + status.slice(1)}
+              Child Events ({childEvents.length})
             </button>
-          ))}
+          )}
+          <button
+            onClick={() => setActiveTab('timeline')}
+            className={`px-4 py-2 font-semibold text-sm whitespace-nowrap transition-all ${
+              activeTab === 'timeline'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Timeline
+          </button>
         </div>
       </div>
 
-      <WaveformDisplay data={waveformData} />
+      {/* Tab Content */}
+      <div className="tab-content">
+        {/* OVERVIEW TAB */}
+        {activeTab === 'overview' && (
+          <div className="space-y-6 animate-fadeIn">
+            {/* Basic Info Cards */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-2 text-slate-600 mb-2">
+                  <MapPin className="w-4 h-4" />
+                  <span className="text-sm font-semibold">Location</span>
+                </div>
+                <p className="text-slate-900 font-medium">{currentSubstation?.name}</p>
+                <p className="text-sm text-slate-600">{currentSubstation?.voltage_level}</p>
+                {currentEvent.voltage_level && (
+                  <p className="text-xs text-blue-600 mt-1">⚡ Event Level: {currentEvent.voltage_level}</p>
+                )}
+              </div>
 
-      {currentImpacts.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Users className="w-5 h-5 text-slate-700" />
-            <h3 className="font-semibold text-slate-900">Affected Customers ({currentImpacts.length})</h3>
-          </div>
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {currentImpacts.map((impact) => (
-              <div key={impact.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="flex items-start justify-between">
+              <div className="p-4 bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-2 text-slate-600 mb-2">
+                  <Clock className="w-4 h-4" />
+                  <span className="text-sm font-semibold">Timestamp</span>
+                </div>
+                <p className="text-slate-900 font-medium">
+                  {new Date(currentEvent.timestamp).toLocaleDateString()}
+                </p>
+                <p className="text-sm text-slate-600">
+                  {new Date(currentEvent.timestamp).toLocaleTimeString()}
+                </p>
+              </div>
+
+              <div className="p-4 bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-2 text-slate-600 mb-2">
+                  <Zap className="w-4 h-4" />
+                  <span className="text-sm font-semibold">Magnitude</span>
+                </div>
+                <p className="text-2xl font-bold text-slate-900">{currentEvent.magnitude?.toFixed(2)}%</p>
+              </div>
+
+              <div className="p-4 bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-2 text-slate-600 mb-2">
+                  <Clock className="w-4 h-4" />
+                  <span className="text-sm font-semibold">Duration</span>
+                </div>
+                <p className="text-2xl font-bold text-slate-900">
+                  {currentEvent.duration_ms && currentEvent.duration_ms < 1000
+                    ? `${currentEvent.duration_ms}ms`
+                    : `${((currentEvent.duration_ms || 0) / 1000).toFixed(2)}s`
+                  }
+                </p>
+              </div>
+            </div>
+
+            {/* Event Information */}
+            <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className="w-5 h-5 text-slate-700" />
+                <span className="font-semibold text-slate-900">Event Information</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-slate-600">Type:</span>
+                  <span className="ml-2 font-semibold text-slate-900 capitalize">
+                    {currentEvent.event_type.replace('_', ' ')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-600">Severity:</span>
+                  <span className={`ml-2 font-semibold capitalize ${
+                    currentEvent.severity === 'critical' ? 'text-red-700' :
+                    currentEvent.severity === 'high' ? 'text-orange-700' :
+                    currentEvent.severity === 'medium' ? 'text-yellow-700' :
+                    'text-green-700'
+                  }`}>
+                    {currentEvent.severity}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-600">Affected Phases:</span>
+                  <span className="ml-2 font-semibold text-slate-900">
+                    {currentEvent.affected_phases.join(', ')}
+                  </span>
+                </div>
+                {currentEvent.circuit_id && (
                   <div>
-                    <p className="font-semibold text-slate-900">{impact.customer?.name}</p>
-                    <p className="text-sm text-slate-600">{impact.customer?.address}</p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Account: {impact.customer?.account_number}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
-                      impact.impact_level === 'severe' ? 'bg-red-100 text-red-700' :
-                      impact.impact_level === 'moderate' ? 'bg-orange-100 text-orange-700' :
-                      'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {impact.impact_level}
+                    <span className="text-slate-600">Circuit:</span>
+                    <span className="ml-2 font-semibold text-slate-900">
+                      {currentEvent.circuit_id}
                     </span>
-                    <p className="text-xs text-slate-600 mt-1">
-                      {impact.estimated_downtime_min} min
+                  </div>
+                )}
+              </div>
+              {currentEvent.root_cause && (
+                <div className="mt-3 pt-3 border-t border-slate-200">
+                  <span className="text-slate-600 text-sm">Root Cause:</span>
+                  <p className="font-semibold text-slate-900 mt-1">{currentEvent.root_cause}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Status Management */}
+            <div>
+              <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                <span>Status Management</span>
+              </h3>
+              <div className="flex gap-2">
+                {['new', 'acknowledged', 'investigating', 'resolved'].map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => onStatusChange(currentEvent.id, status)}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                      currentEvent.status === status
+                        ? 'bg-blue-600 text-white shadow-lg'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TECHNICAL TAB */}
+        {activeTab === 'technical' && (
+          <div className="space-y-6 animate-fadeIn">
+            {/* Technical Specifications */}
+            <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg">
+              <h4 className="font-semibold text-slate-900 mb-4">Technical Specifications</h4>
+              <dl className="grid grid-cols-2 gap-4">
+                <div>
+                  <dt className="text-sm text-slate-600">Voltage Level:</dt>
+                  <dd className="text-lg font-semibold text-slate-900 mt-1">
+                    {currentEvent.voltage_level || 'N/A'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-slate-600">Circuit ID:</dt>
+                  <dd className="text-lg font-semibold text-slate-900 mt-1">
+                    {currentEvent.circuit_id || 'N/A'}
+                  </dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-sm text-slate-600 mb-2">Remaining Voltage:</dt>
+                  <dd className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-semibold text-slate-900">
+                        {currentEvent.remaining_voltage ? `${currentEvent.remaining_voltage.toFixed(1)}%` : 'N/A'}
+                      </span>
+                      <span className="text-slate-600">of nominal</span>
+                    </div>
+                    {currentEvent.remaining_voltage && (
+                      <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            currentEvent.remaining_voltage >= 90 ? 'bg-green-500' :
+                            currentEvent.remaining_voltage >= 70 ? 'bg-yellow-500' :
+                            currentEvent.remaining_voltage >= 50 ? 'bg-orange-500' :
+                            'bg-red-500'
+                          }`}
+                          style={{ width: `${currentEvent.remaining_voltage}%` }}
+                        />
+                      </div>
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-slate-600">ADMS Validated:</dt>
+                  <dd className="flex items-center gap-2 mt-1">
+                    {currentEvent.validated_by_adms ? (
+                      <>
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                        <span className="font-semibold text-green-700">Yes</span>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="w-5 h-5 text-slate-400" />
+                        <span className="font-semibold text-slate-600">No</span>
+                      </>
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-slate-600">Special Event:</dt>
+                  <dd className="flex items-center gap-2 mt-1">
+                    {currentEvent.is_special_event ? (
+                      <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-sm font-semibold">
+                        ⭐ Excluded from SARFI
+                      </span>
+                    ) : (
+                      <span className="text-slate-600 text-sm">No</span>
+                    )}
+                  </dd>
+                </div>
+                {currentEvent.grouping_type && (
+                  <div className="col-span-2">
+                    <dt className="text-sm text-slate-600">Grouping Info:</dt>
+                    <dd className="flex items-center gap-2 mt-1">
+                      <span className={`px-2 py-1 rounded text-sm font-semibold ${
+                        currentEvent.grouping_type === 'automatic' 
+                          ? 'bg-purple-100 text-purple-700' 
+                          : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {currentEvent.grouping_type === 'automatic' ? '🤖 Automatic' : '👤 Manual'}
+                      </span>
+                      {currentEvent.grouped_at && (
+                        <span className="text-sm text-slate-600">
+                          on {new Date(currentEvent.grouped_at).toLocaleString()}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+
+            {/* Waveform Display */}
+            <WaveformDisplay data={waveformData} />
+          </div>
+        )}
+
+        {/* CUSTOMER IMPACT TAB */}
+        {activeTab === 'impact' && (
+          <div className="space-y-6 animate-fadeIn">
+            {/* Impact Summary Cards */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="p-4 bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg text-center">
+                <div className="text-3xl font-bold text-yellow-900">
+                  {currentEvent.customer_count || 0}
+                </div>
+                <div className="text-sm text-yellow-700 mt-1">Total Customers</div>
+              </div>
+              <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg text-center">
+                <div className="text-3xl font-bold text-blue-900">
+                  {currentImpacts.length}
+                </div>
+                <div className="text-sm text-blue-700 mt-1">Detailed Records</div>
+              </div>
+              <div className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg text-center">
+                <div className="text-3xl font-bold text-purple-900">
+                  {currentImpacts.length > 0 
+                    ? Math.round(currentImpacts.reduce((sum, imp) => sum + (imp.estimated_downtime_min || 0), 0) / currentImpacts.length)
+                    : 0}
+                </div>
+                <div className="text-sm text-purple-700 mt-1">Avg Downtime (min)</div>
+              </div>
+            </div>
+
+            {/* Customer Impact Table */}
+            {currentImpacts.length > 0 ? (
+              <div>
+                <h3 className="flex items-center gap-2 mb-3 font-semibold text-slate-900">
+                  <Users className="w-5 h-5" />
+                  Detailed Customer Records
+                </h3>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {currentImpacts.map((impact) => (
+                    <div key={impact.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="font-semibold text-slate-900">{impact.customer?.name}</p>
+                          <p className="text-sm text-slate-600">{impact.customer?.address}</p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Account: {impact.customer?.account_number}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
+                            impact.impact_level === 'severe' ? 'bg-red-100 text-red-700' :
+                            impact.impact_level === 'moderate' ? 'bg-orange-100 text-orange-700' :
+                            'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {impact.impact_level}
+                          </span>
+                          <p className="text-xs text-slate-600 mt-1">
+                            {impact.estimated_downtime_min} min
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12 text-slate-500">
+                <Users className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                <p>No detailed customer impact records available</p>
+                {currentEvent.customer_count && currentEvent.customer_count > 0 && (
+                  <p className="text-sm mt-2">Total affected: {currentEvent.customer_count} customers</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* CHILD EVENTS TAB */}
+        {activeTab === 'children' && currentEvent.is_mother_event && (
+          <div className="space-y-6 animate-fadeIn">
+            {/* Collapsible Header */}
+            <button
+              onClick={() => setChildEventsExpanded(!childEventsExpanded)}
+              className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg hover:from-purple-100 hover:to-purple-150 transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <GitBranch className="w-5 h-5 text-purple-600" />
+                <div className="text-left">
+                  <h3 className="font-semibold text-slate-900">
+                    Child Events ({childEvents.length})
+                  </h3>
+                  {!childEventsExpanded && childEvents.length > 0 && (
+                    <p className="text-sm text-slate-600">
+                      {getChildEventsSummary()}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {childEventsExpanded ? (
+                <ChevronUp className="w-5 h-5 text-slate-600" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-slate-600" />
+              )}
+            </button>
+
+            {/* Expandable Table */}
+            {childEventsExpanded && (
+              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                {loading ? (
+                  <div className="py-12 text-center text-slate-500">
+                    Loading child events...
+                  </div>
+                ) : childEvents.length > 0 ? (
+                  <table className="w-full">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">#</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Type</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Time</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Severity</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Circuit</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">V. Level</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Rem. %</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Duration</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {childEvents.map((childEvent, index) => (
+                        <tr
+                          key={childEvent.id}
+                          className="hover:bg-slate-50 cursor-pointer transition-colors"
+                          onClick={() => handleChildEventClick(childEvent)}
+                        >
+                          <td className="px-4 py-3 text-sm text-slate-600">{index + 1}</td>
+                          <td className="px-4 py-3 text-sm font-medium text-slate-900 capitalize">
+                            {childEvent.event_type.replace('_', ' ')}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600">
+                            {new Date(childEvent.timestamp).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${
+                              childEvent.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                              childEvent.severity === 'high' ? 'bg-orange-100 text-orange-700' :
+                              childEvent.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-green-100 text-green-700'
+                            }`}>
+                              {childEvent.severity}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-900">
+                            {childEvent.circuit_id || 'N/A'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-900">
+                            {childEvent.voltage_level || 'N/A'}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-semibold text-slate-900">
+                            {childEvent.remaining_voltage ? `${childEvent.remaining_voltage.toFixed(1)}%` : 'N/A'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600">
+                            {childEvent.duration_ms && childEvent.duration_ms < 1000
+                              ? `${childEvent.duration_ms}ms`
+                              : `${((childEvent.duration_ms || 0) / 1000).toFixed(2)}s`
+                            }
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleChildEventClick(childEvent);
+                              }}
+                              className="text-blue-600 hover:text-blue-700 text-sm font-semibold hover:underline"
+                            >
+                              View →
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="py-12 text-center text-slate-500">
+                    <GitBranch className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                    <p>No child events found</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TIMELINE TAB */}
+        {activeTab === 'timeline' && (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="p-6 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg">
+              <h4 className="font-semibold text-slate-900 mb-6">Event Lifecycle Timeline</h4>
+              
+              <div className="space-y-6 relative">
+                {/* Timeline line */}
+                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-purple-200" />
+                
+                {/* Created */}
+                <div className="flex items-start gap-4 relative">
+                  <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold text-sm z-10">
+                    1
+                  </div>
+                  <div className="flex-1 pt-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-900">📅 Record Created</span>
+                      <span className="text-sm text-slate-600">
+                        {new Date(currentEvent.created_at).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-600 mt-1">Event entered into system</p>
+                  </div>
+                </div>
+
+                {/* Detected */}
+                <div className="flex items-start gap-4 relative">
+                  <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold text-sm z-10">
+                    2
+                  </div>
+                  <div className="flex-1 pt-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-900">👁️ Event Detected</span>
+                      <span className="text-sm text-slate-600">
+                        {new Date(currentEvent.timestamp).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-600 mt-1">
+                      Duration: {currentEvent.duration_ms && currentEvent.duration_ms < 1000
+                        ? `${currentEvent.duration_ms}ms`
+                        : `${((currentEvent.duration_ms || 0) / 1000).toFixed(2)}s`
+                      }
                     </p>
                   </div>
                 </div>
+
+                {/* Grouped (if applicable) */}
+                {currentEvent.grouped_at && (
+                  <div className="flex items-start gap-4 relative">
+                    <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold text-sm z-10">
+                      3
+                    </div>
+                    <div className="flex-1 pt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-900">🔗 Event Grouped</span>
+                        <span className="text-sm text-slate-600">
+                          {new Date(currentEvent.grouped_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-600 mt-1">
+                        {currentEvent.grouping_type === 'automatic' ? '🤖 Automatically grouped' : '👤 Manually grouped'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Resolved (if applicable) */}
+                {currentEvent.resolved_at && (
+                  <div className="flex items-start gap-4 relative">
+                    <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-sm z-10">
+                      ✓
+                    </div>
+                    <div className="flex-1 pt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-900">✅ Event Resolved</span>
+                        <span className="text-sm text-slate-600">
+                          {new Date(currentEvent.resolved_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-600 mt-1">Event marked as resolved</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Current Status (if not resolved) */}
+                {!currentEvent.resolved_at && (
+                  <div className="flex items-start gap-4 relative">
+                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm z-10 animate-pulse">
+                      ●
+                    </div>
+                    <div className="flex-1 pt-1">
+                      <span className="font-semibold text-blue-700 capitalize">
+                        Current Status: {currentEvent.status}
+                      </span>
+                      <p className="text-sm text-slate-600 mt-1">Event is being monitored</p>
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
+
+              {/* Total Duration */}
+              <div className="mt-8 pt-6 border-t border-purple-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-600">Total Lifecycle Duration:</span>
+                  <span className="font-bold text-purple-900">
+                    {currentEvent.resolved_at
+                      ? `${Math.round((new Date(currentEvent.resolved_at).getTime() - new Date(currentEvent.created_at).getTime()) / 1000 / 60)} minutes`
+                      : 'Ongoing'
+                    }
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Delete Confirmation Dialog */}
       {showDeleteConfirm && (

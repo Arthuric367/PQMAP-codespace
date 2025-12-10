@@ -100,6 +100,7 @@ export interface PQEvent {
   customer_count: number | null;
   remaining_voltage: number | null;
   validated_by_adms: boolean;
+  is_special_event: boolean;
   substation?: Substation;
   meter?: PQMeter;
   customer_impacts?: EventCustomerImpact[];
