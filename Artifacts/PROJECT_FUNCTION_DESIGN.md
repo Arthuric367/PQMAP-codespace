@@ -116,23 +116,50 @@ src/
    - **Calculation**: Weighted averages by meter weight factors
 
 3. **Root Cause Chart**
-   - **Half-width Layout**: Positioned for future companion chart
+   - **Half-width Layout**: Side-by-side with InsightChart
    - **Data Source**: Uses `cause` field (migrated from `root_cause`)
    - **Filtering**: Independent date range, excludes false events
    - **Display**: Top 10 causes with horizontal bars and percentage
    - **Export**: PNG image export via html2canvas
 
+4. **Insight Chart**
+   - **Half-width Layout**: Companion to RootCauseChart
+   - **Upper Chart**: Monthly voltage dip trends (3-year comparison)
+   - **Lower Chart**: Substations with >10 voltage_dip events
+   - **Color Scheme**: Yellow (2023), Blue (2024), Dark Blue (2025)
+   - **Export**: PNG image export
+
+5. **SARFI-70 KPI Monitoring**
+   - **Full-width Layout**: Independent dashboard below EventList
+   - **Line Chart**: Three overlapping lines (2023/2024/2025) on unified 12-month X-axis
+   - **Y-axis**: Unified scale (0 to max across all years)
+   - **Data Source**: Aggregates `sarfi_70` values from voltage_dip mother events by month
+   - **Interactive**: Click any data point to view that month's events in table below
+   - **Export Options**: 
+     - PNG image (entire dashboard)
+     - Excel (chart captured as image at top + selected month's event data table below)
+   - **Table Features**:
+     - Columns: Sequence, S/S, Voltage Level, Incident Timestamp, OC, SARFI-70
+     - Sortable by any column (default: timestamp descending)
+     - Pagination (10 events per page)
+     - NULL sarfi_70 values display as 0.0000
+   - **Purpose**: Show improvement/degradation trends, seasonal patterns (higher Jul-Dec)
+
 #### Data Flow
 ```typescript
 Dashboard.tsx
   ├─> loadDashboardData()
-  │     ├─> Fetch pq_events (last 100)
+  │     ├─> Fetch pq_events (limit 5000, from 2023-01-01)
   │     ├─> Fetch substations
   │     └─> Fetch sarfi_metrics (last 12 months)
   ├─> StatsCards (events, substations)
   ├─> SubstationMap (substations, events)
   │     └─> MapConfigModal (filters, profiles)
   ├─> SARFIChart (sarfiMetrics)
+  ├─> RootCauseChart (events) - Half width
+  ├─> InsightChart (events) - Half width
+  ├─> EventList (events, substations) - Full width
+  └─> SARFI70Monitor (events, substations) - Full width
   │     ├─> SARFIConfigModal (filters, profiles)
   │     └─> SARFIDataTable (conditional)
   └─> RootCauseChart (events)

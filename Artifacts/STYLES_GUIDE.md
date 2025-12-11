@@ -1,7 +1,7 @@
 # PQMAP Styles Guide
 
-**Version:** 1.0  
-**Last Updated:** December 10, 2025  
+**Version:** 1.1  
+**Last Updated:** December 11, 2025  
 **Purpose:** Document reusable UI patterns, export utilities, and design standards for PQMAP application
 
 ---
@@ -33,6 +33,19 @@ The export service provides reusable functions for exporting data to Excel, CSV,
 - **SARFI Indices**: Supports 9 SARFI columns (sarfi_10 through sarfi_90)
 - **False Event Logic**: Uses `false_event` boolean field from database
 - **Waveform Capture**: Optional image capture for PDF/Excel exports
+
+#### **🎯 Excel Export Standard Pattern: Chart Image + Data Table**
+
+**IMPORTANT RULE**: When implementing "Export to Excel" functionality for dashboard components with charts:
+
+1. **Chart Image at Top**: Capture the visualization using html2canvas
+2. **Data Table Below**: Add the relevant data table underneath
+3. **Layout**: Single worksheet with image in top rows, data table starting below (leave ~15-20 rows for image space)
+
+**This pattern applies to:**
+- Dashboard charts (RootCause, SARFI, Insight, SARFI-70 Monitor)
+- Any component with both visualization and tabular data
+- Reports that combine charts with detailed event lists
 
 #### Usage Example
 
@@ -97,6 +110,97 @@ interface ExportRow {
   // Additional (4 fields)
   outageType, weather, totalCmi, description, auto
 }
+```
+
+### Excel Export with Chart Image + Data Table Pattern
+
+**Implementation Example** (SARFI-70 Monitor):
+
+```typescript
+import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas';
+
+const handleExportExcel = async () => {
+  if (!chartRef.current || !selectedMonth) return;
+  
+  setIsExporting(true);
+  setShowExportDropdown(false);
+
+  try {
+    // Step 1: Capture chart as image (optional - for future enhancement)
+    // Note: Embedding images in Excel requires exceljs library
+    // Current implementation exports data table only
+    // const canvas = await html2canvas(chartRef.current, { 
+    //   backgroundColor: '#ffffff', 
+    //   scale: 2 
+    // });
+    // const imageData = canvas.toDataURL('image/png');
+
+    // Step 2: Create workbook
+    const wb = XLSX.utils.book_new();
+
+    // Step 3: Prepare data table
+    const tableData = sortedEvents.map(event => ({
+      'Sequence': event.sequence,
+      'S/S': event.substationCode,
+      'Voltage Level': event.voltageLevel,
+      'Incident Timestamp': formatTimestamp(event.timestamp),
+      'OC': event.oc,
+      'SARFI-70': event.sarfi70.toFixed(4)
+    }));
+
+    // Step 4: Create worksheet with header section
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['SARFI-70 KPI Monitoring Report'],
+      [`Selected Month: ${selectedMonth.label}`],
+      [`Total Events: ${tableEvents.length}`],
+      [`Generated: ${new Date().toLocaleString()}`],
+      [], // Empty row
+      ['Chart Image: See exported PNG file'],
+      [] // Empty row - reserve rows 1-20 for future image embedding
+    ]);
+
+    // Step 5: Add data table starting from row 20
+    XLSX.utils.sheet_add_json(ws, tableData, { origin: 'A20' });
+
+    // Step 6: Set column widths
+    ws['!cols'] = [
+      { wch: 10 },  // Sequence
+      { wch: 15 },  // S/S
+      { wch: 15 },  // Voltage Level
+      { wch: 20 },  // Incident Timestamp
+      { wch: 10 },  // OC
+      { wch: 12 }   // SARFI-70
+    ];
+
+    // Step 7: Add worksheet and generate file
+    XLSX.utils.book_append_sheet(wb, ws, 'SARFI-70 Report');
+    
+    const fileName = `SARFI70_Report_${selectedMonth.year}_${String(selectedMonth.month).padStart(2, '0')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+
+    console.log('Excel export completed');
+    
+  } catch (error) {
+    console.error('Excel export error:', error);
+    alert('Failed to export to Excel');
+  } finally {
+    setIsExporting(false);
+  }
+};
+```
+
+**Key Points**:
+- **Header Section**: Rows 1-7 contain report metadata
+- **Image Space**: Rows 7-19 reserved for chart image (future enhancement with exceljs)
+- **Data Table**: Starts at row 20 with proper column headers
+- **Column Widths**: Set via `!cols` property for readability
+- **Filename Convention**: `{Component}_{Year}_{Month}_{Date}.xlsx`
+
+**For Future Image Embedding**:
+To embed actual chart images in Excel, install and use `exceljs` library instead of `xlsx`:
+```bash
+npm install exceljs
 ```
 
 ---
@@ -616,6 +720,48 @@ if (event.false_event) { /* hide */ }
 ---
 
 ## Special Use Cases
+
+### Dashboard Charts with Chart + Data Export
+
+**SARFI-70 Monitor Component:**
+
+Dashboard components that combine charts with interactive data tables should offer two export options:
+
+1. **Export as Image (PNG)** - Captures entire visualization using html2canvas
+2. **Export to Excel** - Chart image at top + selected data table below
+
+**Implementation Pattern**:
+```tsx
+{showExportDropdown && (
+  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-2 z-50">
+    <button
+      onClick={handleExportChart}
+      disabled={isExporting}
+      className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+    >
+      <Download className="w-4 h-4" />
+      Export as Image
+    </button>
+    <button
+      onClick={handleExportExcel}
+      disabled={isExporting || !selectedMonth}  // Enable only when data is selected
+      className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 disabled:opacity-50"
+    >
+      <Download className="w-4 h-4" />
+      Export to Excel
+    </button>
+  </div>
+)}
+```
+
+**Key Features**:
+- Excel option disabled until user selects data (e.g., clicks a chart point)
+- Excel file contains header rows + reserved space for image + data table
+- Filename follows pattern: `{Component}_{Params}_{Date}.xlsx`
+
+**Components Using This Pattern**:
+- SARFI70Monitor (chart + monthly events table)
+- Future dashboard components with interactive charts
 
 ### Dual Export Functionality
 

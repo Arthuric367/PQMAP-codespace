@@ -191,23 +191,28 @@ Complete database schema for the Power Quality Monitoring and Analysis Platform 
 **SARFI Indices:**
 | Column | Type | Default | Description |
 |--------|------|---------|-------------|
-| `sarfi_10` | numeric | | SARFI-10 index |
-| `sarfi_20` | numeric | | SARFI-20 index |
-| `sarfi_30` | numeric | | SARFI-30 index |
-| `sarfi_40` | numeric | | SARFI-40 index |
-| `sarfi_50` | numeric | | SARFI-50 index |
-| `sarfi_60` | numeric | | SARFI-60 index |
-| `sarfi_70` | numeric | | SARFI-70 index |
+| `sarfi_10` | numeric | | SARFI-10 index (sags below 10% of nominal) |
+| `sarfi_20` | numeric | | SARFI-20 index (sags below 20% of nominal) |
+| `sarfi_30` | numeric | | SARFI-30 index (sags below 30% of nominal) |
+| `sarfi_40` | numeric | | SARFI-40 index (sags below 40% of nominal) |
+| `sarfi_50` | numeric | | SARFI-50 index (sags below 50% of nominal) |
+| `sarfi_60` | numeric | | SARFI-60 index (sags below 60% of nominal) |
+| `sarfi_70` | numeric | | SARFI-70 index (sags below 70% of nominal) - **Used in SARFI-70 KPI Monitor** |
 | `sarfi_80` | numeric | | SARFI-80 index |
 | `sarfi_90` | numeric | | SARFI-90 index |
 
 **TypeScript Interface:** `PQEvent`  
 **Status:** ✅ **Matches database schema**
 
-**Recent Migration:** 
+**Recent Migrations:** 
 - ✅ **December 11, 2025**: Migrated `root_cause` → `cause` field
-- Migration: `20251211000000_migrate_root_cause_to_cause.sql`
-- Follow-up: `20251211000001_populate_null_causes.sql` (backfill NULL causes)
+  - Migration: `20251211000000_migrate_root_cause_to_cause.sql`
+  - Follow-up: `20251211000001_populate_null_causes.sql` (backfill NULL causes)
+- ✅ **December 11, 2025**: Populated SARFI-70 values for KPI monitoring
+  - Script: `scripts/populate-sarfi70-values.sql`
+  - Added realistic values (0.001 to 0.1) with seasonal patterns
+  - 10 NULL values distributed for testing
+  - Higher values Jul-Dec (typhoon/summer season)
 
 ---
 

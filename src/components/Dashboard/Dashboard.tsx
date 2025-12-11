@@ -7,6 +7,7 @@ import SARFIChart from './SARFIChart';
 import StatsCards from './StatsCards';
 import RootCauseChart from './RootCauseChart';
 import InsightChart from './InsightChart';
+import SARFI70Monitor from './SARFI70Monitor';
 
 export default function Dashboard() {
   const [events, setEvents] = useState<PQEvent[]>([]);
@@ -80,6 +81,9 @@ export default function Dashboard() {
       </div>
 
       <EventList events={events} substations={substations} />
+
+      {/* SARFI-70 KPI Monitoring - Full Width */}
+      <SARFI70Monitor events={events} substations={substations} />
     </div>
   );
 }
