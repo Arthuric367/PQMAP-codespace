@@ -46,6 +46,20 @@ export interface PQMeter {
   created_at: string;
   meter_type?: string;
   voltage_level?: string;
+  // New fields from Meter Inventory (Migration 20251210000001)
+  site_id?: string;
+  circuit_id?: string;
+  region?: string;
+  oc?: string;
+  brand?: string;
+  model?: string;
+  nominal_voltage?: number;
+  ct_type?: string;
+  asset_number?: string;
+  serial_number?: string;
+  ip_address?: string;
+  framework_version?: string;
+  active?: boolean;
   substation?: Substation;
 }
 
