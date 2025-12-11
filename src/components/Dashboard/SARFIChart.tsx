@@ -69,10 +69,10 @@ export default function SARFIChart({ metrics, profiles: profilesProp = [], table
     localStorage.setItem('sarfi_filters', JSON.stringify(filters));
   }, [filters]);
 
-  // Fetch table data when filters change (always show table)
+  // Fetch table data when showDataTable is enabled and filters change
   useEffect(() => {
     async function fetchTableData() {
-      if (!filters.profileId) {
+      if (!filters.showDataTable || !filters.profileId) {
         setTableData([]);
         return;
       }
@@ -91,7 +91,7 @@ export default function SARFIChart({ metrics, profiles: profilesProp = [], table
     }
 
     fetchTableData();
-  }, [filters.profileId, filters.voltageLevel, filters.excludeSpecialEvents]);
+  }, [filters.showDataTable, filters.profileId, filters.voltageLevel, filters.excludeSpecialEvents]);
 
   const handleApplyFilters = (newFilters: SARFIFilters) => {
     setFilters(newFilters);
@@ -212,26 +212,28 @@ export default function SARFIChart({ metrics, profiles: profilesProp = [], table
           </div>
         </div>
       </div>
-      
-        {/* Data Table (always shown within the same card) */}
-        <div className="mt-6">
+      </div>
+
+      {/* Data Table (conditional - only shown when showDataTable is enabled) */}
+      {filters.showDataTable && (
+        <>
           {isLoadingTable ? (
-            <div className="bg-slate-50 rounded-lg p-12 text-center">
+            <div className="mt-6 bg-white rounded-xl border border-slate-200 p-12 text-center">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
               <p className="text-slate-600">Loading SARFI data table...</p>
             </div>
           ) : tableData.length > 0 ? (
             <SARFIDataTable data={tableData} />
           ) : (
-            <div className="bg-slate-50 rounded-lg p-8 text-center">
+            <div className="mt-6 bg-white rounded-xl border border-slate-200 p-8 text-center">
               <p className="text-slate-500">No data available for the selected filters</p>
               <p className="text-sm text-slate-400 mt-2">
                 Try adjusting the voltage level or profile selection
               </p>
             </div>
           )}
-        </div>
-      </div>
+        </>
+      )}
 
       {/* Configuration Modal */}
       <SARFIConfigModal

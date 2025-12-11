@@ -12,12 +12,26 @@ Complete database schema for the Power Quality Monitoring and Analysis Platform 
 **Status:** Applied  
 **Date:** November 3, 2025
 
-### ✅ Applied Enhancement
+### ✅ Applied Enhancement - SARFI Columns
 **Migration:** `20251209000001_add_sarfi_columns.sql`  
-**Status:** ✅ **APPLIED** - Columns now present in database  
+**Status:** ✅ **APPLIED**  
 **Date:** December 9, 2025  
 **Purpose:** Adds SARFI-related columns to `pq_events` and `pq_meters`  
 **Verification:** Successfully loading data with 89 meters and 487 voltage_dip events
+
+### ✅ Applied Enhancement - Root Cause Migration
+**Migration:** `20251211000000_migrate_root_cause_to_cause.sql`  
+**Status:** ✅ **APPLIED**  
+**Date:** December 11, 2025  
+**Purpose:** Migrate data from `root_cause` column to `cause` column, then drop `root_cause`  
+**Impact:** Code updated to use `cause` field exclusively
+
+### ✅ Applied Enhancement - Populate NULL Causes
+**Migration:** `20251211000001_populate_null_causes.sql`  
+**Status:** ✅ **APPLIED**  
+**Date:** December 11, 2025  
+**Purpose:** Backfill NULL causes with realistic power quality causes  
+**Causes Added:** Equipment Failure, Lightning Strike, Overload, Tree Contact, Animal Contact, Cable Fault, Transformer Failure, Circuit Breaker Trip, Planned Maintenance, Weather Conditions, Third Party Damage, Aging Infrastructure
 
 ---
 
@@ -105,7 +119,6 @@ Complete database schema for the Power Quality Monitoring and Analysis Platform 
 | `status` | event_status | DEFAULT 'new' | new, acknowledged, investigating, resolved, false |
 | `is_mother_event` | boolean | DEFAULT false | Is this a mother event? |
 | `parent_event_id` | uuid | FK → pq_events | Links to mother event |
-| `root_cause` | text | | Identified root cause |
 | `affected_phases` | text[] | DEFAULT ['A','B','C'] | Affected phases |
 | `waveform_data` | jsonb | | Waveform data for visualization |
 | `created_at` | timestamptz | DEFAULT now() | Creation timestamp |
@@ -128,8 +141,73 @@ Complete database schema for the Power Quality Monitoring and Analysis Platform 
 | `grouping_type` | text | | automatic, manual |
 | `grouped_at` | timestamptz | | When grouped |
 
+**False Event Tracking:**
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `false_event` | boolean | false | Flagged as false positive/measurement anomaly |
+
+**Metadata Fields:**
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `oc` | text | | Operating center |
+| `remarks` | text | | Additional notes |
+| `idr_no` | text | | Incident Data Record number |
+
+**Location & Equipment Details:**
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `address` | text | | Event location address |
+| `equipment_type` | text | | Equipment involved |
+
+**Cause Analysis:**
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `cause_group` | text | | High-level cause category |
+| `cause` | text | | Specific root cause (migrated from root_cause) |
+| `description` | text | | Detailed event description |
+
+**Equipment Fault Details:**
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `object_part_group` | text | | Equipment part category |
+| `object_part_code` | text | | Specific part code |
+| `damage_group` | text | | Damage category |
+| `damage_code` | text | | Specific damage code |
+
+**Event Context:**
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `outage_type` | text | | Type of outage |
+| `weather` | text | | Weather conditions |
+| `total_cmi` | numeric | | Total Customer Minutes Interrupted |
+
+**Voltage Measurements:**
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `v1` | numeric | | Phase 1 voltage |
+| `v2` | numeric | | Phase 2 voltage |
+| `v3` | numeric | | Phase 3 voltage |
+
+**SARFI Indices:**
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `sarfi_10` | numeric | | SARFI-10 index |
+| `sarfi_20` | numeric | | SARFI-20 index |
+| `sarfi_30` | numeric | | SARFI-30 index |
+| `sarfi_40` | numeric | | SARFI-40 index |
+| `sarfi_50` | numeric | | SARFI-50 index |
+| `sarfi_60` | numeric | | SARFI-60 index |
+| `sarfi_70` | numeric | | SARFI-70 index |
+| `sarfi_80` | numeric | | SARFI-80 index |
+| `sarfi_90` | numeric | | SARFI-90 index |
+
 **TypeScript Interface:** `PQEvent`  
 **Status:** ✅ **Matches database schema**
+
+**Recent Migration:** 
+- ✅ **December 11, 2025**: Migrated `root_cause` → `cause` field
+- Migration: `20251211000000_migrate_root_cause_to_cause.sql`
+- Follow-up: `20251211000001_populate_null_causes.sql` (backfill NULL causes)
 
 ---
 
