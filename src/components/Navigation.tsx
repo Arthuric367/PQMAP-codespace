@@ -1,4 +1,4 @@
-import { LayoutDashboard, Activity, Database, FileText, Bell, Settings, LogOut, BarChart3, Wrench } from 'lucide-react';
+import { LayoutDashboard, Activity, Database as DatabaseIcon, FileText, Bell, Settings, LogOut, BarChart3, Wrench, Database } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface NavigationProps {
@@ -13,11 +13,15 @@ export default function Navigation({ currentView, onViewChange }: NavigationProp
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { id: 'events', icon: Activity, label: 'Event Management' },
     { id: 'analytics', icon: BarChart3, label: 'Impact Analysis' },
-    { id: 'assets', icon: Database, label: 'Asset Management' },
+    { id: 'assets', icon: DatabaseIcon, label: 'Asset Management' },
     { id: 'reports', icon: FileText, label: 'Reports' },
     { id: 'notifications', icon: Bell, label: 'Notifications' },
     { id: 'services', icon: Wrench, label: 'PQ Services' },
     { id: 'health', icon: Settings, label: 'System Health' },
+  ];
+
+  const dataMaintenanceItems = [
+    { id: 'customerTransformerMatching', icon: Database, label: 'Customer Transformer' },
   ];
 
   return (
@@ -51,6 +55,34 @@ export default function Navigation({ currentView, onViewChange }: NavigationProp
             );
           })}
         </nav>
+
+        {/* Data Maintenance Section */}
+        <div className="mt-6 px-3">
+          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 mb-2">
+            Data Maintenance
+          </div>
+          <div className="space-y-1">
+            {dataMaintenanceItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentView === item.id;
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => onViewChange(item.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                    isActive
+                      ? 'bg-gradient-to-r from-blue-600 to-cyan-600 shadow-lg shadow-blue-500/30'
+                      : 'hover:bg-slate-700/50'
+                  }`}
+                >
+                  <Icon className="w-5 h-5" />
+                  <span className="text-sm font-medium">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       <div className="p-6 border-t border-slate-700 space-y-4">

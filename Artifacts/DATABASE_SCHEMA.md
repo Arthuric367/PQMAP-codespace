@@ -1,5 +1,7 @@
 # PQMAP Database Schema Documentation
 
+**Last Updated:** December 15, 2025
+
 ## Overview
 Complete database schema for the Power Quality Monitoring and Analysis Platform (PQMAP).
 
@@ -32,6 +34,38 @@ Complete database schema for the Power Quality Monitoring and Analysis Platform 
 **Date:** December 11, 2025  
 **Purpose:** Backfill NULL causes with realistic power quality causes  
 **Causes Added:** Equipment Failure, Lightning Strike, Overload, Tree Contact, Animal Contact, Cable Fault, Transformer Failure, Circuit Breaker Trip, Planned Maintenance, Weather Conditions, Third Party Damage, Aging Infrastructure
+
+### ✅ Applied Enhancement - Meter Inventory Fields
+**Migration:** `20251210000001_add_meter_inventory_fields.sql`  
+**Status:** ✅ **APPLIED**  
+**Date:** December 10, 2025  
+**Purpose:** Add comprehensive meter tracking fields aligned with Meter Inventory system  
+**Fields Added:** site_id, circuit_id, region, oc, brand, model, nominal_voltage, ct_type, asset_number, serial_number, ip_address, framework_version, active (13 new fields total)
+
+### 🟡 Pending Enhancement - IDR Fields
+**Migration:** `20251212000001_add_idr_fields.sql`  
+**Status:** 🟡 **READY TO APPLY**  
+**Date:** December 12, 2025  
+**Purpose:** Add Incident Data Record (IDR) fields to events and standardize substation regions  
+**Fields to Add:** fault_type, weather_condition, responsible_oc, manual_create_idr
+
+### ✅ Applied Enhancement - Customer Transformer Matching
+**Migrations:** 
+- `20251215000001_create_customer_transformer_matching.sql`
+- `20251215000002_remove_transformer_id_from_customers.sql`
+- `20251215000003_create_auto_customer_impact_function.sql`
+
+**Status:** ✅ **APPLIED**  
+**Date:** December 15, 2025  
+**Purpose:** Enable automatic customer impact generation based on circuit relationships  
+**Features:**
+- New `customer_transformer_matching` table for substation-circuit-customer relationships
+- Automatic customer impact record creation via PostgreSQL trigger
+- Severity mapping: critical→severe, high→moderate, medium/low→minor
+- Downtime calculation from event duration (ms / 60000)
+- RLS policies for admin/operator/viewer access control
+- Removed obsolete `transformer_id` column from customers table  
+**Region Update:** Standardize substations.region to 'WE', 'NR', or 'CN' with CHECK constraint
 
 ---
 
@@ -226,19 +260,53 @@ Complete database schema for the Power Quality Monitoring and Analysis Platform 
 | `name` | text | NOT NULL | Customer name |
 | `address` | text | | Service address |
 | `substation_id` | uuid | FK → substations | Serving substation |
-| `transformer_id` | text | | Transformer reference |
 | `contract_demand_kva` | decimal(10,2) | | Contract demand |
 | `customer_type` | customer_type | DEFAULT 'residential' | residential, commercial, industrial |
 | `critical_customer` | boolean | DEFAULT false | Is critical customer? |
 | `created_at` | timestamptz | DEFAULT now() | Creation timestamp |
+
+**Note:** `transformer_id` column was removed in migration `20251215000002` and replaced with `customer_transformer_matching` table for more flexible circuit relationships.
 
 **TypeScript Interface:** `Customer`  
 **Status:** ✅ Matches database
 
 ---
 
-### 6. `event_customer_impact`
-**Purpose:** Links events to affected customers
+### 6. `customer_transformer_matching`
+**Purpose:** Maps customers to substations and circuits for automatic impact generation
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | uuid | PRIMARY KEY | Unique identifier |
+| `customer_id` | uuid | FK → customers ON DELETE CASCADE | Customer account |
+| `substation_id` | uuid | FK → substations ON DELETE RESTRICT | Substation |
+| `circuit_id` | text | NOT NULL | Circuit/Transformer ID |
+| `active` | boolean | DEFAULT true | Is mapping active? |
+| `created_at` | timestamptz | DEFAULT now() | Creation timestamp |
+| `updated_at` | timestamptz | DEFAULT now() | Last update timestamp |
+| `updated_by` | uuid | FK → profiles | Last updated by user |
+
+**Indexes:**
+- UNIQUE (customer_id, substation_id, circuit_id) WHERE active
+- idx_ctm_substation (substation_id)
+- idx_ctm_circuit (circuit_id)
+- idx_ctm_customer (customer_id)
+- idx_ctm_active (active)
+
+**RLS Policies:**
+- Admin & Operator: Full access (SELECT, INSERT, UPDATE, DELETE)
+- Viewer: Read-only access (SELECT)
+
+**Triggers:**
+- Auto-updates `updated_at` on modifications
+
+**TypeScript Interface:** `CustomerTransformerMatching`  
+**Status:** ✅ Matches database
+
+---
+
+### 7. `event_customer_impact`
+**Purpose:** Links events to affected customers (auto-generated via trigger)
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
@@ -246,8 +314,15 @@ Complete database schema for the Power Quality Monitoring and Analysis Platform 
 | `event_id` | uuid | FK → pq_events ON DELETE CASCADE | PQ event |
 | `customer_id` | uuid | FK → customers ON DELETE CASCADE | Affected customer |
 | `impact_level` | text | DEFAULT 'minor' | severe, moderate, minor |
-| `estimated_downtime_min` | integer | | Estimated downtime |
+| `estimated_downtime_min` | numeric(10,2) | | Estimated downtime (from duration_ms) |
 | `created_at` | timestamptz | DEFAULT now() | Creation timestamp |
+
+**Auto-Generation:**
+- Trigger `trigger_auto_generate_customer_impacts` fires AFTER INSERT on `pq_events`
+- Function `generate_customer_impacts_for_event(event_id UUID)` creates impacts
+- Maps event severity to impact_level: critical→severe, high→moderate, medium/low→minor
+- Calculates downtime: duration_ms / 60000 (rounded to 2 decimals)
+- Matches on (substation_id + circuit_id) from active customer_transformer_matching records
 
 **TypeScript Interface:** `EventCustomerImpact`  
 **Status:** ✅ Matches database

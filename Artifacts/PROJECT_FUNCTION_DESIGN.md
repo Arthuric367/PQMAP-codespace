@@ -1,7 +1,7 @@
 # PQMAP - Project Function Design Document
 
-**Document Version:** 1.0  
-**Last Updated:** December 11, 2025  
+**Document Version:** 1.1  
+**Last Updated:** December 15, 2025  
 **Purpose:** Comprehensive functional design reference for continuous development
 
 ---
@@ -196,6 +196,16 @@ Dashboard.tsx
    - Detection accuracy metrics
    - Rule effectiveness analysis
 
+4. **IDR (Incident Data Record) Tab** ✨ NEW (Dec 12, 2025)
+   - Comprehensive incident data management with 24+ fields
+   - 5 grouped card sections: Basic Info, Location & Equipment, Fault Details, Cause Analysis, Environment & Operations
+   - Edit/Save/Cancel workflow for data modification
+   - Manual/Auto badge indicator (shows manual_create_idr status)
+   - Voltage phase display with affected indicators (Phase A/B/C with V1/V2/V3 values)
+   - Read-only fields: Timestamp, Region (from substation)
+   - Integration with substation data for automatic region lookup
+   - Responsive 2-column grid layout (1 column on mobile)
+
 #### Key Features
 
 ##### Mother Event Grouping
@@ -376,7 +386,7 @@ WHERE id IN (detected_event_ids);
 - **Installation Records**: Installation date, location, substation
 - **Maintenance Logs**: Service records and calibration
 
-##### Meter Data Structure
+##### Meter Data Structure (Enhanced Dec 10, 2025)
 ```typescript
 interface PQMeter {
   id: string;
@@ -389,9 +399,33 @@ interface PQMeter {
   installed_date: string | null;
   meter_type: string;      // Brand/model
   voltage_level: string;
+  
+  // NEW: Meter Inventory Fields (Migration 20251210000001)
+  site_id?: string;            // Site identifier
+  circuit_id?: string;         // Circuit reference
+  region?: string;             // Geographic region
+  oc?: string;                 // Operating center
+  brand?: string;              // Meter manufacturer
+  model?: string;              // Meter model number
+  nominal_voltage?: number;    // Nominal voltage rating
+  ct_type?: string;            // Current transformer type
+  asset_number?: string;       // Asset tracking number
+  serial_number?: string;      // Serial number
+  ip_address?: string;         // Network IP address
+  framework_version?: string;  // Framework version
+  active?: boolean;            // Active status flag
+  
   substation?: Substation;
 }
 ```
+
+##### Meter Management UI (Enhanced)
+- **12-Column Table Display**: Name, Site ID, Volt Level, Substation, Circuit, Location, OC, Brand, Model, Nominal, Active, Other
+- **Compact Layout**: py-2 px-2 padding for efficient space usage
+- **Active Status Icons**: ✓ (active) / ✗ (inactive) visual indicators
+- **Detail Modal**: "Other" column button opens modal with 4 grouped sections displaying all 23 meter fields
+- **Modal Sections**: Basic Info, Location & Network, Equipment Specs, Asset Tracking
+- **Export Functionality**: Excel/CSV export with all fields included
 
 ##### Substation Management
 - **Geographic Information**: Latitude, longitude, region
@@ -654,6 +688,10 @@ if (no_file_received_in_30_minutes) {
 - outage_type (text)
 - weather (text)
 - total_cmi (numeric) -- Customer Minutes Interrupted
+- fault_type (text) -- Type of fault (IDR field)
+- weather_condition (text) -- Weather description (IDR field)
+- responsible_oc (text) -- Responsible operating center (IDR field)
+- manual_create_idr (boolean) -- Manual vs auto IDR flag
 ```
 
 **Indexes**:
@@ -746,9 +784,15 @@ CREATE INDEX idx_pq_events_false ON pq_events(false_event) WHERE false_event = t
 - updated_at (timestamptz)
 ```
 
-### Database Migrations
+### Recent Database Enhancements
 
-#### Recent Migration: root_cause → cause
+#### Summary of Recent Changes (Dec 2025)
+1. ✅ **Root Cause Migration**: Consolidated root_cause → cause field
+2. ✅ **Meter Inventory Schema**: Added 11 comprehensive tracking fields
+3. ✅ **IDR Fields**: Added 4 incident data record fields to events
+4. 🟡 **Event Reorganization**: Script ready for database size optimization
+
+#### Detailed Migration History
 **Migration**: `20251211000000_migrate_root_cause_to_cause.sql`
 
 **Rationale**: Consolidated duplicate fields. The `root_cause` field was redundant with the more comprehensive `cause` field.
@@ -1346,17 +1390,46 @@ docs(artifacts): create comprehensive project function design document
 
 ### C. Related Documents
 
-- `DATABASE_SCHEMA.md`: Detailed database schema reference
+**Active Documentation**:
+- `DATABASE_SCHEMA.md`: Detailed database schema reference (regularly updated)
 - `STYLES_GUIDE.md`: UI component patterns and styling guidelines
 - `REQUIREMENTS_TRACEABILITY.md`: Requirements mapping to features
 - `SARFI_ARCHITECTURE.md`: SARFI calculation detailed design
 - `ROOT_CAUSE_RESTORATION.md`: Root cause chart implementation details
 - `SUBSTATION_MAP_IMPLEMENTATION.md`: Map visualization technical guide
+- `IDR_TAB_IMPLEMENTATION.md`: IDR tab implementation guide (Dec 12, 2025)
+- `FILTER_PROFILES_MIGRATION.md`: Filter profile system documentation
+- `EVENT_DETAILS_ENHANCEMENT_BRAINSTORM.md`: IDR tab design brainstorming
+- `EVENT_DETAILS_UI_MOCKUPS.md`: UI design mockups
+
+**Archived Documentation** (Historical Reference):
+- `Archive/CLEANUP_ORPHANED_EVENTS_GUIDE.md`: Orphan cleanup (completed Dec 2025)
+- `Archive/METER_SCHEMA_CONFLICT_ANALYSIS.md`: Pre-migration analysis (completed)
+- `Archive/SMOKE_TEST_RESULTS.md`: Meter migration testing (completed)
+- `Archive/SCHEMA_CONSOLIDATION_REPORT.md`: Schema mismatch analysis (resolved)
+- `Archive/PROFILE_ERROR_FIX.md`: Filter profile bug fix (completed)
+
+### D. Recent Updates Log
+
+**Version 1.1 (December 15, 2025)**:
+- Added Event Database Reorganization script documentation
+- Updated Meter Management with 11 new inventory fields
+- Documented IDR tab implementation (4th tab in Event Details)
+- Added comprehensive IDR field documentation
+- Updated migration history with 3 recent migrations
+- Reorganized related documents section (active vs archived)
+
+**Version 1.0 (December 11, 2025)**:
+- Initial comprehensive documentation
+- Root cause migration documentation
+- Mother event grouping details
+- SARFI calculation architecture
 
 ---
 
 **Document Prepared By**: AI Development Assistant  
-**Review Status**: Initial Draft  
+**Current Version**: 1.1  
+**Review Status**: Updated - December 15, 2025  
 **Next Review Date**: As needed based on major feature additions
 
 ---

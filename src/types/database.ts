@@ -69,7 +69,6 @@ export interface Customer {
   name: string;
   address: string | null;
   substation_id: string | null;
-  transformer_id: string | null;
   contract_demand_kva: number | null;
   customer_type: CustomerType;
   critical_customer: boolean;
@@ -387,6 +386,22 @@ export interface RootCauseProfile {
   is_default: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// Customer Transformer Matching Interface
+export interface CustomerTransformerMatching {
+  id: string;
+  customer_id: string;
+  substation_id: string;
+  circuit_id: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  updated_by: string | null;
+  // Joined relations
+  customer?: Customer;
+  substation?: Substation;
+  updated_by_profile?: Profile;
 }
 
 // API Response Types
