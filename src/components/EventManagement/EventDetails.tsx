@@ -77,6 +77,19 @@ export default function EventDetails({ event: initialEvent, substation: initialS
 
   // Update state when props change
   useEffect(() => {
+    console.log('🔍 [EventDetails] Props updated:', {
+      eventId: initialEvent.id,
+      impactCount: initialImpacts.length,
+      firstImpactSample: initialImpacts[0] ? {
+        id: initialImpacts[0].id,
+        customer_id: initialImpacts[0].customer_id,
+        hasCustomerObject: !!initialImpacts[0].customer,
+        customerName: initialImpacts[0].customer?.name,
+        customerAddress: initialImpacts[0].customer?.address,
+        impactLevel: initialImpacts[0].impact_level
+      } : 'No impacts'
+    });
+    
     setCurrentEvent(initialEvent);
     setCurrentSubstation(initialSubstation);
     setCurrentImpacts(initialImpacts);
@@ -150,11 +163,11 @@ export default function EventDetails({ event: initialEvent, substation: initialS
         .eq('id', childEvent.substation_id)
         .single();
 
-      const { data: impactsData } = await supabase
+      const { data: impactsData, error: impactsError } = await supabase
         .from('event_customer_impact')
         .select(`
           *,
-          customer (
+          customer:customers (
             id,
             name,
             account_number,
@@ -162,6 +175,18 @@ export default function EventDetails({ event: initialEvent, substation: initialS
           )
         `)
         .eq('event_id', childEvent.id);
+
+      console.log('🔍 [handleChildEventClick] Child event impacts loaded:', {
+        childEventId: childEvent.id,
+        impactCount: impactsData?.length || 0,
+        error: impactsError,
+        firstImpactSample: impactsData?.[0] ? {
+          id: impactsData[0].id,
+          customer_id: impactsData[0].customer_id,
+          hasCustomer: !!impactsData[0].customer,
+          customerName: impactsData[0].customer?.name
+        } : 'No impacts'
+      });
 
       setCurrentEvent(childEvent);
       setCurrentSubstation(substationData || undefined);
@@ -793,31 +818,55 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                   Detailed Customer Records
                 </h3>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {currentImpacts.map((impact) => (
-                    <div key={impact.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-semibold text-slate-900">{impact.customer?.name}</p>
-                          <p className="text-sm text-slate-600">{impact.customer?.address}</p>
-                          <p className="text-xs text-slate-500 mt-1">
-                            Account: {impact.customer?.account_number}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
-                            impact.impact_level === 'severe' ? 'bg-red-100 text-red-700' :
-                            impact.impact_level === 'moderate' ? 'bg-orange-100 text-orange-700' :
-                            'bg-yellow-100 text-yellow-700'
-                          }`}>
-                            {impact.impact_level}
-                          </span>
-                          <p className="text-xs text-slate-600 mt-1">
-                            {impact.estimated_downtime_min} min
-                          </p>
+                  {currentImpacts.map((impact, index) => {
+                    // Debug logging for each impact
+                    if (index === 0) {
+                      console.log('🔍 [EventDetails] Rendering impacts in Customer Impact tab:', {
+                        totalCount: currentImpacts.length,
+                        firstImpact: {
+                          id: impact.id,
+                          customer_id: impact.customer_id,
+                          hasCustomerObject: !!impact.customer,
+                          customerName: impact.customer?.name || 'NO NAME',
+                          customerAddress: impact.customer?.address || 'NO ADDRESS',
+                          customerAccount: impact.customer?.account_number || 'NO ACCOUNT',
+                          impactLevel: impact.impact_level,
+                          downtime: impact.estimated_downtime_min
+                        },
+                        allImpactStructure: impact
+                      });
+                    }
+                    
+                    return (
+                      <div key={impact.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="font-semibold text-slate-900">
+                              {impact.customer?.name || `[Customer ID: ${impact.customer_id}]`}
+                            </p>
+                            <p className="text-sm text-slate-600">
+                              {impact.customer?.address || '[No address]'}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">
+                              Account: {impact.customer?.account_number || '[No account]'}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
+                              impact.impact_level === 'severe' ? 'bg-red-100 text-red-700' :
+                              impact.impact_level === 'moderate' ? 'bg-orange-100 text-orange-700' :
+                              'bg-yellow-100 text-yellow-700'
+                            }`}>
+                              {impact.impact_level}
+                            </span>
+                            <p className="text-xs text-slate-600 mt-1">
+                              {impact.estimated_downtime_min} min
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ) : (

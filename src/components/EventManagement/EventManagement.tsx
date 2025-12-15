@@ -143,15 +143,48 @@ export default function EventManagement() {
   };
 
   const loadEventImpacts = async (eventId: string) => {
-    const { data } = await supabase
+    console.log('🔍 [loadEventImpacts] Loading impacts for event:', eventId);
+    
+    const { data, error } = await supabase
       .from('event_customer_impact')
       .select('*, customer:customers(*)')
       .eq('event_id', eventId);
 
-    if (data) setImpacts(data);
+    console.log('🔍 [loadEventImpacts] Query result:', { 
+      error, 
+      impactCount: data?.length || 0,
+      firstImpact: data?.[0]
+    });
+
+    if (error) {
+      console.error('❌ [loadEventImpacts] Error loading impacts:', error);
+    }
+
+    if (data) {
+      console.log('✅ [loadEventImpacts] Impacts loaded successfully:', data.length);
+      console.log('🔍 [loadEventImpacts] Sample impact data:', {
+        id: data[0]?.id,
+        customer_id: data[0]?.customer_id,
+        hasCustomerObject: !!data[0]?.customer,
+        customerName: data[0]?.customer?.name,
+        customerAddress: data[0]?.customer?.address,
+        customerAccount: data[0]?.customer?.account_number,
+        impactLevel: data[0]?.impact_level,
+        downtime: data[0]?.estimated_downtime_min
+      });
+      setImpacts(data);
+    } else {
+      console.warn('⚠️ [loadEventImpacts] No impact data returned');
+    }
   };
 
   const handleEventSelect = (event: PQEvent) => {
+    console.log('🎯 [handleEventSelect] Event selected:', {
+      eventId: event.id,
+      customerCount: event.customer_count,
+      eventType: event.event_type,
+      timestamp: event.timestamp
+    });
     setSelectedEvent(event);
     loadEventImpacts(event.id);
   };
