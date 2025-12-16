@@ -1,20 +1,21 @@
 # PQMAP Styles Guide
 
-**Version:** 1.1  
-**Last Updated:** December 11, 2025  
-**Purpose:** Document reusable UI patterns, export utilities, and design standards for PQMAP application
+**Version:** 1.2  
+**Last Updated:** December 16, 2025  
+**Purpose:** Document reusable UI patterns, export/import utilities, and design standards for PQMAP application
 
 ---
 
 ## Table of Contents
 
 1. [Export Functionality](#export-functionality)
-2. [Button Patterns](#button-patterns)
-3. [Dropdown Patterns](#dropdown-patterns)
-4. [Icon Usage](#icon-usage)
-5. [Color Scheme](#color-scheme)
-6. [Spacing & Layout](#spacing--layout)
-7. [Animation Standards](#animation-standards)
+2. [Import Functionality](#import-functionality)
+3. [Button Patterns](#button-patterns)
+4. [Dropdown Patterns](#dropdown-patterns)
+5. [Icon Usage](#icon-usage)
+6. [Color Scheme](#color-scheme)
+7. [Spacing & Layout](#spacing--layout)
+8. [Animation Standards](#animation-standards)
 
 ---
 
@@ -202,6 +203,580 @@ To embed actual chart images in Excel, install and use `exceljs` library instead
 ```bash
 npm install exceljs
 ```
+
+---
+
+## Import Functionality
+
+### 📥 Standard Import Pattern
+
+**IMPORTANT RULE**: Every import feature must include these four components:
+
+1. **Import Button with Dropdown** - UI to trigger import/download template
+2. **Template Download Function** - Generates CSV template with headers and example data
+3. **Import Validation Function** - Validates each row before database insertion
+4. **Import Results Modal** - Shows success/failed counts with detailed error messages
+
+### Complete Import Implementation
+
+#### 1. Required State Variables
+
+```typescript
+// Import states
+const [showImportDropdown, setShowImportDropdown] = useState(false);
+const [showImportModal, setShowImportModal] = useState(false);
+const [isImporting, setIsImporting] = useState(false);
+const [importResults, setImportResults] = useState<{
+  success: number;
+  failed: number;
+  errors: Array<{ row: number; column: string; message: string }>;
+} | null>(null);
+```
+
+#### 2. Import Button UI
+
+**Standard Pattern (Icon + Label):**
+
+```tsx
+import { Upload, FileDown } from 'lucide-react';
+
+<div className="relative import-dropdown-container">
+  <button
+    onClick={() => setShowImportDropdown(!showImportDropdown)}
+    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-lg transition-all"
+  >
+    <Upload className="w-5 h-5" />
+    <span className="font-semibold">Import</span>
+    <ChevronDown className="w-4 h-4" />
+  </button>
+
+  {showImportDropdown && (
+    <div className="absolute right-0 top-full mt-2 bg-white border border-slate-200 rounded-lg shadow-xl py-2 z-30 min-w-[200px]">
+      <label className="block px-4 py-2 text-sm text-slate-700 hover:bg-blue-50 cursor-pointer transition-colors">
+        <input
+          type="file"
+          accept=".csv"
+          onChange={handleImportCSV}
+          className="hidden"
+        />
+        <div className="flex items-center gap-2">
+          <Upload className="w-4 h-4 text-blue-600" />
+          <span>Import CSV</span>
+        </div>
+      </label>
+      <button
+        onClick={handleDownloadTemplate}
+        className="w-full px-4 py-2 text-sm text-slate-700 hover:bg-green-50 text-left transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <FileDown className="w-4 h-4 text-green-600" />
+          <span>Download Template</span>
+        </div>
+      </button>
+    </div>
+  )}
+</div>
+```
+
+**Key Styling:**
+- Gradient background: `from-blue-600 to-indigo-600`
+- Shadow on hover: `hover:shadow-lg`
+- Dropdown z-index: `z-30` (higher than export dropdown)
+- Color-coded icons: Blue for import, Green for template
+
+#### 3. Template Download Function
+
+```typescript
+const handleDownloadTemplate = () => {
+  // Define all column headers
+  const headers = [
+    'event_type',
+    'timestamp',
+    'substation_id',
+    'voltage_level',
+    'circuit_id',
+    'meter_id',
+    'duration_ms',
+    'remaining_voltage',
+    'affected_phases',
+    'severity',
+    'magnitude',
+    'customer_count',
+    'address',
+    'cause',
+    'equipment_type',
+    'weather',
+    'remarks',
+    'parent_event_id'
+  ];
+
+  // Create example row with valid sample data
+  const exampleRow = [
+    'voltage_dip',
+    '2024-01-15 10:30:00',
+    'SUBSTATION_ID',
+    '132kV',
+    'CIRCUIT_001',
+    'METER_001',
+    '500',
+    '85',
+    'A,B,C',
+    'medium',
+    '15',
+    '0',
+    'Location Address',
+    'Equipment Failure',
+    'Transformer',
+    'Normal',
+    'Additional remarks',
+    ''
+  ];
+
+  // Add helpful comments explaining field formats
+  const csvContent = [
+    headers.join(','),
+    exampleRow.join(','),
+    '# event_type: voltage_dip, voltage_swell, momentary_interruption, sustained_interruption, voltage_sag',
+    '# timestamp: YYYY-MM-DD HH:MM:SS format',
+    '# voltage_level: 400kV, 132kV, 33kV, 11kV, 380V',
+    '# affected_phases: Comma-separated (e.g., A,B,C)',
+    '# severity: low, medium, high, critical',
+    '# parent_event_id: Leave empty for standalone events, or provide existing event ID for child events'
+  ].join('\n');
+
+  // Download as CSV file
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `event_import_template_${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  
+  setShowImportDropdown(false);
+};
+```
+
+**Template Best Practices:**
+- Include all required and optional fields
+- Provide realistic example data
+- Add comment lines (starting with #) explaining formats
+- Use current date in filename
+- Required fields should be marked in comments
+- Valid enum values should be listed
+
+#### 4. Import CSV Function
+
+```typescript
+const handleImportCSV = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  setIsImporting(true);
+  setShowImportDropdown(false);
+  setShowImportModal(true);
+
+  try {
+    // Parse CSV file
+    const text = await file.text();
+    const lines = text.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+    
+    if (lines.length < 2) {
+      throw new Error('CSV file must contain at least a header row and one data row');
+    }
+
+    const headers = lines[0].split(',').map(h => h.trim());
+    const errors: Array<{ row: number; column: string; message: string }> = [];
+    let successCount = 0;
+    let failedCount = 0;
+
+    // Validate required columns exist
+    const requiredColumns = ['event_type', 'timestamp', 'substation_id', 'voltage_level'];
+    const missingColumns = requiredColumns.filter(col => !headers.includes(col));
+    
+    if (missingColumns.length > 0) {
+      throw new Error(`Missing required columns: ${missingColumns.join(', ')}`);
+    }
+
+    // Process each data row
+    for (let i = 1; i < lines.length; i++) {
+      const rowNumber = i + 1;
+      const values = lines[i].split(',').map(v => v.trim());
+      const row: Record<string, string> = {};
+      
+      headers.forEach((header, index) => {
+        row[header] = values[index] || '';
+      });
+
+      // Validate row data
+      const rowErrors = validateImportRow(row, rowNumber);
+      
+      if (rowErrors.length > 0) {
+        errors.push(...rowErrors);
+        failedCount++;
+        continue;
+      }
+
+      // Create database record
+      try {
+        const eventData = {
+          event_type: row.event_type as any,
+          timestamp: new Date(row.timestamp).toISOString(),
+          substation_id: row.substation_id,
+          voltage_level: row.voltage_level,
+          circuit_id: row.circuit_id || null,
+          meter_id: row.meter_id || null,
+          duration_ms: row.duration_ms ? parseInt(row.duration_ms) : 1000,
+          remaining_voltage: row.remaining_voltage ? parseFloat(row.remaining_voltage) : null,
+          affected_phases: row.affected_phases ? row.affected_phases.split(',').map(p => p.trim()) : ['A', 'B', 'C'],
+          severity: row.severity || 'medium',
+          magnitude: row.magnitude ? parseFloat(row.magnitude) : 0,
+          customer_count: row.customer_count ? parseInt(row.customer_count) : 0,
+          address: row.address || null,
+          cause: row.cause || null,
+          equipment_type: row.equipment_type || null,
+          weather: row.weather || null,
+          remarks: row.remarks || null,
+          parent_event_id: row.parent_event_id || null,
+          is_child_event: !!row.parent_event_id,
+          status: 'open' as const,
+          validated_by_adms: false,
+          false_event: false
+        };
+
+        const { error } = await supabase
+          .from('pq_events')
+          .insert([eventData]);
+
+        if (error) throw error;
+
+        successCount++;
+      } catch (error: any) {
+        errors.push({
+          row: rowNumber,
+          column: 'General',
+          message: `Failed to create event: ${error.message || 'Unknown error'}`
+        });
+        failedCount++;
+      }
+    }
+
+    // Store results
+    setImportResults({
+      success: successCount,
+      failed: failedCount,
+      errors: errors
+    });
+
+    // Reload data if any succeeded
+    if (successCount > 0) {
+      await loadData();
+    }
+  } catch (error: any) {
+    alert(`Import failed: ${error.message}`);
+    setShowImportModal(false);
+  } finally {
+    setIsImporting(false);
+    event.target.value = ''; // Reset file input
+  }
+};
+```
+
+**Import Function Key Points:**
+- Filter out comment lines (starting with #)
+- Validate CSV structure before processing
+- Track success and failure counts separately
+- Continue processing even if some rows fail
+- Reset file input after import completes
+- Reload data only if at least one row succeeded
+
+#### 5. Validation Function
+
+```typescript
+const validateImportRow = (
+  row: Record<string, string>, 
+  rowNumber: number
+): Array<{ row: number; column: string; message: string }> => {
+  const errors: Array<{ row: number; column: string; message: string }> = [];
+  
+  // Validate event_type (required enum)
+  const validEventTypes = ['voltage_dip', 'voltage_swell', 'momentary_interruption', 'sustained_interruption', 'voltage_sag'];
+  if (!validEventTypes.includes(row.event_type)) {
+    errors.push({
+      row: rowNumber,
+      column: 'event_type',
+      message: `Invalid value. Must be one of: ${validEventTypes.join(', ')}`
+    });
+  }
+
+  // Validate timestamp (required date)
+  if (!row.timestamp || isNaN(new Date(row.timestamp).getTime())) {
+    errors.push({
+      row: rowNumber,
+      column: 'timestamp',
+      message: 'Invalid date format. Use YYYY-MM-DD HH:MM:SS'
+    });
+  }
+
+  // Validate substation_id (required, must exist in DB)
+  if (!row.substation_id) {
+    errors.push({
+      row: rowNumber,
+      column: 'substation_id',
+      message: 'Substation ID is required'
+    });
+  } else {
+    const substationExists = substations.some(s => 
+      s.id === row.substation_id || s.name === row.substation_id
+    );
+    if (!substationExists) {
+      errors.push({
+        row: rowNumber,
+        column: 'substation_id',
+        message: 'Substation not found in database'
+      });
+    }
+  }
+
+  // Validate voltage_level (required enum)
+  const validVoltageLevels = ['400kV', '132kV', '33kV', '11kV', '380V'];
+  if (!validVoltageLevels.includes(row.voltage_level)) {
+    errors.push({
+      row: rowNumber,
+      column: 'voltage_level',
+      message: `Invalid value. Must be one of: ${validVoltageLevels.join(', ')}`
+    });
+  }
+
+  // Validate duration_ms (optional positive number)
+  if (row.duration_ms && (isNaN(parseInt(row.duration_ms)) || parseInt(row.duration_ms) < 0)) {
+    errors.push({
+      row: rowNumber,
+      column: 'duration_ms',
+      message: 'Must be a positive number'
+    });
+  }
+
+  // Validate remaining_voltage (optional 0-100)
+  if (row.remaining_voltage) {
+    const value = parseFloat(row.remaining_voltage);
+    if (isNaN(value) || value < 0 || value > 100) {
+      errors.push({
+        row: rowNumber,
+        column: 'remaining_voltage',
+        message: 'Must be a number between 0 and 100'
+      });
+    }
+  }
+
+  // Validate severity (optional enum)
+  if (row.severity) {
+    const validSeverities = ['low', 'medium', 'high', 'critical'];
+    if (!validSeverities.includes(row.severity)) {
+      errors.push({
+        row: rowNumber,
+        column: 'severity',
+        message: `Invalid value. Must be one of: ${validSeverities.join(', ')}`
+      });
+    }
+  }
+
+  // Validate parent_event_id (optional UUID format)
+  if (row.parent_event_id && !row.parent_event_id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+    errors.push({
+      row: rowNumber,
+      column: 'parent_event_id',
+      message: 'Must be a valid UUID format or leave empty'
+    });
+  }
+
+  return errors;
+};
+```
+
+**Validation Best Practices:**
+- Validate all required fields first
+- Check enum values against allowed lists
+- Validate foreign keys (e.g., substation_id exists)
+- Validate data types (numbers, dates, UUIDs)
+- Validate ranges (e.g., 0-100 for percentages)
+- Return all errors for a row, not just the first one
+- Provide clear, actionable error messages
+
+#### 6. Import Results Modal
+
+```tsx
+{showImportModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      {/* Header */}
+      <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between z-10">
+        <div className="flex items-center gap-3">
+          <Upload className="w-6 h-6 text-blue-600" />
+          <h2 className="text-2xl font-bold text-gray-900">CSV Import Results</h2>
+        </div>
+        <button
+          onClick={() => {
+            setShowImportModal(false);
+            setImportResults(null);
+          }}
+          disabled={isImporting}
+          className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+        >
+          <X className="w-6 h-6" />
+        </button>
+      </div>
+
+      {/* Content Area (Scrollable) */}
+      <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+        {isImporting ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-slate-600 text-lg">Importing events...</p>
+            <p className="text-slate-500 text-sm mt-2">Please wait while we process your CSV file</p>
+          </div>
+        ) : importResults ? (
+          <>
+            {/* Summary Section */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Import Summary</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white rounded-lg p-4 border border-green-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Check className="w-5 h-5 text-green-600" />
+                    <span className="text-sm font-medium text-gray-600">Success</span>
+                  </div>
+                  <div className="text-3xl font-bold text-green-600">{importResults.success}</div>
+                </div>
+                <div className="bg-white rounded-lg p-4 border border-red-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <X className="w-5 h-5 text-red-600" />
+                    <span className="text-sm font-medium text-gray-600">Failed</span>
+                  </div>
+                  <div className="text-3xl font-bold text-red-600">{importResults.failed}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Error Details Section */}
+            {importResults.errors.length > 0 && (
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-orange-500" />
+                  Error Details ({importResults.errors.length})
+                </h4>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {importResults.errors.map((error, index) => (
+                    <div
+                      key={index}
+                      className="bg-red-50 border border-red-200 rounded-lg p-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-8 h-8 bg-red-600 text-white rounded-full flex items-center justify-center font-semibold text-sm">
+                          {error.row}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-semibold text-gray-900">Row {error.row}</span>
+                            <span className="text-gray-400">•</span>
+                            <span className="text-sm font-medium text-red-700">Column: {error.column}</span>
+                          </div>
+                          <p className="text-sm text-gray-700">{error.message}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Success Message (All Passed) */}
+            {importResults.success > 0 && importResults.failed === 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+                <Check className="w-12 h-12 text-green-600 mx-auto mb-3" />
+                <h3 className="text-lg font-semibold text-green-900 mb-2">
+                  All Events Imported Successfully!
+                </h3>
+                <p className="text-green-700">
+                  {importResults.success} event{importResults.success > 1 ? 's' : ''} have been added to the system.
+                </p>
+              </div>
+            )}
+          </>
+        ) : null}
+      </div>
+
+      {/* Footer (Always at Bottom) */}
+      {!isImporting && importResults && (
+        <div className="border-t border-gray-200 p-6 bg-gray-50 flex-shrink-0">
+          <button
+            onClick={() => {
+              setShowImportModal(false);
+              setImportResults(null);
+            }}
+            className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-all"
+          >
+            Close
+          </button>
+        </div>
+      )}
+    </div>
+  </div>
+)}
+```
+
+**Modal Styling Key Points:**
+- **Flexbox Layout**: `flex flex-col` ensures footer stays at bottom
+- **Content Area**: `flex-1 overflow-y-auto` makes middle section scrollable
+- **Footer**: `flex-shrink-0` prevents footer from shrinking
+- **Max Height**: `max-h-[90vh]` prevents modal from exceeding viewport
+- **Loading State**: Spinner with descriptive text during import
+- **Color Coding**: Green for success, Red for failures, Orange for warnings
+
+#### 7. Click Outside Handler
+
+```typescript
+useEffect(() => {
+  const handleClickOutside = (event: MouseEvent) => {
+    const target = event.target as HTMLElement;
+    if (showImportDropdown && !target.closest('.import-dropdown-container')) {
+      setShowImportDropdown(false);
+    }
+  };
+
+  document.addEventListener('mousedown', handleClickOutside);
+  return () => document.removeEventListener('mousedown', handleClickOutside);
+}, [showImportDropdown]);
+```
+
+### Import Feature Checklist
+
+When implementing import functionality, ensure:
+
+- [ ] Import button with dropdown UI
+- [ ] Download template function with example data
+- [ ] CSV parsing with header validation
+- [ ] Row-by-row validation function
+- [ ] Database insertion with error handling
+- [ ] Import results modal with summary
+- [ ] Error details display with row/column info
+- [ ] Success message for complete imports
+- [ ] Close button always visible at bottom
+- [ ] Click outside to close dropdown
+- [ ] File input reset after import
+- [ ] Data reload after successful import
+- [ ] Loading state during processing
+- [ ] Proper error messages for users
+
+### Import vs Export Comparison
+
+| Feature | Export | Import |
+|---------|--------|--------|
+| **Button Color** | Blue (`bg-blue-600`) | Blue-Indigo Gradient |
+| **Icon** | Download | Upload |
+| **Dropdown Options** | Excel/CSV/PDF | Import CSV / Download Template |
+| **Processing** | Read from DB → File | File → Validate → Write to DB |
+| **Feedback** | File download | Results modal |
+| **Error Handling** | Alert on failure | Detailed error list |
+| **Data Direction** | Outbound | Inbound |
 
 ---
 
