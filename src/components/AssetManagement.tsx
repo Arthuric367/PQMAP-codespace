@@ -1,14 +1,44 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { PQMeter, Substation } from '../types/database';
-import { Database, Activity, X, Check, Info } from 'lucide-react';
+import { Database, Activity, X, Check, Info, Filter, Download, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import * as XLSX from 'xlsx';
+
+interface FilterState {
+  status: string;
+  substations: string[];
+  voltageLevels: string[];
+  circuitId: string;
+  brand: string;
+  model: string;
+  searchText: string;
+}
 
 export default function AssetManagement() {
   const [meters, setMeters] = useState<PQMeter[]>([]);
   const [substations, setSubstations] = useState<Substation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<string>('all');
   const [selectedMeter, setSelectedMeter] = useState<PQMeter | null>(null);
+  
+  // Filter states
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [filters, setFilters] = useState<FilterState>({
+    status: 'all',
+    substations: [],
+    voltageLevels: [],
+    circuitId: '',
+    brand: '',
+    model: '',
+    searchText: ''
+  });
+  
+  // Export states
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
 
   useEffect(() => {
     loadData();
@@ -35,13 +65,173 @@ export default function AssetManagement() {
     return acc;
   }, {} as Record<string, Substation>);
 
-  const filteredMeters = meters.filter(m => filter === 'all' || m.status === filter);
+  // Get unique values for filter dropdowns
+  const uniqueBrands = Array.from(new Set(meters.map(m => m.brand).filter(Boolean))).sort();
+  const uniqueModels = Array.from(new Set(meters.map(m => m.model).filter(Boolean))).sort();
+  const uniqueVoltageLevels = Array.from(new Set(meters.map(m => m.voltage_level).filter(Boolean))).sort();
+
+  // Apply all filters (AND logic)
+  const filteredMeters = meters.filter(meter => {
+    // Status filter
+    if (filters.status !== 'all' && meter.status !== filters.status) return false;
+    
+    // Substation filter
+    if (filters.substations.length > 0 && !filters.substations.includes(meter.substation_id)) return false;
+    
+    // Voltage level filter
+    if (filters.voltageLevels.length > 0 && !filters.voltageLevels.includes(meter.voltage_level || '')) return false;
+    
+    // Circuit ID filter
+    if (filters.circuitId && !meter.circuit_id?.toLowerCase().includes(filters.circuitId.toLowerCase())) return false;
+    
+    // Brand filter
+    if (filters.brand && meter.brand !== filters.brand) return false;
+    
+    // Model filter
+    if (filters.model && meter.model !== filters.model) return false;
+    
+    // Text search (meter_id, site_id, ip_address)
+    if (filters.searchText) {
+      const searchLower = filters.searchText.toLowerCase();
+      const matchesMeterId = meter.meter_id?.toLowerCase().includes(searchLower);
+      const matchesSiteId = meter.site_id?.toLowerCase().includes(searchLower);
+      const matchesIpAddress = meter.ip_address?.toLowerCase().includes(searchLower);
+      if (!matchesMeterId && !matchesSiteId && !matchesIpAddress) return false;
+    }
+    
+    return true;
+  });
+
+  // Count active filters
+  const activeFilterCount = 
+    (filters.status !== 'all' ? 1 : 0) +
+    filters.substations.length +
+    filters.voltageLevels.length +
+    (filters.circuitId ? 1 : 0) +
+    (filters.brand ? 1 : 0) +
+    (filters.model ? 1 : 0) +
+    (filters.searchText ? 1 : 0);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredMeters.length / itemsPerPage);
+  const paginatedMeters = filteredMeters.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   const statusStats = {
     active: meters.filter(m => m.status === 'active').length,
     abnormal: meters.filter(m => m.status === 'abnormal').length,
     inactive: meters.filter(m => m.status === 'inactive').length,
   };
+
+  // Clear all filters
+  const handleClearFilters = () => {
+    setFilters({
+      status: 'all',
+      substations: [],
+      voltageLevels: [],
+      circuitId: '',
+      brand: '',
+      model: '',
+      searchText: ''
+    });
+    setCurrentPage(1);
+  };
+
+  // Export handlers
+  const handleExport = async (format: 'excel' | 'csv') => {
+    setIsExporting(true);
+    setShowExportDropdown(false);
+
+    try {
+      const exportData = filteredMeters.map(meter => ({
+        'Meter ID': meter.meter_id,
+        'Site ID': meter.site_id || '-',
+        'Voltage Level': meter.voltage_level || '-',
+        'Substation': substationMap[meter.substation_id]?.name || 'Unknown',
+        'Substation Code': substationMap[meter.substation_id]?.code || '-',
+        'Circuit': meter.circuit_id || '-',
+        'Location': meter.location || '-',
+        'OC': meter.oc || '-',
+        'Brand': meter.brand || '-',
+        'Model': meter.model || '-',
+        'Nominal Voltage': meter.nominal_voltage ? `${meter.nominal_voltage} kV` : '-',
+        'Active': meter.active !== undefined ? (meter.active ? 'Yes' : 'No') : '-',
+        'Status': meter.status,
+        'Region': meter.region || '-',
+        'IP Address': meter.ip_address || '-',
+        'Meter Type': meter.meter_type || '-',
+        'CT Type': meter.ct_type || '-',
+        'Asset Number': meter.asset_number || '-',
+        'Serial Number': meter.serial_number || '-',
+        'Firmware Version': meter.firmware_version || '-',
+        'Framework Version': meter.framework_version || '-',
+        'Installed Date': meter.installed_date ? new Date(meter.installed_date).toLocaleDateString() : '-',
+        'Last Communication': meter.last_communication ? new Date(meter.last_communication).toLocaleString() : 'Never'
+      }));
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportData);
+
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 15 }, // Meter ID
+        { wch: 12 }, // Site ID
+        { wch: 12 }, // Voltage Level
+        { wch: 25 }, // Substation
+        { wch: 15 }, // Substation Code
+        { wch: 12 }, // Circuit
+        { wch: 20 }, // Location
+        { wch: 8 },  // OC
+        { wch: 12 }, // Brand
+        { wch: 15 }, // Model
+        { wch: 15 }, // Nominal Voltage
+        { wch: 8 },  // Active
+        { wch: 10 }, // Status
+        { wch: 10 }, // Region
+        { wch: 15 }, // IP Address
+        { wch: 12 }, // Meter Type
+        { wch: 12 }, // CT Type
+        { wch: 15 }, // Asset Number
+        { wch: 15 }, // Serial Number
+        { wch: 15 }, // Firmware Version
+        { wch: 15 }, // Framework Version
+        { wch: 15 }, // Installed Date
+        { wch: 20 }  // Last Communication
+      ];
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Meter Inventory');
+
+      const fileName = `Meter_Inventory_${new Date().toISOString().split('T')[0]}.${format === 'excel' ? 'xlsx' : 'csv'}`;
+      
+      if (format === 'excel') {
+        XLSX.writeFile(wb, fileName);
+      } else {
+        XLSX.writeFile(wb, fileName, { bookType: 'csv' });
+      }
+
+      console.log(`Exported ${filteredMeters.length} meters as ${format.toUpperCase()}`);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert(`Failed to export as ${format.toUpperCase()}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Click outside handlers
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (showExportDropdown && !target.closest('.export-dropdown-container')) {
+        setShowExportDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showExportDropdown]);
 
   if (loading) {
     return (
@@ -101,17 +291,63 @@ export default function AssetManagement() {
 
       <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-slate-900">Meter Inventory</h2>
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="px-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="abnormal">Abnormal</option>
-            <option value="inactive">Inactive</option>
-          </select>
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">Meter Inventory</h2>
+            <p className="text-sm text-slate-600 mt-1">
+              Showing {paginatedMeters.length} of {filteredMeters.length} meters
+              {activeFilterCount > 0 && ` (${activeFilterCount} filter${activeFilterCount > 1 ? 's' : ''} active)`}
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {/* Export Button */}
+            <div className="relative export-dropdown-container">
+              <button
+                onClick={() => setShowExportDropdown(!showExportDropdown)}
+                disabled={isExporting}
+                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all disabled:opacity-50"
+                title="Export Meters"
+              >
+                <Download className="w-5 h-5" />
+              </button>
+
+              {showExportDropdown && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-2 z-50">
+                  <button
+                    onClick={() => handleExport('excel')}
+                    disabled={isExporting}
+                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export to Excel
+                  </button>
+                  <button
+                    onClick={() => handleExport('csv')}
+                    disabled={isExporting}
+                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export to CSV
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Filter Button */}
+            <button
+              onClick={() => setShowFilterPanel(!showFilterPanel)}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg transition-all"
+              title="Filter Meters"
+            >
+              <Filter className="w-5 h-5" />
+              <span className="font-semibold">Filters</span>
+              {activeFilterCount > 0 && (
+                <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -133,10 +369,11 @@ export default function AssetManagement() {
               </tr>
             </thead>
             <tbody>
-              {filteredMeters.map((meter) => {
-                const substation = substationMap[meter.substation_id];
-                return (
-                  <tr key={meter.id} className="border-b border-slate-100 hover:bg-slate-50">
+              {paginatedMeters.length > 0 ? (
+                paginatedMeters.map((meter) => {
+                  const substation = substationMap[meter.substation_id];
+                  return (
+                    <tr key={meter.id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="py-2 px-2 text-sm font-medium text-slate-900">{meter.meter_id}</td>
                     <td className="py-2 px-2 text-sm text-slate-700">{meter.site_id || '-'}</td>
                     <td className="py-2 px-2 text-sm text-slate-700">{meter.voltage_level || '-'}</td>
@@ -171,11 +408,256 @@ export default function AssetManagement() {
                     </td>
                   </tr>
                 );
-              })}
+              })
+              ) : (
+                <tr>
+                  <td colSpan={12} className="py-12 text-center">
+                    <div className="text-slate-400">
+                      <Database className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p className="text-lg font-semibold">No meters found</p>
+                      <p className="text-sm mt-1">Try adjusting your filters</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200">
+            <div className="text-sm text-slate-600">
+              Page {currentPage} of {totalPages}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <span className="px-4 py-2 bg-slate-100 rounded-lg font-semibold text-slate-900">
+                {currentPage}
+              </span>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Filter Panel */}
+      {showFilterPanel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-end z-50">
+          <div className="bg-white h-full w-full max-w-md shadow-2xl overflow-hidden flex flex-col animate-fadeIn">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-slate-700 to-slate-800 text-white p-6">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <Filter className="w-6 h-6" />
+                  <h2 className="text-2xl font-bold">Filter Meters</h2>
+                </div>
+                <button
+                  onClick={() => setShowFilterPanel(false)}
+                  className="text-white hover:bg-white/20 rounded-lg p-2 transition-all"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <p className="text-slate-300 text-sm">
+                {filteredMeters.length} of {meters.length} meters match
+              </p>
+            </div>
+
+            {/* Filter Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Search */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-900 mb-2">
+                  Search
+                </label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by Meter ID, Site ID, or IP Address..."
+                    value={filters.searchText}
+                    onChange={(e) => setFilters({ ...filters, searchText: e.target.value })}
+                    className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-900 mb-2">
+                  Status
+                </label>
+                <select
+                  value={filters.status}
+                  onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Status ({meters.length})</option>
+                  <option value="active">Active ({statusStats.active})</option>
+                  <option value="abnormal">Abnormal ({statusStats.abnormal})</option>
+                  <option value="inactive">Inactive ({statusStats.inactive})</option>
+                </select>
+              </div>
+
+              {/* Substation */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-900 mb-2">
+                  Substation ({filters.substations.length} selected)
+                </label>
+                <div className="max-h-48 overflow-y-auto border border-slate-300 rounded-lg p-2 space-y-1">
+                  {substations.map((sub) => {
+                    const meterCount = meters.filter(m => m.substation_id === sub.id).length;
+                    return (
+                      <label
+                        key={sub.id}
+                        className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={filters.substations.includes(sub.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setFilters({ ...filters, substations: [...filters.substations, sub.id] });
+                            } else {
+                              setFilters({ ...filters, substations: filters.substations.filter(id => id !== sub.id) });
+                            }
+                          }}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-slate-700 flex-1">
+                          {sub.code} - {sub.name}
+                        </span>
+                        <span className="text-xs text-slate-500">({meterCount})</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Voltage Level */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-900 mb-2">
+                  Voltage Level ({filters.voltageLevels.length} selected)
+                </label>
+                <div className="space-y-2">
+                  {uniqueVoltageLevels.map((level) => {
+                    if (!level) return null;
+                    const meterCount = meters.filter(m => m.voltage_level === level).length;
+                    return (
+                      <label
+                        key={level}
+                        className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={filters.voltageLevels.includes(level)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setFilters({ ...filters, voltageLevels: [...filters.voltageLevels, level] });
+                            } else {
+                              setFilters({ ...filters, voltageLevels: filters.voltageLevels.filter(v => v !== level) });
+                            }
+                          }}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-slate-700 flex-1">{level}</span>
+                        <span className="text-xs text-slate-500">({meterCount})</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Circuit ID */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-900 mb-2">
+                  Circuit ID
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter circuit ID..."
+                  value={filters.circuitId}
+                  onChange={(e) => setFilters({ ...filters, circuitId: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Brand */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-900 mb-2">
+                  Brand
+                </label>
+                <select
+                  value={filters.brand}
+                  onChange={(e) => setFilters({ ...filters, brand: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Brands</option>
+                  {uniqueBrands.map((brand) => {
+                    const meterCount = meters.filter(m => m.brand === brand).length;
+                    return (
+                      <option key={brand} value={brand}>
+                        {brand} ({meterCount})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* Model */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-900 mb-2">
+                  Model
+                </label>
+                <select
+                  value={filters.model}
+                  onChange={(e) => setFilters({ ...filters, model: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Models</option>
+                  {uniqueModels.map((model) => {
+                    const meterCount = meters.filter(m => m.model === model).length;
+                    return (
+                      <option key={model} value={model}>
+                        {model} ({meterCount})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-slate-200 p-6 bg-slate-50 space-y-3">
+              <button
+                onClick={handleClearFilters}
+                className="w-full px-6 py-3 bg-white border border-slate-300 text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition-all"
+              >
+                Clear All Filters
+              </button>
+              <button
+                onClick={() => setShowFilterPanel(false)}
+                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-all"
+              >
+                Apply Filters
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Meter Detail Modal */}
       {selectedMeter && (

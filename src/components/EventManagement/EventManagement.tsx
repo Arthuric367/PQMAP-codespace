@@ -695,7 +695,7 @@ export default function EventManagement() {
       });
     }
 
-    // Validate substation_id
+    // Validate substation_id (can be UUID, code, or name)
     if (!row.substation_id) {
       errors.push({
         row: rowNumber,
@@ -703,12 +703,16 @@ export default function EventManagement() {
         message: 'Substation ID is required'
       });
     } else {
-      const substationExists = substations.some(s => s.id === row.substation_id || s.name === row.substation_id);
+      const substationExists = substations.some(s => 
+        s.id === row.substation_id || 
+        s.code === row.substation_id || 
+        s.name === row.substation_id
+      );
       if (!substationExists) {
         errors.push({
           row: rowNumber,
           column: 'substation_id',
-          message: 'Substation not found in database'
+          message: 'Substation not found in database (tried UUID, code, and name)'
         });
       }
     }
