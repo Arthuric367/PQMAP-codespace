@@ -708,10 +708,10 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                   </div>
                 )}
               </div>
-              {currentEvent.root_cause && (
+              {currentEvent.cause && (
                 <div className="mt-3 pt-3 border-t border-slate-200">
-                  <span className="text-slate-600 text-sm">Root Cause:</span>
-                  <p className="font-semibold text-slate-900 mt-1">{currentEvent.root_cause}</p>
+                  <span className="text-slate-600 text-sm">Cause:</span>
+                  <p className="font-semibold text-slate-900 mt-1">{currentEvent.cause}</p>
                 </div>
               )}
             </div>

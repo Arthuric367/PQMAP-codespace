@@ -36,8 +36,8 @@ export interface EventFilter {
   maxRemainingVoltage: number;
   circuitIds: string[];
   showOnlyUnvalidated: boolean;
-  showOnlyMotherEvents: boolean;
-  hideFalseEvents: boolean;
+  showOnlyStandaloneEvents: boolean;
+  showFalseEventsOnly: boolean;
   filter_rules?: {
     duration_min_ms?: number;
     duration_max_ms?: number;

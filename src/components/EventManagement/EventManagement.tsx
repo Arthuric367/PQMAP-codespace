@@ -44,8 +44,8 @@ export default function EventManagement() {
     maxRemainingVoltage: 100,
     circuitIds: [],
     showOnlyUnvalidated: false,
-    showOnlyMotherEvents: false,
-    hideFalseEvents: true
+    showOnlyStandaloneEvents: false,
+    showFalseEventsOnly: false
   });
 
   // Meter and Profile states
@@ -158,7 +158,27 @@ export default function EventManagement() {
         // Auto-load default profile if exists
         const defaultProfile = data?.find(p => p.is_default);
         if (defaultProfile) {
-          setFilters(defaultProfile.filters as EventFilter);
+          // Merge with default filter values to ensure all properties are defined
+          setFilters({
+            startDate: '',
+            endDate: '',
+            eventTypes: [],
+            severityLevels: [],
+            statusOptions: [],
+            voltageLevels: [],
+            meterIds: [],
+            minDuration: 0,
+            maxDuration: 300000,
+            minCustomers: 0,
+            maxCustomers: 1000,
+            minRemainingVoltage: 0,
+            maxRemainingVoltage: 100,
+            circuitIds: [],
+            showOnlyUnvalidated: false,
+            showOnlyStandaloneEvents: false,
+            showFalseEventsOnly: false,
+            ...(defaultProfile.filters as any)
+          });
           setSelectedProfileId(defaultProfile.id);
         }
       }
@@ -310,7 +330,27 @@ export default function EventManagement() {
   const handleLoadProfile = (profileId: string) => {
     const profile = filterProfiles.find(p => p.id === profileId);
     if (profile) {
-      setFilters(profile.filters as EventFilter);
+      // Merge with default filter values to ensure all properties are defined
+      setFilters({
+        startDate: '',
+        endDate: '',
+        eventTypes: [],
+        severityLevels: [],
+        statusOptions: [],
+        voltageLevels: [],
+        meterIds: [],
+        minDuration: 0,
+        maxDuration: 300000,
+        minCustomers: 0,
+        maxCustomers: 1000,
+        minRemainingVoltage: 0,
+        maxRemainingVoltage: 100,
+        circuitIds: [],
+        showOnlyUnvalidated: false,
+        showOnlyStandaloneEvents: false,
+        showFalseEventsOnly: false,
+        ...(profile.filters as any)
+      });
       setSelectedProfileId(profileId);
     }
   };
@@ -403,8 +443,8 @@ export default function EventManagement() {
       maxRemainingVoltage: 100,
       circuitIds: [],
       showOnlyUnvalidated: false,
-      showOnlyMotherEvents: false,
-      hideFalseEvents: true
+      showOnlyStandaloneEvents: false,
+      showFalseEventsOnly: false
     });
     setSelectedProfileId(null);
   };
@@ -478,151 +518,94 @@ export default function EventManagement() {
 
   // Apply filters to events
   const applyFilters = (events: PQEvent[]): PQEvent[] => {
-    const motherEventsInput = events.filter(e => e.is_mother_event);
-    console.log('🔍 applyFilters INPUT - Total events:', events.length, 'Mother events:', motherEventsInput.length);
-    
     const filtered = events.filter(event => {
-      const isMotherEvent = event.is_mother_event;
-      
       // Date range filter
       if (filters.startDate && new Date(event.timestamp) < new Date(filters.startDate)) {
-        if (isMotherEvent) console.log('❌ Mother event filtered by START DATE:', event.id.substring(0, 8), event.timestamp);
         return false;
       }
       if (filters.endDate && new Date(event.timestamp) > new Date(filters.endDate)) {
-        if (isMotherEvent) console.log('❌ Mother event filtered by END DATE:', event.id.substring(0, 8), event.timestamp);
         return false;
       }
       
       // Event type filter
       if (filters.eventTypes.length > 0 && !filters.eventTypes.includes(event.event_type)) {
-        if (isMotherEvent) console.log('❌ Mother event filtered by TYPE:', event.id.substring(0, 8), event.event_type);
         return false;
       }
       
       // Severity filter
       if (filters.severityLevels.length > 0 && !filters.severityLevels.includes(event.severity)) {
-        if (isMotherEvent) console.log('❌ Mother event filtered by SEVERITY:', event.id.substring(0, 8), event.severity);
         return false;
       }
       
       // Status filter
       if (filters.statusOptions.length > 0 && !filters.statusOptions.includes(event.status)) {
-        if (isMotherEvent) console.log('❌ Mother event filtered by STATUS:', event.id.substring(0, 8), event.status);
         return false;
       }
       
       // Voltage level filter
       if (filters.voltageLevels.length > 0 && !filters.voltageLevels.includes(event.voltage_level)) {
-        if (isMotherEvent) console.log('❌ Mother event filtered by VOLTAGE:', event.id.substring(0, 8), event.voltage_level);
         return false;
       }
       
       // Duration filter
       if (event.duration_ms !== null && (event.duration_ms < filters.minDuration || event.duration_ms > filters.maxDuration)) {
-        if (isMotherEvent) console.log('❌ Mother event filtered by DURATION:', event.id.substring(0, 8), event.duration_ms, 'range:', filters.minDuration, '-', filters.maxDuration);
         return false;
       }
       
       // Customer count filter
       const customerCount = event.customer_count || 0;
       if (customerCount < filters.minCustomers || customerCount > filters.maxCustomers) {
-        if (isMotherEvent) console.log('❌ Mother event filtered by CUSTOMER COUNT:', event.id.substring(0, 8), customerCount, 'range:', filters.minCustomers, '-', filters.maxCustomers);
         return false;
       }
       
       // Remaining voltage filter
       if (event.remaining_voltage !== null && event.remaining_voltage !== undefined) {
         if (event.remaining_voltage < filters.minRemainingVoltage || event.remaining_voltage > filters.maxRemainingVoltage) {
-          if (isMotherEvent) console.log('❌ Mother event filtered by REMAINING VOLTAGE:', event.id.substring(0, 8), event.remaining_voltage, 'range:', filters.minRemainingVoltage, '-', filters.maxRemainingVoltage);
           return false;
         }
       }
       
       // Circuit ID filter
       if (filters.circuitIds.length > 0 && !filters.circuitIds.includes(event.circuit_id)) {
-        if (isMotherEvent) console.log('❌ Mother event filtered by CIRCUIT ID:', event.id.substring(0, 8), event.circuit_id, 'allowed:', filters.circuitIds);
         return false;
       }
       
       // Validation filter
       if (filters.showOnlyUnvalidated && event.validated_by_adms) {
-        if (isMotherEvent) console.log('❌ Mother event filtered by VALIDATION:', event.id.substring(0, 8), 'validated_by_adms=true');
         return false;
       }
       
-      // Mother event filter
-      if (filters.showOnlyMotherEvents && !event.is_mother_event) return false;
+      // Standalone event filter (show only events that are not mother and not child)
+      if (filters.showOnlyStandaloneEvents) {
+        // An event is standalone if:
+        // 1. It's NOT a mother event (is_mother_event !== true)
+        // 2. It's NOT a child event (is_child_event !== true AND parent_event_id is null/empty)
+        const isStandalone = !event.is_mother_event && !event.is_child_event && !event.parent_event_id;
+        
+        if (!isStandalone) {
+          return false;
+        }
+      }
 
       // Meter ID filter
       if (filters.meterIds.length > 0 && event.meter_id && !filters.meterIds.includes(event.meter_id)) {
-        if (isMotherEvent) console.log('❌ Mother event filtered by METER ID:', event.id.substring(0, 8), event.meter_id);
         return false;
       }
 
       return true;
     });
     
-    const motherEventsOutput = filtered.filter(e => e.is_mother_event);
-    console.log('🔍 applyFilters OUTPUT - Total events:', filtered.length, 'Mother events:', motherEventsOutput.length);
-    console.log('📊 Mother events LOST in filtering:', motherEventsInput.length - motherEventsOutput.length);
-    
     return filtered;
   };
 
   const filteredEvents = applyFilters(events);
-  const eventTree = buildEventTree(filteredEvents);
-
-  // === COMPREHENSIVE DEBUGGING ===
-  console.log('🔍 EVENT FILTERING DEBUG:');
-  console.log('📊 Total events loaded from DB:', events.length);
-  console.log('🔍 Events after applyFilters:', filteredEvents.length);
   
-  // Count mother events at each stage
-  const motherEventsInDB = events.filter(e => e.is_mother_event);
-  const motherEventsAfterFilter = filteredEvents.filter(e => e.is_mother_event);
-  console.log('👑 Mother events in DB:', motherEventsInDB.length);
-  console.log('👑 Mother events after applyFilters:', motherEventsAfterFilter.length);
+  // Apply false event filter (only show events where false_event is explicitly true)
+  const finalEvents = filters.showFalseEventsOnly 
+    ? filteredEvents.filter(e => e.false_event === true)
+    : filteredEvents;
   
-  // Log filter state
-  console.log('⚙️ Filter settings:', {
-    showOnlyMotherEvents: filters.showOnlyMotherEvents,
-    hideFalseEvents: filters.hideFalseEvents,
-    showOnlyUnvalidated: filters.showOnlyUnvalidated
-  });
-
-  // Apply false event detection using database false_event field
-  const eventsWithFalseDetection = filteredEvents.map(event => ({
-    ...event,
-    shouldBeHidden: event.false_event === true
-  }));
-  
-  // Count events with shouldBeHidden
-  const hiddenEvents = eventsWithFalseDetection.filter(e => e.shouldBeHidden);
-  const hiddenMotherEvents = eventsWithFalseDetection.filter(e => e.is_mother_event && e.shouldBeHidden);
-  console.log('🚫 Events marked shouldBeHidden (false_event=TRUE):', hiddenEvents.length);
-  console.log('🚫 Mother events marked shouldBeHidden (false_event=TRUE):', hiddenMotherEvents.length);
-  
-  if (hiddenMotherEvents.length > 0) {
-    console.log('🔍 Hidden mother events details:', hiddenMotherEvents.map(e => ({
-      id: e.id.substring(0, 8),
-      type: e.event_type,
-      circuit: e.circuit_id,
-      timestamp: e.timestamp,
-      shouldBeHidden: e.shouldBeHidden,
-      false_event: e.false_event
-    })));
-  }
-  
-  // Filter out events marked as false (based on user preference)
-  const finalEvents = filters.hideFalseEvents 
-    ? eventsWithFalseDetection.filter(e => !e.shouldBeHidden)
-    : eventsWithFalseDetection;
-  
-  const finalMotherEvents = finalEvents.filter(e => e.is_mother_event);
-  console.log('✅ Final events to display:', finalEvents.length);
-  console.log('✅ Final mother events to display:', finalMotherEvents.length);
-  console.log('==========================================\n');
+  const eventTree = buildEventTree(finalEvents);
 
   // False event detection handlers
   const handleFalseEventRulesChange = (rules: any[]) => {
@@ -1442,10 +1425,11 @@ export default function EventManagement() {
                                   className="rounded text-blue-600"
                                 />
                                 <div className="flex-1">
-                                  <div className="text-sm font-medium text-slate-700">{meter.meter_id}</div>
+                                  <div className="text-sm font-medium text-slate-700">
+                                    {meter.meter_id} | {meter.location}
+                                  </div>
                                   <div className="text-xs text-slate-500">
-                                    {meter.voltage_level && <span className="mr-2">⚡ {meter.voltage_level}</span>}
-                                    {meter.location && <span>{meter.location}</span>}
+                                    {meter.voltage_level && <span>⚡ {meter.voltage_level}</span>}
                                   </div>
                                 </div>
                               </label>
@@ -1470,21 +1454,21 @@ export default function EventManagement() {
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
-                    checked={filters.showOnlyMotherEvents}
-                    onChange={(e) => setFilters((prev: any) => ({ ...prev, showOnlyMotherEvents: e.target.checked }))}
+                    checked={filters.showOnlyStandaloneEvents}
+                    onChange={(e) => setFilters((prev: any) => ({ ...prev, showOnlyStandaloneEvents: e.target.checked }))}
                     className="rounded"
                   />
-                  <span className="text-sm">Only mother events</span>
+                  <span className="text-sm">Show only standalone events</span>
                 </label>
                 
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
-                    checked={filters.hideFalseEvents}
-                    onChange={(e) => setFilters((prev: any) => ({ ...prev, hideFalseEvents: e.target.checked }))}
+                    checked={filters.showFalseEventsOnly}
+                    onChange={(e) => setFilters((prev: any) => ({ ...prev, showFalseEventsOnly: e.target.checked }))}
                     className="rounded"
                   />
-                  <span className="text-sm">Hide false events</span>
+                  <span className="text-sm">Show false events only</span>
                 </label>
               </div>
             </div>
@@ -1496,7 +1480,7 @@ export default function EventManagement() {
                 <h2 className="text-lg font-bold text-slate-900">
                   {viewMode === 'tree' ? 'Event Tree' : 'Events'}
                   <span className="text-xs font-normal text-slate-500 ml-2">
-                    ({eventsWithFalseDetection.length})
+                    ({finalEvents.length})
                   </span>
                 </h2>
                 
@@ -1809,8 +1793,8 @@ export default function EventManagement() {
                 {filters.meterIds.length > 0 && <li>• Meters: {filters.meterIds.length} selected</li>}
                 {filters.minDuration > 0 && <li>• Min Duration: {filters.minDuration}ms</li>}
                 {filters.maxDuration < 300000 && <li>• Max Duration: {filters.maxDuration}ms</li>}
-                {filters.showOnlyMotherEvents && <li>• Only Mother Events</li>}
-                {filters.hideFalseEvents && <li>• Hide False Events</li>}
+                {filters.showOnlyStandaloneEvents && <li>• Only Standalone Events</li>}
+                {filters.showFalseEventsOnly && <li>• Show False Events Only</li>}
               </ul>
             </div>
 
@@ -2065,7 +2049,7 @@ export default function EventManagement() {
                         .filter(m => !eventFormData.substation_id || m.substation_id === eventFormData.substation_id)
                         .map(meter => (
                           <option key={meter.id} value={meter.id}>
-                            {meter.meter_id} - {meter.location}
+                            {meter.meter_id} | {meter.location}
                           </option>
                         ))}
                     </select>
