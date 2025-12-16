@@ -18,7 +18,6 @@ export default function EventManagement() {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'list' | 'tree'>('tree');
   const [showFilters, setShowFilters] = useState(true);
-  const [showOperations, setShowOperations] = useState(false);
   const [activeTab, setActiveTab] = useState<'events' | 'false-detection' | 'analytics'>('events');
   const [falseEventRules, setFalseEventRules] = useState<any[]>([]);
   const [falseEventResults, setFalseEventResults] = useState<any[]>([]);
@@ -65,6 +64,32 @@ export default function EventManagement() {
   // Export states
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  // Manual Event Creation states
+  const [showCreateEventModal, setShowCreateEventModal] = useState(false);
+  const [creatingEvent, setCreatingEvent] = useState(false);
+  const [eventFormData, setEventFormData] = useState({
+    event_type: 'voltage_dip' as const,
+    timestamp: new Date().toISOString().slice(0, 16),
+    substation_id: '',
+    meter_id: '',
+    voltage_level: '',
+    circuit_id: '',
+    duration_ms: 1000,
+    remaining_voltage: 85,
+    affected_phases: ['A', 'B', 'C'],
+    severity: 'medium' as const,
+    magnitude: 0,
+    customer_count: 0,
+    address: '',
+    cause: '',
+    equipment_type: '',
+    weather: '',
+    remarks: '',
+    is_child_event: false,
+    parent_event_id: ''
+  });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadData();
@@ -700,6 +725,263 @@ export default function EventManagement() {
     setSelectedEventIds(new Set());
   };
 
+  // Manual Event Creation Handlers
+  const validateEventForm = () => {
+    const errors: Record<string, string> = {};
+    
+    // Required fields
+    if (!eventFormData.event_type) {
+      errors.event_type = 'Event type is required';
+    }
+    if (!eventFormData.timestamp) {
+      errors.timestamp = 'Timestamp is required';
+    } else {
+      const eventDate = new Date(eventFormData.timestamp);
+      if (eventDate > new Date()) {
+        errors.timestamp = 'Event cannot be in the future';
+      }
+    }
+    if (!eventFormData.substation_id) {
+      errors.substation_id = 'Substation is required';
+    }
+    if (!eventFormData.severity) {
+      errors.severity = 'Severity is required';
+    }
+    
+    // Mother/Child event validation
+    if (eventFormData.is_child_event && !eventFormData.parent_event_id) {
+      errors.parent_event_id = 'Mother event is required for child events';
+    }
+    
+    // Number validations
+    if (eventFormData.duration_ms && (eventFormData.duration_ms < 1 || eventFormData.duration_ms > 300000)) {
+      errors.duration_ms = 'Duration must be between 1ms and 300,000ms (5 minutes)';
+    }
+    if (eventFormData.remaining_voltage && (eventFormData.remaining_voltage < 0 || eventFormData.remaining_voltage > 100)) {
+      errors.remaining_voltage = 'Remaining voltage must be between 0% and 100%';
+    }
+    if (eventFormData.magnitude && eventFormData.magnitude < 0) {
+      errors.magnitude = 'Magnitude must be positive';
+    }
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleCreateEventFormChange = (field: string, value: any) => {
+    setEventFormData(prev => ({ ...prev, [field]: value }));
+    
+    // Clear error for this field when user starts typing
+    if (formErrors[field]) {
+      setFormErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
+  };
+
+  const handleOpenCreateEventModal = () => {
+    console.log('✅ handleOpenCreateEventModal called');
+    console.log('📊 Current substations:', substations.length);
+    console.log('📊 Current meters:', meters.length);
+    setShowCreateEventModal(true);
+    // Reset form
+    setEventFormData({
+      event_type: 'voltage_dip',
+      timestamp: new Date().toISOString().slice(0, 16),
+      substation_id: '',
+      meter_id: '',
+      voltage_level: '',
+      circuit_id: '',
+      duration_ms: 1000,
+      remaining_voltage: 85,
+      affected_phases: ['A', 'B', 'C'],
+      severity: 'medium',
+      magnitude: 0,
+      customer_count: 0,
+      address: '',
+      cause: '',
+      equipment_type: '',
+      weather: '',
+      remarks: '',
+      is_child_event: false,
+      parent_event_id: ''
+    });
+    setFormErrors({});
+  };
+
+  const handleCloseCreateEventModal = () => {
+    setShowCreateEventModal(false);
+    setEventFormData({
+      event_type: 'voltage_dip',
+      timestamp: new Date().toISOString().slice(0, 16),
+      substation_id: '',
+      meter_id: '',
+      voltage_level: '',
+      circuit_id: '',
+      duration_ms: 1000,
+      remaining_voltage: 85,
+      affected_phases: ['A', 'B', 'C'],
+      severity: 'medium',
+      magnitude: 0,
+      customer_count: 0,
+      address: '',
+      cause: '',
+      equipment_type: '',
+      weather: '',
+      remarks: '',
+      is_child_event: false,
+      parent_event_id: ''
+    });
+    setFormErrors({});
+  };
+
+  const handleSubmitCreateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log('📝 Form submitted, validating...');
+    
+    // Validate form
+    if (!validateEventForm()) {
+      console.log('❌ Validation failed:', formErrors);
+      alert('Please fix all validation errors before creating the event.');
+      return;
+    }
+    
+    console.log('✅ Validation passed, creating event...');
+    console.log('📋 Form data:', eventFormData);
+    setCreatingEvent(true);
+    
+    try {
+      // Step 1: Create the event
+      const { data: newEvent, error: eventError } = await supabase
+        .from('pq_events')
+        .insert({
+          event_type: eventFormData.event_type,
+          timestamp: eventFormData.timestamp,
+          substation_id: eventFormData.substation_id || null,
+          meter_id: eventFormData.meter_id || null,
+          voltage_level: eventFormData.voltage_level || null,
+          circuit_id: eventFormData.circuit_id || null,
+          duration_ms: eventFormData.duration_ms || null,
+          remaining_voltage: eventFormData.remaining_voltage || null,
+          affected_phases: eventFormData.affected_phases,
+          severity: eventFormData.severity,
+          magnitude: eventFormData.magnitude || null,
+          customer_count: 0, // Will be calculated
+          address: eventFormData.address || null,
+          cause: eventFormData.cause || null,
+          equipment_type: eventFormData.equipment_type || null,
+          weather: eventFormData.weather || null,
+          remarks: eventFormData.remarks || null,
+          status: 'new',
+          is_mother_event: false,
+          is_child_event: eventFormData.is_child_event,
+          parent_event_id: eventFormData.is_child_event ? eventFormData.parent_event_id : null,
+          false_event: false,
+          validated_by_adms: false,
+          is_special_event: false,
+          manual_create_idr: true
+        })
+        .select()
+        .single();
+
+      if (eventError) throw eventError;
+
+      console.log('✅ Event created successfully:', newEvent.id);
+
+      // Step 2: Auto-calculate customer impacts using customer_transformer_matching
+      if (newEvent && eventFormData.substation_id && eventFormData.circuit_id) {
+        console.log('🔍 Searching for customer impacts...');
+        console.log('   Substation:', eventFormData.substation_id);
+        console.log('   Circuit:', eventFormData.circuit_id);
+        
+        // Get matching customers for this substation and circuit
+        const { data: matchings, error: matchingError } = await supabase
+          .from('customer_transformer_matching')
+          .select('customer_id, customer:customers(*)')
+          .eq('substation_id', eventFormData.substation_id)
+          .eq('circuit_id', eventFormData.circuit_id)
+          .eq('active', true);
+
+        console.log('📊 Found matchings:', matchings?.length || 0);
+
+        if (!matchingError && matchings && matchings.length > 0) {
+          // Map severity to impact level
+          const impactLevelMap: Record<string, string> = {
+            'critical': 'severe',
+            'high': 'moderate',
+            'medium': 'minor',
+            'low': 'minor'
+          };
+          
+          const impactLevel = impactLevelMap[eventFormData.severity] || 'minor';
+          const downtimeMin = Math.round((eventFormData.duration_ms || 0) / 60000);
+
+          console.log('💡 Creating impact records:', {
+            count: matchings.length,
+            impactLevel,
+            downtimeMin
+          });
+
+          // Create customer impact records
+          const impactRecords = matchings.map(m => ({
+            event_id: newEvent.id,
+            customer_id: m.customer_id,
+            impact_level: impactLevel,
+            estimated_downtime_min: downtimeMin
+          }));
+
+          const { error: impactError } = await supabase
+            .from('event_customer_impact')
+            .insert(impactRecords);
+
+          if (impactError) {
+            console.error('❌ Error creating customer impacts:', impactError);
+          } else {
+            console.log('✅ Customer impacts created successfully');
+          }
+
+          // Update event with customer count
+          console.log('🔄 Updating event customer count:', matchings.length);
+          await supabase
+            .from('pq_events')
+            .update({ customer_count: matchings.length })
+            .eq('id', newEvent.id);
+        }
+      }
+
+      // Step 3: Success - reload data and navigate to new event
+      console.log('🔄 Reloading data...');
+      await loadData();
+      handleCloseCreateEventModal();
+      
+      // Navigate to the newly created event
+      if (newEvent) {
+        console.log('🎯 Navigating to new event:', newEvent.id);
+        const event = events.find(e => e.id === newEvent.id) || newEvent;
+        handleEventSelect(event as PQEvent);
+      }
+      
+      console.log('🎉 Event creation complete!');
+      alert('Event created successfully!');
+    } catch (error) {
+      console.error('❌ Error creating event:', error);
+      alert('Failed to create event. Please try again.');
+    } finally {
+      setCreatingEvent(false);
+    }
+  };
+
+  const handleTogglePhase = (phase: string) => {
+    setEventFormData(prev => {
+      const phases = prev.affected_phases.includes(phase)
+        ? prev.affected_phases.filter(p => p !== phase)
+        : [...prev.affected_phases, phase];
+      return { ...prev, affected_phases: phases };
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -916,11 +1198,14 @@ export default function EventManagement() {
               </button>
             </div>
             <button
-              onClick={() => setShowOperations(!showOperations)}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg hover:shadow-lg transition-all"
+              onClick={() => {
+                console.log('🔘 + Event button clicked');
+                handleOpenCreateEventModal();
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:shadow-lg transition-all"
             >
               <Plus className="w-5 h-5" />
-              <span className="font-semibold">Operations</span>
+              <span className="font-semibold">Event</span>
             </button>
           </div>
 
@@ -1217,14 +1502,14 @@ export default function EventManagement() {
                 
                 {/* Export Button */}
                 <div className="relative export-dropdown-container">
-                  <button
-                    onClick={() => setShowExportDropdown(!showExportDropdown)}
-                    disabled={isExporting || finalEvents.length === 0}
-                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Export Events"
-                  >
-                    <Download className="w-5 h-5" />
-                  </button>
+                    <button
+                      onClick={() => setShowExportDropdown(!showExportDropdown)}
+                      disabled={isExporting || finalEvents.length === 0}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Export Events"
+                    >
+                      <Download className="w-5 h-5" />
+                    </button>
                   
                   {showExportDropdown && (
                     <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-2 z-50">
@@ -1551,6 +1836,475 @@ export default function EventManagement() {
           </div>
         </div>
       )}
+
+      {/* Create Event Modal */}
+      {showCreateEventModal && (() => {
+        console.log('🎨 Modal is now rendering, showCreateEventModal:', showCreateEventModal);
+        return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between z-10">
+              <div className="flex items-center gap-3">
+                <Plus className="w-6 h-6 text-green-600" />
+                <h2 className="text-2xl font-bold text-gray-900">Create New Event</h2>
+              </div>
+              <button
+                onClick={handleCloseCreateEventModal}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitCreateEvent} className="p-6 space-y-6">
+              {/* Basic Information Section */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  📋 Basic Information
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Event Type */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Event Type <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={eventFormData.event_type}
+                      onChange={(e) => handleCreateEventFormChange('event_type', e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                        formErrors.event_type ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                      required
+                    >
+                      <option value="voltage_dip">Voltage Dip</option>
+                      <option value="voltage_swell">Voltage Swell</option>
+                      <option value="harmonic">Harmonic Distortion</option>
+                      <option value="interruption">Supply Interruption</option>
+                      <option value="transient">Transient Event</option>
+                      <option value="flicker">Voltage Flicker</option>
+                    </select>
+                    {formErrors.event_type && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.event_type}</p>
+                    )}
+                  </div>
+
+                  {/* Timestamp */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Timestamp <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={eventFormData.timestamp}
+                      onChange={(e) => handleCreateEventFormChange('timestamp', e.target.value)}
+                      max={new Date().toISOString().slice(0, 16)}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                        formErrors.timestamp ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                      required
+                    />
+                    {formErrors.timestamp && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.timestamp}</p>
+                    )}
+                  </div>
+
+                  {/* Substation */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Substation <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={eventFormData.substation_id}
+                      onChange={(e) => {
+                        handleCreateEventFormChange('substation_id', e.target.value);
+                        // Auto-fill voltage level from substation
+                        const substation = substations.find(s => s.id === e.target.value);
+                        if (substation) {
+                          handleCreateEventFormChange('voltage_level', substation.voltage_level);
+                        }
+                      }}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                        formErrors.substation_id ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                      required
+                    >
+                      <option value="">Select substation...</option>
+                      {substations.map(sub => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.name} ({sub.code}) - {sub.voltage_level}
+                        </option>
+                      ))}
+                    </select>
+                    {formErrors.substation_id && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.substation_id}</p>
+                    )}
+                  </div>
+
+                  {/* Severity */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Severity <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={eventFormData.severity}
+                      onChange={(e) => handleCreateEventFormChange('severity', e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                        formErrors.severity ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                      required
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                    {formErrors.severity && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.severity}</p>
+                    )}
+                  </div>
+
+                  {/* Event Type (Mother/Child) */}
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Event Relationship
+                    </label>
+                    <div className="flex items-center gap-6">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="event_relationship"
+                          checked={!eventFormData.is_child_event}
+                          onChange={() => {
+                            handleCreateEventFormChange('is_child_event', false);
+                            handleCreateEventFormChange('parent_event_id', '');
+                          }}
+                          className="w-4 h-4 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-medium text-gray-700">Standalone Event</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="event_relationship"
+                          checked={eventFormData.is_child_event}
+                          onChange={() => handleCreateEventFormChange('is_child_event', true)}
+                          className="w-4 h-4 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-medium text-gray-700">Child Event</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Mother Event Selection (shown only when is_child_event is true) */}
+                  {eventFormData.is_child_event && (
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Mother Event <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={eventFormData.parent_event_id}
+                        onChange={(e) => handleCreateEventFormChange('parent_event_id', e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                          formErrors.parent_event_id ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                        required
+                      >
+                        <option value="">Select mother event...</option>
+                        {events
+                          .filter(e => {
+                            // Only show events that:
+                            // 1. Are not child events themselves
+                            // 2. From the same substation (if substation is selected)
+                            // 3. Within last 24 hours of selected timestamp
+                            const isNotChild = !e.is_child_event;
+                            const sameSubstation = !eventFormData.substation_id || e.substation_id === eventFormData.substation_id;
+                            const eventTime = new Date(e.timestamp).getTime();
+                            const formTime = new Date(eventFormData.timestamp).getTime();
+                            const within24Hours = Math.abs(eventTime - formTime) <= 24 * 60 * 60 * 1000; // 24 hours
+                            
+                            return isNotChild && sameSubstation && within24Hours;
+                          })
+                          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                          .map(event => (
+                            <option key={event.id} value={event.id}>
+                              {event.event_type.replace('_', ' ')} - {new Date(event.timestamp).toLocaleString()} 
+                              {event.is_mother_event ? ' (Mother Event)' : ''} 
+                              - {event.substation?.name || event.substation?.code || 'Unknown'}
+                            </option>
+                          ))}
+                      </select>
+                      {formErrors.parent_event_id && (
+                        <p className="text-xs text-red-500 mt-1">{formErrors.parent_event_id}</p>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        Showing events from the same substation within 24 hours of selected timestamp
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Measurement Details Section */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  ⚡ Measurement Details
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* PQ Meter */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      PQ Meter
+                    </label>
+                    <select
+                      value={eventFormData.meter_id}
+                      onChange={(e) => handleCreateEventFormChange('meter_id', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select meter (optional)...</option>
+                      {meters
+                        .filter(m => !eventFormData.substation_id || m.substation_id === eventFormData.substation_id)
+                        .map(meter => (
+                          <option key={meter.id} value={meter.id}>
+                            {meter.meter_id} - {meter.location}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {/* Circuit ID */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Circuit ID
+                    </label>
+                    <input
+                      type="text"
+                      value={eventFormData.circuit_id}
+                      onChange={(e) => handleCreateEventFormChange('circuit_id', e.target.value)}
+                      placeholder="e.g., H1, H2, H3"
+                      maxLength={50}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* Duration */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Duration (ms)
+                    </label>
+                    <input
+                      type="number"
+                      value={eventFormData.duration_ms}
+                      onChange={(e) => handleCreateEventFormChange('duration_ms', parseInt(e.target.value) || 0)}
+                      min="1"
+                      max="300000"
+                      placeholder="1000"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                        formErrors.duration_ms ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                    />
+                    {formErrors.duration_ms && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.duration_ms}</p>
+                    )}
+                  </div>
+
+                  {/* Remaining Voltage */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Remaining Voltage (%)
+                    </label>
+                    <input
+                      type="number"
+                      value={eventFormData.remaining_voltage}
+                      onChange={(e) => handleCreateEventFormChange('remaining_voltage', parseFloat(e.target.value) || 0)}
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      placeholder="85.5"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                        formErrors.remaining_voltage ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                    />
+                    {formErrors.remaining_voltage && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.remaining_voltage}</p>
+                    )}
+                  </div>
+
+                  {/* Magnitude */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Magnitude (%, THD%)
+                    </label>
+                    <input
+                      type="number"
+                      value={eventFormData.magnitude}
+                      onChange={(e) => handleCreateEventFormChange('magnitude', parseFloat(e.target.value) || 0)}
+                      min="0"
+                      step="0.1"
+                      placeholder="15.5"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                        formErrors.magnitude ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                    />
+                    {formErrors.magnitude && (
+                      <p className="text-xs text-red-500 mt-1">{formErrors.magnitude}</p>
+                    )}
+                  </div>
+
+                  {/* Affected Phases */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Affected Phases
+                    </label>
+                    <div className="flex gap-4 items-center pt-2">
+                      {['A', 'B', 'C'].map(phase => (
+                        <label key={phase} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={eventFormData.affected_phases.includes(phase)}
+                            onChange={() => handleTogglePhase(phase)}
+                            className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                          />
+                          <span className="text-sm font-medium">Phase {phase}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Additional Information Section */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  🔍 Additional Information
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Cause */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Cause
+                    </label>
+                    <select
+                      value={eventFormData.cause}
+                      onChange={(e) => handleCreateEventFormChange('cause', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select cause (optional)...</option>
+                      <option value="Equipment Failure">Equipment Failure</option>
+                      <option value="Lightning Strike">Lightning Strike</option>
+                      <option value="Overload">Overload</option>
+                      <option value="Tree Contact">Tree Contact</option>
+                      <option value="Animal Contact">Animal Contact</option>
+                      <option value="Cable Fault">Cable Fault</option>
+                      <option value="Transformer Failure">Transformer Failure</option>
+                      <option value="Circuit Breaker Trip">Circuit Breaker Trip</option>
+                      <option value="Planned Maintenance">Planned Maintenance</option>
+                      <option value="Weather Conditions">Weather Conditions</option>
+                      <option value="Third Party Damage">Third Party Damage</option>
+                      <option value="Aging Infrastructure">Aging Infrastructure</option>
+                      <option value="Unknown">Unknown</option>
+                    </select>
+                  </div>
+
+                  {/* Equipment Type */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Equipment Type
+                    </label>
+                    <input
+                      type="text"
+                      value={eventFormData.equipment_type}
+                      onChange={(e) => handleCreateEventFormChange('equipment_type', e.target.value)}
+                      placeholder="e.g., Transformer, Circuit Breaker"
+                      maxLength={100}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* Weather */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Weather
+                    </label>
+                    <select
+                      value={eventFormData.weather}
+                      onChange={(e) => handleCreateEventFormChange('weather', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select weather (optional)...</option>
+                      <option value="Sunny">Sunny</option>
+                      <option value="Rainy">Rainy</option>
+                      <option value="Stormy">Stormy</option>
+                      <option value="Cloudy">Cloudy</option>
+                      <option value="Windy">Windy</option>
+                      <option value="Clear">Clear</option>
+                    </select>
+                  </div>
+
+                  {/* Address */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Address
+                    </label>
+                    <input
+                      type="text"
+                      value={eventFormData.address}
+                      onChange={(e) => handleCreateEventFormChange('address', e.target.value)}
+                      placeholder="Event location address"
+                      maxLength={200}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* Remarks */}
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Remarks
+                    </label>
+                    <textarea
+                      value={eventFormData.remarks}
+                      onChange={(e) => handleCreateEventFormChange('remarks', e.target.value)}
+                      placeholder="Additional notes about the event..."
+                      maxLength={500}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Form Actions */}
+              <div className="flex gap-3 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={handleCloseCreateEventModal}
+                  disabled={creatingEvent}
+                  className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingEvent}
+                  className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {creatingEvent ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-5 h-5" />
+                      Create Event
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+        );
+      })()}
     </div>
   );
 }
