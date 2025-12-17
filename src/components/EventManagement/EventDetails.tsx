@@ -45,6 +45,11 @@ export default function EventDetails({ event: initialEvent, substation: initialS
   const [isUngroupMode, setIsUngroupMode] = useState(false);
   const [selectedChildIds, setSelectedChildIds] = useState<string[]>([]);
   
+  // Mark False state
+  const [isMarkFalseMode, setIsMarkFalseMode] = useState(false);
+  const [selectedFalseChildIds, setSelectedFalseChildIds] = useState<string[]>([]);
+  const [markingFalse, setMarkingFalse] = useState(false);
+  
   // Export states
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -342,6 +347,146 @@ export default function EventDetails({ event: initialEvent, substation: initialS
       setSelectedChildIds([]);
     } else {
       setSelectedChildIds(childEvents.map(child => child.id));
+    }
+  };
+
+  // Convert false event to normal event
+  const handleConvertFalseToStandalone = async () => {
+    console.log('🔄 [handleConvertFalseToStandalone] Starting conversion', {
+      eventId: currentEvent.id,
+      false_event: currentEvent.false_event,
+      is_child_event: currentEvent.is_child_event,
+      parent_event_id: currentEvent.parent_event_id
+    });
+
+    if (!confirm('Are you sure you want to convert this false event to a normal event? This will mark it as a real event.')) {
+      return;
+    }
+
+    try {
+      const updateData: any = {
+        false_event: false,
+        parent_event_id: null,
+        is_child_event: false,
+        remarks: (currentEvent.remarks || '') + `\n[Converted from false event on ${new Date().toISOString().split('T')[0]}]`
+      };
+
+      const { error } = await supabase
+        .from('pq_events')
+        .update(updateData)
+        .eq('id', currentEvent.id);
+
+      if (error) throw error;
+
+      console.log('✅ Successfully converted false event to standalone event');
+      
+      // Update local state
+      setCurrentEvent({ ...currentEvent, ...updateData });
+      
+      // Notify parent to reload data
+      if (onEventUpdated) {
+        onEventUpdated();
+      }
+
+      alert('Event successfully converted to standalone event.');
+    } catch (error) {
+      console.error('❌ Error converting false event to standalone:', error);
+      alert('Failed to convert event. Please try again.');
+    }
+  };
+
+  // Toggle mark false mode - shows checkboxes
+  const handleMarkFalseMode = () => {
+    setIsMarkFalseMode(true);
+    setSelectedFalseChildIds([]);
+  };
+
+  // Cancel mark false mode - hides checkboxes and clears selection
+  const handleCancelMarkFalse = () => {
+    setIsMarkFalseMode(false);
+    setSelectedFalseChildIds([]);
+  };
+
+  // Save mark false - mark selected children as false events
+  const handleSaveMarkFalse = async () => {
+    if (selectedFalseChildIds.length === 0) {
+      alert('Please select at least one child event to mark as false.');
+      return;
+    }
+
+    const confirmMessage = `Are you sure you want to mark ${selectedFalseChildIds.length} selected event(s) as false events? They will be removed from this event group.`;
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    setMarkingFalse(true);
+    try {
+      const timestamp = new Date().toISOString().split('T')[0];
+      const updateData: any = {
+        false_event: true,
+        validated_by_adms: true, // Required by database constraint
+        parent_event_id: null,
+        is_child_event: false,
+      };
+
+      // Update all selected child events
+      for (const childId of selectedFalseChildIds) {
+        const childEvent = childEvents.find(c => c.id === childId);
+        const remarkAddition = `\n[Marked as false event, removed from group on ${timestamp}]`;
+        
+        const { error } = await supabase
+          .from('pq_events')
+          .update({
+            ...updateData,
+            remarks: (childEvent?.remarks || '') + remarkAddition
+          })
+          .eq('id', childId);
+
+        if (error) {
+          console.error(`Error marking child ${childId} as false:`, error);
+          throw error;
+        }
+      }
+
+      console.log(`✅ Successfully marked ${selectedFalseChildIds.length} child event(s) as false events`);
+      
+      // Reset mark false mode and selection
+      setIsMarkFalseMode(false);
+      setSelectedFalseChildIds([]);
+      
+      // Reload child events and notify parent
+      await loadChildEvents(currentEvent.id);
+      if (onEventUpdated) {
+        onEventUpdated();
+      }
+
+      alert(`Successfully marked ${selectedFalseChildIds.length} event(s) as false events.`);
+    } catch (error) {
+      console.error('❌ Error marking child events as false:', error);
+      alert('Failed to mark events as false. Please try again.');
+    } finally {
+      setMarkingFalse(false);
+    }
+  };
+
+  // Handle checkbox selection toggle for mark false
+  const handleMarkFalseCheckboxChange = (childId: string) => {
+    setSelectedFalseChildIds(prev => {
+      if (prev.includes(childId)) {
+        return prev.filter(id => id !== childId);
+      } else {
+        return [...prev, childId];
+      }
+    });
+  };
+
+  // Toggle select all checkboxes for mark false (only non-false events)
+  const handleSelectAllForMarkFalse = () => {
+    const nonFalseChildren = childEvents.filter(child => !child.false_event);
+    if (selectedFalseChildIds.length === nonFalseChildren.length) {
+      setSelectedFalseChildIds([]);
+    } else {
+      setSelectedFalseChildIds(nonFalseChildren.map(child => child.id));
     }
   };
 
@@ -737,6 +882,37 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                 ))}
               </div>
             </div>
+
+            {/* False Event Actions */}
+            {(() => {
+              console.log('🔍 [Convert Button Condition]', {
+                activeTab,
+                false_event: currentEvent.false_event,
+                shouldShow: currentEvent.false_event === true
+              });
+              return currentEvent.false_event;
+            })() && (
+              <div className="p-4 bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle className="w-5 h-5 text-orange-600" />
+                    <div>
+                      <h3 className="font-semibold text-slate-900">False Event Detected</h3>
+                      <p className="text-sm text-slate-600 mt-0.5">
+                        This event has been validated as a false detection
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleConvertFalseToStandalone}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all font-semibold shadow-md hover:shadow-lg"
+                  >
+                    <CheckCircle className="w-5 h-5" />
+                    Convert to normal event
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -980,7 +1156,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
               )}
             </button>
 
-            {/* Ungroup Action Buttons */}
+            {/* Ungroup & Mark False Action Buttons */}
             {childEventsExpanded && childEvents.length > 0 && (
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
                 <div className="flex items-center gap-2 text-sm text-slate-600">
@@ -1000,18 +1176,46 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                       </span>
                     </>
                   )}
+                  {isMarkFalseMode && (
+                    <>
+                      <input
+                        type="checkbox"
+                        checked={selectedFalseChildIds.length === childEvents.filter(c => !c.false_event).length && childEvents.filter(c => !c.false_event).length > 0}
+                        onChange={handleSelectAllForMarkFalse}
+                        className="h-4 w-4 text-red-600 rounded border-slate-300 focus:ring-red-500"
+                      />
+                      <span className="font-medium">
+                        {selectedFalseChildIds.length > 0 
+                          ? `${selectedFalseChildIds.length} selected`
+                          : 'Select all'
+                        }
+                      </span>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
-                  {!isUngroupMode ? (
-                    <button
-                      onClick={handleUngroupMode}
-                      disabled={ungrouping}
-                      className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <Ungroup className="w-4 h-4" />
-                      Ungroup
-                    </button>
-                  ) : (
+                  {!isUngroupMode && !isMarkFalseMode ? (
+                    <>
+                      <button
+                        onClick={handleUngroupMode}
+                        disabled={ungrouping || markingFalse}
+                        className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Ungroup className="w-4 h-4" />
+                        Ungroup
+                      </button>
+                      {childEvents.some(child => !child.false_event) && (
+                        <button
+                          onClick={handleMarkFalseMode}
+                          disabled={ungrouping || markingFalse}
+                          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          Mark False
+                        </button>
+                      )}
+                    </>
+                  ) : isUngroupMode ? (
                     <>
                       <button
                         onClick={handleCancelUngroup}
@@ -1027,7 +1231,26 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                         className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
                       >
                         <Save className="w-4 h-4" />
-                        {ungrouping ? 'Saving...' : 'Ungroup'}
+                        {ungrouping ? 'Saving...' : 'Save'}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={handleCancelMarkFalse}
+                        disabled={markingFalse}
+                        className="flex items-center gap-2 px-4 py-2 bg-slate-500 text-white rounded-lg hover:bg-slate-600 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <XIcon className="w-4 h-4" />
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSaveMarkFalse}
+                        disabled={markingFalse || selectedFalseChildIds.length === 0}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Save className="w-4 h-4" />
+                        {markingFalse ? 'Saving...' : 'Save'}
                       </button>
                     </>
                   )}
@@ -1046,13 +1269,19 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                   <table className="w-full">
                     <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
-                        {isUngroupMode && (
+                        {(isUngroupMode || isMarkFalseMode) && (
                           <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase w-12">
                             <input
                               type="checkbox"
-                              checked={selectedChildIds.length === childEvents.length}
-                              onChange={handleSelectAllChildren}
-                              className="h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                              checked={
+                                isUngroupMode 
+                                  ? selectedChildIds.length === childEvents.length
+                                  : selectedFalseChildIds.length === childEvents.filter(c => !c.false_event).length && childEvents.filter(c => !c.false_event).length > 0
+                              }
+                              onChange={isUngroupMode ? handleSelectAllChildren : handleSelectAllForMarkFalse}
+                              className={`h-4 w-4 rounded border-slate-300 ${
+                                isUngroupMode ? 'text-blue-600 focus:ring-blue-500' : 'text-red-600 focus:ring-red-500'
+                              }`}
                             />
                           </th>
                         )}
@@ -1069,30 +1298,64 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
-                      {childEvents.map((childEvent, index) => (
-                        <tr
-                          key={childEvent.id}
-                          className={`hover:bg-slate-50 transition-colors ${
-                            isUngroupMode ? '' : 'cursor-pointer'
-                          } ${
-                            selectedChildIds.includes(childEvent.id) ? 'bg-blue-50' : ''
-                          }`}
-                          onClick={() => !isUngroupMode && handleChildEventClick(childEvent)}
-                        >
-                          {isUngroupMode && (
-                            <td className="px-4 py-3">
-                              <input
-                                type="checkbox"
-                                checked={selectedChildIds.includes(childEvent.id)}
-                                onChange={() => handleCheckboxChange(childEvent.id)}
-                                onClick={(e) => e.stopPropagation()}
-                                className="h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
-                              />
-                            </td>
-                          )}
+                      {childEvents.map((childEvent, index) => {
+                        const isFalseEvent = childEvent.false_event;
+                        const isDisabledInMarkFalseMode = isMarkFalseMode && isFalseEvent;
+                        
+                        return (
+                          <tr
+                            key={childEvent.id}
+                            className={`transition-colors ${
+                              (isUngroupMode || isMarkFalseMode) ? '' : 'cursor-pointer hover:bg-slate-50'
+                            } ${
+                              selectedChildIds.includes(childEvent.id) ? 'bg-blue-50' : ''
+                            } ${
+                              selectedFalseChildIds.includes(childEvent.id) ? 'bg-red-50' : ''
+                            } ${
+                              isDisabledInMarkFalseMode ? 'opacity-50 bg-slate-100' : ''
+                            }`}
+                            onClick={() => {
+                              if (!isUngroupMode && !isMarkFalseMode) {
+                                handleChildEventClick(childEvent);
+                              }
+                            }}
+                          >
+                            {isUngroupMode && (
+                              <td className="px-4 py-3">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedChildIds.includes(childEvent.id)}
+                                  onChange={() => handleCheckboxChange(childEvent.id)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                                />
+                              </td>
+                            )}
+                            {isMarkFalseMode && (
+                              <td className="px-4 py-3">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedFalseChildIds.includes(childEvent.id)}
+                                  onChange={() => handleMarkFalseCheckboxChange(childEvent.id)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  disabled={isFalseEvent}
+                                  className="h-4 w-4 text-red-600 rounded border-slate-300 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title={isFalseEvent ? 'Already marked as false event' : 'Select to mark as false'}
+                                />
+                              </td>
+                            )}
                           <td className="px-4 py-3 text-sm text-slate-600">{index + 1}</td>
-                          <td className="px-4 py-3 text-sm font-medium text-slate-900 capitalize">
-                            {childEvent.event_type.replace('_', ' ')}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-slate-900 capitalize">
+                                {childEvent.event_type.replace('_', ' ')}
+                              </span>
+                              {isFalseEvent && (
+                                <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-bold rounded border border-orange-300">
+                                  FALSE EVENT
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3 text-sm text-slate-600">
                             {new Date(childEvent.timestamp).toLocaleString()}
@@ -1137,7 +1400,8 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                             </button>
                           </td>
                         </tr>
-                      ))}
+                      );
+                      })}
                     </tbody>
                   </table>
                 ) : (
@@ -1214,6 +1478,42 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                       <p className="text-sm text-slate-600 mt-1">
                         {currentEvent.grouping_type === 'automatic' ? '🤖 Automatically grouped' : '👤 Manually grouped'}
                       </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* False Event Detection (if applicable) */}
+                {currentEvent.false_event && currentEvent.remarks?.includes('[Marked as false event') && (
+                  <div className="flex items-start gap-4 relative">
+                    <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center text-white font-bold text-sm z-10">
+                      <XCircle className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 pt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-900">🚫 Marked as False Event</span>
+                        <span className="text-sm text-slate-600">
+                          {currentEvent.remarks.match(/\[Marked as false event.*?(\d{4}-\d{2}-\d{2})/)?.[1] || 'Unknown date'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-600 mt-1">Event validated as false detection</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Converted from False Event (if applicable) */}
+                {!currentEvent.false_event && currentEvent.remarks?.includes('[Converted from false event') && (
+                  <div className="flex items-start gap-4 relative">
+                    <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-sm z-10">
+                      <CheckCircle className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 pt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-900">✅ Converted from False Event</span>
+                        <span className="text-sm text-slate-600">
+                          {currentEvent.remarks.match(/\[Converted from false event.*?(\d{4}-\d{2}-\d{2})/)?.[1] || 'Unknown date'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-600 mt-1">Re-validated as real event</p>
                     </div>
                   </div>
                 )}
