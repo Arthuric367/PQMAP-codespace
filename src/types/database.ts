@@ -60,6 +60,11 @@ export interface PQMeter {
   ip_address?: string;
   framework_version?: string;
   active?: boolean;
+  // Transformer Code fields (Migration 20251217000000)
+  area: string;
+  ss400?: string | null;
+  ss132?: string | null;
+  ss011?: string | null;
   substation?: Substation;
 }
 

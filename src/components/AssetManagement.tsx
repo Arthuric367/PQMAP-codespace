@@ -152,13 +152,17 @@ export default function AssetManagement() {
         'Substation': substationMap[meter.substation_id]?.name || 'Unknown',
         'Substation Code': substationMap[meter.substation_id]?.code || '-',
         'Circuit': meter.circuit_id || '-',
+        'Area': meter.area || '-',
         'Location': meter.location || '-',
+        'SS400': meter.ss400 || '-',
+        'SS132': meter.ss132 || '-',
+        'SS011': meter.ss011 || '-',
+        'Status': meter.status,
         'OC': meter.oc || '-',
         'Brand': meter.brand || '-',
         'Model': meter.model || '-',
         'Nominal Voltage': meter.nominal_voltage ? `${meter.nominal_voltage} kV` : '-',
         'Active': meter.active !== undefined ? (meter.active ? 'Yes' : 'No') : '-',
-        'Status': meter.status,
         'Region': meter.region || '-',
         'IP Address': meter.ip_address || '-',
         'Meter Type': meter.meter_type || '-',
@@ -182,13 +186,17 @@ export default function AssetManagement() {
         { wch: 25 }, // Substation
         { wch: 15 }, // Substation Code
         { wch: 12 }, // Circuit
+        { wch: 10 }, // Area
         { wch: 20 }, // Location
+        { wch: 12 }, // SS400
+        { wch: 12 }, // SS132
+        { wch: 12 }, // SS011
+        { wch: 10 }, // Status
         { wch: 8 },  // OC
         { wch: 12 }, // Brand
         { wch: 15 }, // Model
         { wch: 15 }, // Nominal Voltage
         { wch: 8 },  // Active
-        { wch: 10 }, // Status
         { wch: 10 }, // Region
         { wch: 15 }, // IP Address
         { wch: 12 }, // Meter Type
@@ -354,18 +362,18 @@ export default function AssetManagement() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-200">
-                <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">Name</th>
+                <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">Meter ID</th>
                 <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">Site ID</th>
                 <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">Volt Level</th>
                 <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">Substation</th>
                 <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">Circuit</th>
+                <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">Area</th>
                 <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">Location</th>
-                <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">OC</th>
-                <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">Brand</th>
-                <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">Model</th>
-                <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">Nominal</th>
-                <th className="text-center py-2 px-2 text-sm font-semibold text-slate-700">Active</th>
-                <th className="text-center py-2 px-2 text-sm font-semibold text-slate-700">Other</th>
+                <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">SS400</th>
+                <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">SS132</th>
+                <th className="text-left py-2 px-2 text-sm font-semibold text-slate-700">SS011</th>
+                <th className="text-center py-2 px-2 text-sm font-semibold text-slate-700">Status</th>
+                <th className="text-center py-2 px-2 text-sm font-semibold text-slate-700">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -379,23 +387,25 @@ export default function AssetManagement() {
                     <td className="py-2 px-2 text-sm text-slate-700">{meter.voltage_level || '-'}</td>
                     <td className="py-2 px-2 text-sm text-slate-700">{substation?.name || 'Unknown'}</td>
                     <td className="py-2 px-2 text-sm text-slate-700">{meter.circuit_id || '-'}</td>
+                    <td className="py-2 px-2 text-sm text-slate-700">{meter.area || '-'}</td>
                     <td className="py-2 px-2 text-sm text-slate-700">{meter.location || '-'}</td>
-                    <td className="py-2 px-2 text-sm text-slate-700">{meter.oc || '-'}</td>
-                    <td className="py-2 px-2 text-sm text-slate-700">{meter.brand || '-'}</td>
-                    <td className="py-2 px-2 text-sm text-slate-700">{meter.model || '-'}</td>
                     <td className="py-2 px-2 text-sm text-slate-700">
-                      {meter.nominal_voltage ? `${meter.nominal_voltage} kV` : '-'}
+                      {meter.voltage_level === '400kV' ? (meter.ss400 || '-') : '-'}
+                    </td>
+                    <td className="py-2 px-2 text-sm text-slate-700">
+                      {(meter.voltage_level === '132kV' || meter.voltage_level === '11kV') ? (meter.ss132 || '-') : '-'}
+                    </td>
+                    <td className="py-2 px-2 text-sm text-slate-700">
+                      {meter.voltage_level === '11kV' ? (meter.ss011 || '-') : '-'}
                     </td>
                     <td className="py-2 px-2 text-center">
-                      {meter.active !== undefined ? (
-                        meter.active ? (
-                          <Check className="w-4 h-4 text-green-600 mx-auto" />
-                        ) : (
-                          <X className="w-4 h-4 text-red-600 mx-auto" />
-                        )
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
+                      <span className={`px-2 py-1 rounded text-xs font-bold ${
+                        meter.status === 'active' ? 'bg-green-100 text-green-700' :
+                        meter.status === 'abnormal' ? 'bg-orange-100 text-orange-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {meter.status}
+                      </span>
                     </td>
                     <td className="py-2 px-2 text-center">
                       <button
@@ -726,12 +736,16 @@ export default function AssetManagement() {
                     </p>
                   </div>
                   <div className="bg-slate-50 p-3 rounded-lg">
-                    <p className="text-xs font-medium text-slate-600 mb-1">Location</p>
-                    <p className="text-sm font-semibold text-slate-900">{selectedMeter.location || '-'}</p>
-                  </div>
-                  <div className="bg-slate-50 p-3 rounded-lg">
                     <p className="text-xs font-medium text-slate-600 mb-1">Circuit</p>
                     <p className="text-sm font-semibold text-slate-900">{selectedMeter.circuit_id || '-'}</p>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-lg">
+                    <p className="text-xs font-medium text-slate-600 mb-1">Area</p>
+                    <p className="text-sm font-semibold text-slate-900">{selectedMeter.area || '-'}</p>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-lg">
+                    <p className="text-xs font-medium text-slate-600 mb-1">Location</p>
+                    <p className="text-sm font-semibold text-slate-900">{selectedMeter.location || '-'}</p>
                   </div>
                   <div className="bg-slate-50 p-3 rounded-lg">
                     <p className="text-xs font-medium text-slate-600 mb-1">Region</p>
@@ -745,6 +759,24 @@ export default function AssetManagement() {
                     <p className="text-xs font-medium text-slate-600 mb-1">IP Address</p>
                     <p className="text-sm font-semibold text-slate-900">{selectedMeter.ip_address || '-'}</p>
                   </div>
+                  {selectedMeter.ss400 && (
+                    <div className="bg-slate-50 p-3 rounded-lg">
+                      <p className="text-xs font-medium text-slate-600 mb-1">SS400 (400kV Transformer)</p>
+                      <p className="text-sm font-semibold text-slate-900">{selectedMeter.ss400}</p>
+                    </div>
+                  )}
+                  {selectedMeter.ss132 && (
+                    <div className="bg-slate-50 p-3 rounded-lg">
+                      <p className="text-xs font-medium text-slate-600 mb-1">SS132 (132kV Transformer)</p>
+                      <p className="text-sm font-semibold text-slate-900">{selectedMeter.ss132}</p>
+                    </div>
+                  )}
+                  {selectedMeter.ss011 && (
+                    <div className="bg-slate-50 p-3 rounded-lg">
+                      <p className="text-xs font-medium text-slate-600 mb-1">SS011 (11kV Transformer)</p>
+                      <p className="text-sm font-semibold text-slate-900">{selectedMeter.ss011}</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
