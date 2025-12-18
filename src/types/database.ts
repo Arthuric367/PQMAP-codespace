@@ -5,7 +5,7 @@ export type EventStatus = 'new' | 'acknowledged' | 'investigating' | 'resolved';
 export type MeterStatus = 'active' | 'abnormal' | 'inactive';
 export type SubstationStatus = 'operational' | 'maintenance' | 'offline';
 export type CustomerType = 'residential' | 'commercial' | 'industrial';
-export type ServiceType = 'site_survey' | 'harmonic_analysis' | 'consultation';
+export type ServiceType = 'site_survey' | 'harmonic_analysis' | 'consultation' | 'on_site_study' | 'power_quality_audit' | 'installation_support';
 export type ReportType = 'supply_reliability' | 'annual_pq' | 'meter_availability' | 'customer_impact' | 'harmonic_analysis' | 'voltage_quality';
 export type NotificationType = 'email' | 'sms' | 'both';
 export type NotificationStatus = 'pending' | 'sent' | 'failed';
@@ -175,6 +175,48 @@ export interface EventCustomerImpact {
   event?: PQEvent;
 }
 
+export interface IDRRecord {
+  id: string;
+  event_id: string;
+  // Basic Information
+  idr_no: string | null;
+  status: string | null;
+  voltage_level: string | null;
+  duration_ms: number | null;
+  // Location & Equipment
+  address: string | null;
+  equipment_type: string | null;
+  // Voltage Measurements
+  v1: number | null;
+  v2: number | null;
+  v3: number | null;
+  // Fault Details
+  fault_type: string | null;
+  // Cause Analysis
+  cause_group: string | null;
+  cause: string; // REQUIRED
+  remarks: string | null;
+  object_part_group: string | null;
+  object_part_code: string | null;
+  damage_group: string | null;
+  damage_code: string | null;
+  // Environment & Operations
+  outage_type: string | null;
+  weather: string | null;
+  weather_condition: string | null;
+  responsible_oc: string | null;
+  total_cmi: number | null;
+  // CSV-specific fields
+  equipment_affected: string | null;
+  restoration_actions: string | null;
+  notes: string | null;
+  // Metadata
+  uploaded_by: string | null;
+  upload_source: 'csv_import' | 'manual_entry';
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Notification {
   id: string;
   event_id: string | null;
@@ -210,7 +252,10 @@ export interface PQServiceRecord {
   recommendations: string | null;
   benchmark_standard: string | null;
   engineer_id: string | null;
+  event_id: string | null;
+  content: string | null;
   created_at: string;
+  updated_at: string;
   customer?: Customer;
   engineer?: Profile;
 }

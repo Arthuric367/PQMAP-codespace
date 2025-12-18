@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Clock, MapPin, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon } from 'lucide-react';
-import { PQEvent, Substation, EventCustomerImpact } from '../../types/database';
+import { Clock, MapPin, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Upload, FileDown } from 'lucide-react';
+import { PQEvent, Substation, EventCustomerImpact, IDRRecord } from '../../types/database';
 import { supabase } from '../../lib/supabase';
 import WaveformDisplay from './WaveformDisplay';
 import { MotherEventGroupingService } from '../../services/mother-event-grouping';
@@ -54,31 +54,46 @@ export default function EventDetails({ event: initialEvent, substation: initialS
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  // IDR upload states
+  const [showUploadDropdown, setShowUploadDropdown] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importResults, setImportResults] = useState<{
+    successful: number;
+    failed: number;
+    errors: Array<{ row: number; column: string; message: string; eventId?: string }>;
+  } | null>(null);
+
   // IDR editing states
   const [isEditingIDR, setIsEditingIDR] = useState(false);
+  const [idrRecord, setIDRRecord] = useState<IDRRecord | null>(null);
+  const [loadingIDR, setLoadingIDR] = useState(false);
   const [idrFormData, setIDRFormData] = useState({
-    idr_no: currentEvent.idr_no || '',
+    idr_no: '',
     status: currentEvent.status,
-    voltage_level: currentEvent.voltage_level || '',
-    address: currentEvent.address || '',
-    duration_ms: currentEvent.duration_ms || 0,
-    v1: currentEvent.v1 || 0,
-    v2: currentEvent.v2 || 0,
-    v3: currentEvent.v3 || 0,
-    equipment_type: currentEvent.equipment_type || '',
-    cause_group: currentEvent.cause_group || '',
-    cause: currentEvent.cause || '',
-    remarks: currentEvent.remarks || '',
-    object_part_group: currentEvent.object_part_group || '',
-    object_part_code: currentEvent.object_part_code || '',
-    damage_group: currentEvent.damage_group || '',
-    damage_code: currentEvent.damage_code || '',
-    fault_type: currentEvent.fault_type || '',
-    outage_type: currentEvent.outage_type || '',
-    weather: currentEvent.weather || '',
-    weather_condition: currentEvent.weather_condition || '',
-    responsible_oc: currentEvent.responsible_oc || '',
-    total_cmi: currentEvent.total_cmi || 0,
+    voltage_level: '',
+    address: '',
+    duration_ms: 0,
+    v1: 0,
+    v2: 0,
+    v3: 0,
+    equipment_type: '',
+    cause_group: '',
+    cause: '',
+    remarks: '',
+    object_part_group: '',
+    object_part_code: '',
+    damage_group: '',
+    damage_code: '',
+    fault_type: '',
+    outage_type: '',
+    weather: '',
+    weather_condition: '',
+    responsible_oc: '',
+    total_cmi: 0,
+    equipment_affected: '',
+    restoration_actions: '',
+    notes: '',
   });
   const [savingIDR, setSavingIDR] = useState(false);
 
@@ -104,6 +119,11 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     setNavigationStack([]);
   }, [initialEvent, initialSubstation, initialImpacts]);
 
+  // Load IDR record for current event
+  useEffect(() => {
+    loadIDRRecord(currentEvent.id);
+  }, [currentEvent.id]);
+
   // Load child events for mother events
   useEffect(() => {
     if (currentEvent.is_mother_event) {
@@ -113,18 +133,104 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     }
   }, [currentEvent.id, currentEvent.is_mother_event]);
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (showExportDropdown && !target.closest('.export-dropdown-container')) {
         setShowExportDropdown(false);
       }
+      if (showUploadDropdown && !target.closest('.upload-dropdown-container')) {
+        setShowUploadDropdown(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showExportDropdown]);
+  }, [showExportDropdown, showUploadDropdown]);
+
+  const loadIDRRecord = async (eventId: string) => {
+    setLoadingIDR(true);
+    try {
+      const { data, error } = await supabase
+        .from('idr_records')
+        .select('*')
+        .eq('event_id', eventId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.error('Error loading IDR record:', error);
+      }
+      
+      if (data) {
+        console.log('✅ IDR record loaded:', data);
+        setIDRRecord(data);
+        // Populate form with IDR record data
+        setIDRFormData({
+          idr_no: data.idr_no || '',
+          status: data.status || currentEvent.status,
+          voltage_level: data.voltage_level || '',
+          address: data.address || '',
+          duration_ms: data.duration_ms || 0,
+          v1: data.v1 || 0,
+          v2: data.v2 || 0,
+          v3: data.v3 || 0,
+          equipment_type: data.equipment_type || '',
+          cause_group: data.cause_group || '',
+          cause: data.cause || '',
+          remarks: data.remarks || '',
+          object_part_group: data.object_part_group || '',
+          object_part_code: data.object_part_code || '',
+          damage_group: data.damage_group || '',
+          damage_code: data.damage_code || '',
+          fault_type: data.fault_type || '',
+          outage_type: data.outage_type || '',
+          weather: data.weather || '',
+          weather_condition: data.weather_condition || '',
+          responsible_oc: data.responsible_oc || '',
+          total_cmi: data.total_cmi || 0,
+          equipment_affected: data.equipment_affected || '',
+          restoration_actions: data.restoration_actions || '',
+          notes: data.notes || '',
+        });
+      } else {
+        console.log('ℹ️ No IDR record found, showing empty form');
+        setIDRRecord(null);
+        // Reset form to empty
+        setIDRFormData({
+          idr_no: '',
+          status: currentEvent.status,
+          voltage_level: '',
+          address: '',
+          duration_ms: 0,
+          v1: 0,
+          v2: 0,
+          v3: 0,
+          equipment_type: '',
+          cause_group: '',
+          cause: '',
+          remarks: '',
+          object_part_group: '',
+          object_part_code: '',
+          damage_group: '',
+          damage_code: '',
+          fault_type: '',
+          outage_type: '',
+          weather: '',
+          weather_condition: '',
+          responsible_oc: '',
+          total_cmi: 0,
+          equipment_affected: '',
+          restoration_actions: '',
+          notes: '',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading IDR record:', error);
+    } finally {
+      setLoadingIDR(false);
+    }
+  };
 
   const loadChildEvents = async (motherEventId: string) => {
     setLoading(true);
@@ -551,6 +657,240 @@ export default function EventDetails({ event: initialEvent, substation: initialS
       alert(`Failed to export event as ${format.toUpperCase()}. Please try again.`);
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  // IDR CSV Upload Functions
+  const handleDownloadIDRTemplate = () => {
+    const headers = [
+      'Event ID',
+      'Cause',
+      'Duration (minutes)',
+      'Equipment Affected',
+      'Restoration Actions',
+      'Notes'
+    ];
+
+    const exampleRow = [
+      'example-event-id',
+      'Equipment Failure',
+      '15',
+      'Transformer TR-001',
+      'Replaced fuse, restored power',
+      'Scheduled maintenance recommended'
+    ];
+
+    const commentLines = [
+      '# IDR CSV Import Template',
+      '# Required fields: Event ID, Cause, Duration (minutes)',
+      '# Optional fields: Equipment Affected, Restoration Actions, Notes',
+      '# Event ID must exist in the system',
+      '# Other fields will be auto-populated from the event record',
+      ''
+    ];
+
+    const csvContent = [
+      ...commentLines,
+      headers.join(','),
+      exampleRow.join(',')
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `IDR_Import_Template_${Date.now()}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+
+    console.log('✅ IDR CSV template downloaded');
+  };
+
+  const validateIDRRow = async (row: any, rowIndex: number): Promise<{ valid: boolean; errors: Array<{ row: number; column: string; message: string }> }> => {
+    const errors: Array<{ row: number; column: string; message: string }> = [];
+
+    // Required: Event ID
+    if (!row['Event ID'] || row['Event ID'].trim() === '') {
+      errors.push({ row: rowIndex, column: 'Event ID', message: 'Event ID is required' });
+    }
+
+    // Required: Cause
+    if (!row['Cause'] || row['Cause'].trim() === '') {
+      errors.push({ row: rowIndex, column: 'Cause', message: 'Cause is required' });
+    }
+
+    // Required: Duration (minutes)
+    if (!row['Duration (minutes)'] || row['Duration (minutes)'].trim() === '') {
+      errors.push({ row: rowIndex, column: 'Duration (minutes)', message: 'Duration is required' });
+    } else {
+      const duration = parseInt(row['Duration (minutes)']);
+      if (isNaN(duration) || duration < 0) {
+        errors.push({ row: rowIndex, column: 'Duration (minutes)', message: 'Duration must be a positive number' });
+      }
+    }
+
+    // Validate Event ID exists in database
+    if (row['Event ID'] && row['Event ID'].trim() !== '') {
+      const { data: eventData, error: eventError } = await supabase
+        .from('pq_events')
+        .select('id')
+        .eq('id', row['Event ID'].trim())
+        .single();
+
+      if (eventError || !eventData) {
+        errors.push({ row: rowIndex, column: 'Event ID', message: `Event ID '${row['Event ID']}' not found in system` });
+      }
+    }
+
+    return { valid: errors.length === 0, errors };
+  };
+
+  const handleImportIDRCSV = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setShowUploadDropdown(false);
+
+    try {
+      const text = await file.text();
+      const lines = text.split('\n').filter(line => line.trim() && !line.trim().startsWith('#'));
+      
+      if (lines.length < 2) {
+        alert('CSV file is empty or invalid');
+        setIsUploading(false);
+        return;
+      }
+
+      // Parse CSV
+      const headers = lines[0].split(',').map(h => h.trim());
+      const rows = lines.slice(1).map(line => {
+        const values = line.split(',').map(v => v.trim());
+        const row: any = {};
+        headers.forEach((header, index) => {
+          row[header] = values[index] || '';
+        });
+        return row;
+      });
+
+      console.log(`📋 Parsing ${rows.length} IDR records from CSV`);
+
+      // Validate all rows
+      const validationResults = await Promise.all(
+        rows.map((row, index) => validateIDRRow(row, index + 2)) // +2 because of header and 1-indexed
+      );
+
+      const allErrors = validationResults.flatMap(r => r.errors);
+      const validRows = rows.filter((_, index) => validationResults[index].valid);
+
+      console.log(`✅ Valid rows: ${validRows.length}, ❌ Invalid rows: ${rows.length - validRows.length}`);
+
+      // Import valid rows
+      let successful = 0;
+      let failed = 0;
+      const importErrors: Array<{ row: number; column: string; message: string; eventId?: string }> = [...allErrors];
+
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+
+      for (let i = 0; i < validRows.length; i++) {
+        const row = validRows[i];
+        const originalIndex = rows.indexOf(row) + 2;
+
+        try {
+          const eventId = row['Event ID'].trim();
+          const durationMinutes = parseInt(row['Duration (minutes)']);
+
+          // Fetch event data to auto-populate fields
+          const { data: eventData, error: eventFetchError } = await supabase
+            .from('pq_events')
+            .select('*')
+            .eq('id', eventId)
+            .single();
+
+          if (eventFetchError || !eventData) {
+            throw new Error(`Failed to fetch event data for ${eventId}`);
+          }
+
+          // Prepare IDR record with auto-populated fields from event
+          const idrData = {
+            event_id: eventId,
+            idr_no: eventData.idr_no || null,
+            status: eventData.status || null,
+            voltage_level: eventData.voltage_level || null,
+            address: eventData.address || null,
+            duration_ms: durationMinutes * 60 * 1000, // Convert minutes to milliseconds
+            v1: eventData.v1 || null,
+            v2: eventData.v2 || null,
+            v3: eventData.v3 || null,
+            equipment_type: eventData.equipment_type || null,
+            cause_group: eventData.cause_group || null,
+            cause: row['Cause'].trim(), // From CSV (REQUIRED)
+            remarks: eventData.remarks || null,
+            object_part_group: eventData.object_part_group || null,
+            object_part_code: eventData.object_part_code || null,
+            damage_group: eventData.damage_group || null,
+            damage_code: eventData.damage_code || null,
+            fault_type: eventData.fault_type || null,
+            outage_type: eventData.outage_type || null,
+            weather: eventData.weather || null,
+            weather_condition: eventData.weather_condition || null,
+            responsible_oc: eventData.responsible_oc || null,
+            total_cmi: eventData.total_cmi || null,
+            equipment_affected: row['Equipment Affected']?.trim() || null,
+            restoration_actions: row['Restoration Actions']?.trim() || null,
+            notes: row['Notes']?.trim() || null,
+            uploaded_by: user?.id || null,
+            upload_source: 'csv_import' as const,
+          };
+
+          // Upsert IDR record
+          const { error: upsertError } = await supabase
+            .from('idr_records')
+            .upsert(idrData, {
+              onConflict: 'event_id',
+              ignoreDuplicates: false
+            });
+
+          if (upsertError) {
+            throw upsertError;
+          }
+
+          successful++;
+          console.log(`✅ Row ${originalIndex}: IDR record imported for event ${eventId}`);
+        } catch (error: any) {
+          failed++;
+          importErrors.push({
+            row: originalIndex,
+            column: 'Import',
+            message: error.message || 'Failed to import record',
+            eventId: row['Event ID']
+          });
+          console.error(`❌ Row ${originalIndex}: Import failed`, error);
+        }
+      }
+
+      // Show results
+      setImportResults({
+        successful,
+        failed: failed + (rows.length - validRows.length),
+        errors: importErrors
+      });
+      setShowImportModal(true);
+
+      // Reload IDR record if we just imported for current event
+      if (validRows.some(r => r['Event ID'].trim() === currentEvent.id)) {
+        await loadIDRRecord(currentEvent.id);
+      }
+
+      if (onEventUpdated) onEventUpdated();
+
+    } catch (error: any) {
+      console.error('CSV import error:', error);
+      alert(`Failed to import CSV: ${error.message}`);
+    } finally {
+      setIsUploading(false);
+      // Reset file input
+      event.target.value = '';
     }
   };
 
@@ -1571,11 +1911,23 @@ export default function EventDetails({ event: initialEvent, substation: initialS
         {/* IDR TAB */}
         {activeTab === 'idr' && (
           <div className="space-y-4 animate-fadeIn">
+            {loadingIDR ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span className="ml-3 text-slate-600">Loading IDR record...</span>
+              </div>
+            ) : (
+              <>
             {/* Edit/Save/Cancel Buttons */}
             <div className="flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 p-3 rounded-lg border border-blue-100">
               <div className="flex items-center gap-2">
                 <FileText className="w-5 h-5 text-blue-600" />
                 <span className="font-semibold text-slate-900">Incident Data Record (IDR)</span>
+                {idrRecord && (
+                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-semibold rounded">
+                    Saved
+                  </span>
+                )}
                 {currentEvent.manual_create_idr && (
                   <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded">
                     Manual
@@ -1589,87 +1941,133 @@ export default function EventDetails({ event: initialEvent, substation: initialS
               </div>
               <div className="flex items-center gap-2">
                 {!isEditingIDR ? (
-                  <button
-                    onClick={() => {
-                      setIsEditingIDR(true);
-                      setIDRFormData({
-                        idr_no: currentEvent.idr_no || '',
-                        status: currentEvent.status,
-                        voltage_level: currentEvent.voltage_level || '',
-                        address: currentEvent.address || '',
-                        duration_ms: currentEvent.duration_ms || 0,
-                        v1: currentEvent.v1 || 0,
-                        v2: currentEvent.v2 || 0,
-                        v3: currentEvent.v3 || 0,
-                        equipment_type: currentEvent.equipment_type || '',
-                        cause_group: currentEvent.cause_group || '',
-                        cause: currentEvent.cause || '',
-                        remarks: currentEvent.remarks || '',
-                        object_part_group: currentEvent.object_part_group || '',
-                        object_part_code: currentEvent.object_part_code || '',
-                        damage_group: currentEvent.damage_group || '',
-                        damage_code: currentEvent.damage_code || '',
-                        fault_type: currentEvent.fault_type || '',
-                        outage_type: currentEvent.outage_type || '',
-                        weather: currentEvent.weather || '',
-                        weather_condition: currentEvent.weather_condition || '',
-                        responsible_oc: currentEvent.responsible_oc || '',
-                        total_cmi: currentEvent.total_cmi || 0,
-                      });
-                    }}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-semibold"
-                  >
-                    <Edit className="w-4 h-4" />
-                    Edit
-                  </button>
+                  <>
+                    {/* Upload Button with Dropdown */}
+                    <div className="relative upload-dropdown-container">
+                      <button
+                        onClick={() => setShowUploadDropdown(!showUploadDropdown)}
+                        disabled={isUploading}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all text-sm font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isUploading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-4 h-4" />
+                            Upload
+                            <ChevronDown className="w-3 h-3" />
+                          </>
+                        )}
+                      </button>
+
+                      {/* Upload Dropdown Menu */}
+                      {showUploadDropdown && !isUploading && (
+                        <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 z-30 overflow-hidden">
+                          <label className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 cursor-pointer transition-colors">
+                            <Upload className="w-4 h-4 text-blue-600" />
+                            <span className="text-sm font-medium text-slate-700">Import CSV</span>
+                            <input
+                              type="file"
+                              accept=".csv"
+                              onChange={handleImportIDRCSV}
+                              className="hidden"
+                            />
+                          </label>
+                          <button
+                            onClick={handleDownloadIDRTemplate}
+                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-green-50 transition-colors text-left"
+                          >
+                            <FileDown className="w-4 h-4 text-green-600" />
+                            <span className="text-sm font-medium text-slate-700">Download Template</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Edit Button */}
+                    <button
+                      onClick={() => {
+                        setIsEditingIDR(true);
+                        // Keep existing form data (already loaded from idr_records or empty)
+                      }}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-semibold"
+                    >
+                      <Edit className="w-4 h-4" />
+                      Edit
+                    </button>
+                  </>
                 ) : (
                   <>
                     <button
                       onClick={async () => {
                         setSavingIDR(true);
                         try {
-                          const { error } = await supabase
-                            .from('pq_events')
-                            .update({
-                              idr_no: idrFormData.idr_no,
-                              status: idrFormData.status,
-                              voltage_level: idrFormData.voltage_level,
-                              address: idrFormData.address,
-                              duration_ms: idrFormData.duration_ms,
-                              v1: idrFormData.v1,
-                              v2: idrFormData.v2,
-                              v3: idrFormData.v3,
-                              equipment_type: idrFormData.equipment_type,
-                              cause_group: idrFormData.cause_group,
-                              cause: idrFormData.cause,
-                              remarks: idrFormData.remarks,
-                              object_part_group: idrFormData.object_part_group,
-                              object_part_code: idrFormData.object_part_code,
-                              damage_group: idrFormData.damage_group,
-                              damage_code: idrFormData.damage_code,
-                              fault_type: idrFormData.fault_type,
-                              outage_type: idrFormData.outage_type,
-                              weather: idrFormData.weather,
-                              weather_condition: idrFormData.weather_condition,
-                              responsible_oc: idrFormData.responsible_oc,
-                              total_cmi: idrFormData.total_cmi,
+                          // Validate required fields
+                          if (!idrFormData.cause || idrFormData.cause.trim() === '') {
+                            alert('Cause is required. Please enter a cause before saving.');
+                            setSavingIDR(false);
+                            return;
+                          }
+
+                          // Get current user
+                          const { data: { user } } = await supabase.auth.getUser();
+
+                          // Prepare IDR record data
+                          const idrData = {
+                            event_id: currentEvent.id,
+                            idr_no: idrFormData.idr_no || null,
+                            status: idrFormData.status || null,
+                            voltage_level: idrFormData.voltage_level || null,
+                            address: idrFormData.address || null,
+                            duration_ms: idrFormData.duration_ms || null,
+                            v1: idrFormData.v1 || null,
+                            v2: idrFormData.v2 || null,
+                            v3: idrFormData.v3 || null,
+                            equipment_type: idrFormData.equipment_type || null,
+                            cause_group: idrFormData.cause_group || null,
+                            cause: idrFormData.cause,
+                            remarks: idrFormData.remarks || null,
+                            object_part_group: idrFormData.object_part_group || null,
+                            object_part_code: idrFormData.object_part_code || null,
+                            damage_group: idrFormData.damage_group || null,
+                            damage_code: idrFormData.damage_code || null,
+                            fault_type: idrFormData.fault_type || null,
+                            outage_type: idrFormData.outage_type || null,
+                            weather: idrFormData.weather || null,
+                            weather_condition: idrFormData.weather_condition || null,
+                            responsible_oc: idrFormData.responsible_oc || null,
+                            total_cmi: idrFormData.total_cmi || null,
+                            equipment_affected: idrFormData.equipment_affected || null,
+                            restoration_actions: idrFormData.restoration_actions || null,
+                            notes: idrFormData.notes || null,
+                            uploaded_by: user?.id || null,
+                            upload_source: 'manual_entry',
+                          };
+
+                          // Upsert IDR record (insert or update if exists)
+                          const { data, error } = await supabase
+                            .from('idr_records')
+                            .upsert(idrData, {
+                              onConflict: 'event_id',
+                              ignoreDuplicates: false
                             })
-                            .eq('id', currentEvent.id);
+                            .select()
+                            .single();
 
                           if (error) {
-                            console.error('Error saving IDR:', error);
+                            console.error('Error saving IDR record:', error);
                             alert('Failed to save IDR changes. Please try again.');
                           } else {
+                            console.log('✅ IDR record saved successfully:', data);
+                            setIDRRecord(data);
                             setIsEditingIDR(false);
                             if (onEventUpdated) onEventUpdated();
-                            // Update current event state
-                            setCurrentEvent({
-                              ...currentEvent,
-                              ...idrFormData
-                            });
                           }
                         } catch (error) {
-                          console.error('Error saving IDR:', error);
+                          console.error('Error saving IDR record:', error);
                           alert('An unexpected error occurred. Please try again.');
                         } finally {
                           setSavingIDR(false);
@@ -1684,30 +2082,8 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                     <button
                       onClick={() => {
                         setIsEditingIDR(false);
-                        setIDRFormData({
-                          idr_no: currentEvent.idr_no || '',
-                          status: currentEvent.status,
-                          voltage_level: currentEvent.voltage_level || '',
-                          address: currentEvent.address || '',
-                          duration_ms: currentEvent.duration_ms || 0,
-                          v1: currentEvent.v1 || 0,
-                          v2: currentEvent.v2 || 0,
-                          v3: currentEvent.v3 || 0,
-                          equipment_type: currentEvent.equipment_type || '',
-                          cause_group: currentEvent.cause_group || '',
-                          cause: currentEvent.cause || '',
-                          remarks: currentEvent.remarks || '',
-                          object_part_group: currentEvent.object_part_group || '',
-                          object_part_code: currentEvent.object_part_code || '',
-                          damage_group: currentEvent.damage_group || '',
-                          damage_code: currentEvent.damage_code || '',
-                          fault_type: currentEvent.fault_type || '',
-                          outage_type: currentEvent.outage_type || '',
-                          weather: currentEvent.weather || '',
-                          weather_condition: currentEvent.weather_condition || '',
-                          responsible_oc: currentEvent.responsible_oc || '',
-                          total_cmi: currentEvent.total_cmi || 0,
-                        });
+                        // Reload from idr_records (or reset to empty if no record)
+                        loadIDRRecord(currentEvent.id);
                       }}
                       disabled={savingIDR}
                       className="flex items-center gap-2 px-3 py-1.5 bg-slate-500 text-white rounded-lg hover:bg-slate-600 transition-colors text-sm font-semibold disabled:opacity-50"
@@ -1741,7 +2117,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                           placeholder="Enter IDR No."
                         />
                       ) : (
-                        <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.idr_no || '-'}</p>
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.idr_no || '-'}</p>
                       )}
                     </div>
                     <div>
@@ -1768,12 +2144,12 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                         </select>
                       ) : (
                         <span className={`inline-flex mt-1 px-2 py-0.5 rounded text-xs font-semibold ${
-                          currentEvent.status === 'resolved' ? 'bg-green-100 text-green-700' :
-                          currentEvent.status === 'investigating' ? 'bg-blue-100 text-blue-700' :
-                          currentEvent.status === 'acknowledged' ? 'bg-yellow-100 text-yellow-700' :
+                          idrFormData.status === 'resolved' ? 'bg-green-100 text-green-700' :
+                          idrFormData.status === 'investigating' ? 'bg-blue-100 text-blue-700' :
+                          idrFormData.status === 'acknowledged' ? 'bg-yellow-100 text-yellow-700' :
                           'bg-slate-100 text-slate-700'
                         }`}>
-                          {currentEvent.status}
+                          {idrFormData.status || currentEvent.status}
                         </span>
                       )}
                     </div>
@@ -1787,7 +2163,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                           className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                         />
                       ) : (
-                        <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.voltage_level || '-'}</p>
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.voltage_level || '-'}</p>
                       )}
                     </div>
                   </div>
@@ -1803,7 +2179,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                       />
                     ) : (
                       <p className="text-sm font-semibold text-slate-900 mt-1">
-                        {currentEvent.duration_ms ? `${currentEvent.duration_ms} ms (${(currentEvent.duration_ms / 1000).toFixed(2)}s)` : '-'}
+                        {idrFormData.duration_ms ? `${idrFormData.duration_ms} ms (${(idrFormData.duration_ms / 1000).toFixed(2)}s)` : '-'}
                       </p>
                     )}
                   </div>
@@ -1831,7 +2207,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                         className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                       />
                     ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.address || '-'}</p>
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.address || '-'}</p>
                     )}
                   </div>
                   <div>
@@ -1844,7 +2220,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                         className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                       />
                     ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.equipment_type || '-'}</p>
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.equipment_type || '-'}</p>
                     )}
                   </div>
                 </div>
@@ -1888,7 +2264,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                           className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                         />
                       ) : (
-                        <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.v1 || '-'}</p>
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.v1 || '-'}</p>
                       )}
                     </div>
                     <div>
@@ -1902,7 +2278,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                           className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                         />
                       ) : (
-                        <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.v2 || '-'}</p>
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.v2 || '-'}</p>
                       )}
                     </div>
                     <div>
@@ -1916,7 +2292,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                           className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                         />
                       ) : (
-                        <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.v3 || '-'}</p>
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.v3 || '-'}</p>
                       )}
                     </div>
                   </div>
@@ -1931,7 +2307,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                         className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                       />
                     ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.fault_type || '-'}</p>
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.fault_type || '-'}</p>
                     )}
                   </div>
                 </div>
@@ -1955,7 +2331,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                           className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                         />
                       ) : (
-                        <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.cause_group || '-'}</p>
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.cause_group || '-'}</p>
                       )}
                     </div>
                     <div>
@@ -1968,7 +2344,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                           className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                         />
                       ) : (
-                        <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.cause || '-'}</p>
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.cause || '-'}</p>
                       )}
                     </div>
                   </div>
@@ -1983,7 +2359,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                         className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                       />
                     ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.remarks || '-'}</p>
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.remarks || '-'}</p>
                     )}
                   </div>
 
@@ -1998,7 +2374,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                           className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                         />
                       ) : (
-                        <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.object_part_group || '-'}</p>
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.object_part_group || '-'}</p>
                       )}
                     </div>
                     <div>
@@ -2011,7 +2387,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                           className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                         />
                       ) : (
-                        <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.object_part_code || '-'}</p>
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.object_part_code || '-'}</p>
                       )}
                     </div>
                   </div>
@@ -2027,7 +2403,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                           className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                         />
                       ) : (
-                        <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.damage_group || '-'}</p>
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.damage_group || '-'}</p>
                       )}
                     </div>
                     <div>
@@ -2040,7 +2416,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                           className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                         />
                       ) : (
-                        <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.damage_code || '-'}</p>
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.damage_code || '-'}</p>
                       )}
                     </div>
                   </div>
@@ -2065,7 +2441,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                         placeholder="e.g., W01"
                       />
                     ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.weather || '-'}</p>
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.weather || '-'}</p>
                     )}
                   </div>
 
@@ -2080,7 +2456,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                         placeholder="e.g., Heavy Rain"
                       />
                     ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.weather_condition || '-'}</p>
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.weather_condition || '-'}</p>
                     )}
                   </div>
 
@@ -2094,7 +2470,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                         className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                       />
                     ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.outage_type || '-'}</p>
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.outage_type || '-'}</p>
                     )}
                   </div>
 
@@ -2108,7 +2484,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                         className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                       />
                     ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.responsible_oc || '-'}</p>
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.responsible_oc || '-'}</p>
                     )}
                   </div>
 
@@ -2122,12 +2498,14 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                         className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                       />
                     ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{currentEvent.total_cmi || '-'}</p>
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.total_cmi || '-'}</p>
                     )}
                   </div>
                 </div>
               </div>
             </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -2176,6 +2554,118 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                 className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* IDR Import Results Modal */}
+      {showImportModal && importResults && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-slate-200">
+              <div className="flex items-center gap-3">
+                <div className={`p-3 rounded-full ${
+                  importResults.failed === 0 ? 'bg-green-100' : 'bg-yellow-100'
+                }`}>
+                  {importResults.failed === 0 ? (
+                    <CheckCircle className="w-6 h-6 text-green-600" />
+                  ) : (
+                    <AlertTriangle className="w-6 h-6 text-yellow-600" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">IDR Import Results</h3>
+                  <p className="text-sm text-slate-600 mt-1">
+                    {importResults.successful} successful, {importResults.failed} failed
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportResults(null);
+                }}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <XIcon className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+
+            {/* Modal Content - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Success Summary */}
+              {importResults.successful > 0 && (
+                <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                    <h4 className="font-semibold text-green-900">
+                      Successfully Imported: {importResults.successful} record(s)
+                    </h4>
+                  </div>
+                  <p className="text-sm text-green-700">
+                    IDR records have been created or updated in the system.
+                  </p>
+                </div>
+              )}
+
+              {/* Errors Summary */}
+              {importResults.errors.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <XCircle className="w-5 h-5 text-red-600" />
+                    <h4 className="font-semibold text-red-900">
+                      Errors: {importResults.errors.length} issue(s)
+                    </h4>
+                  </div>
+                  
+                  {/* Errors Table */}
+                  <div className="border border-red-200 rounded-lg overflow-hidden">
+                    <div className="max-h-64 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-red-50 sticky top-0">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-red-900">Row</th>
+                            <th className="px-3 py-2 text-left font-semibold text-red-900">Event ID</th>
+                            <th className="px-3 py-2 text-left font-semibold text-red-900">Column</th>
+                            <th className="px-3 py-2 text-left font-semibold text-red-900">Error Message</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-red-100">
+                          {importResults.errors.map((error, idx) => (
+                            <tr key={idx} className="hover:bg-red-50">
+                              <td className="px-3 py-2 font-mono text-slate-700">{error.row}</td>
+                              <td className="px-3 py-2 font-mono text-slate-700 text-xs">
+                                {error.eventId ? error.eventId.substring(0, 8) : '-'}
+                              </td>
+                              <td className="px-3 py-2 text-slate-700">{error.column}</td>
+                              <td className="px-3 py-2 text-red-700">{error.message}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-600 mt-2">
+                    💡 Tip: Fix the errors in your CSV file and try importing again.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-slate-200 bg-slate-50">
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportResults(null);
+                }}
+                className="px-4 py-2 bg-slate-600 text-white rounded-lg font-semibold hover:bg-slate-700 transition-colors"
+              >
+                Close
               </button>
             </div>
           </div>
