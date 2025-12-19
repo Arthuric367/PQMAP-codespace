@@ -1,7 +1,7 @@
 # PQMAP - Project Function Design Document
 
-**Document Version:** 1.1  
-**Last Updated:** December 15, 2025  
+**Document Version:** 1.2  
+**Last Updated:** December 19, 2025  
 **Purpose:** Comprehensive functional design reference for continuous development
 
 ---
@@ -14,7 +14,8 @@
 4. [Data Models & Database Schema](#data-models--database-schema)
 5. [Key Design Patterns](#key-design-patterns)
 6. [Integration Points](#integration-points)
-7. [Development Guidelines](#development-guidelines)
+7. [Environment Configuration & Security](#environment-configuration--security)
+8. [Development Guidelines](#development-guidelines)
 
 ---
 
@@ -1217,6 +1218,246 @@ POST /api/notifications/send
   event_id, recipients[], include_waveform
 }
 ```
+
+---
+
+## Environment Configuration & Security
+
+### Overview
+Proper environment configuration is critical for securing API keys, database credentials, and deployment settings across development, staging, and production environments.
+
+### Environment Variables Setup
+
+#### Local Development (.env)
+
+**File Structure**:
+```bash
+# Supabase Configuration
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
+
+# Optional: Development-specific settings
+VITE_API_URL=http://localhost:3000
+VITE_DEBUG_MODE=true
+```
+
+**Security Rules**:
+- ✅ **DO**: Use `.env` for local development only
+- ✅ **DO**: Add `.env` to `.gitignore` (NEVER commit to version control)
+- ✅ **DO**: Create `.env.example` with placeholder values (safe to commit)
+- ✅ **DO**: Rotate keys immediately if accidentally exposed
+- ❌ **DON'T**: Hardcode credentials in source code
+- ❌ **DON'T**: Commit real API keys to GitHub
+- ❌ **DON'T**: Share `.env` files via email or Slack
+
+#### .gitignore Configuration
+
+```bash
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Keep example files
+!.env.example
+```
+
+#### .env.example Template
+
+Create this file for team members (safe to commit):
+```bash
+# Supabase Configuration
+# Get these values from: Supabase Dashboard > Settings > API
+
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
+
+# Instructions:
+# 1. Copy this file: cp .env.example .env
+# 2. Replace placeholder values with actual credentials
+# 3. Never commit .env to version control
+```
+
+### Deployment Environments
+
+#### GitHub Repository
+- **DO NOT** commit `.env` files
+- **DO** commit `.env.example` with documentation
+- **DO** use GitHub Secrets for CI/CD workflows
+- **DO** enable branch protection for `main` branch
+
+#### Vercel Deployment
+
+**Option A: Dashboard (Recommended)**
+1. Navigate to: Project → **Settings** → **Environment Variables**
+2. Add variables:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+3. Select deployment environments:
+   - ✅ Production
+   - ✅ Preview (for pull requests)
+   - ✅ Development
+
+**Option B: Vercel CLI**
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Login
+vercel login
+
+# Add environment variables
+vercel env add VITE_SUPABASE_URL production
+vercel env add VITE_SUPABASE_ANON_KEY production
+
+# Pull environment variables for local development
+vercel env pull
+```
+
+**Deployment Checklist**:
+- [ ] Environment variables added to Vercel
+- [ ] Build command configured: `npm run build`
+- [ ] Output directory set: `dist`
+- [ ] Node version specified: `18.x`
+- [ ] Preview deployments enabled for PRs
+
+#### Supabase Configuration
+
+**Row Level Security (RLS)**
+
+The `anon` key is designed to be public-facing (used in frontend), but you MUST enable RLS on all tables:
+
+```sql
+-- Enable RLS on all tables
+ALTER TABLE pq_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pq_meters ENABLE ROW LEVEL SECURITY;
+-- ... (all other tables)
+
+-- Example: Allow authenticated users to read their organization's data
+CREATE POLICY "Users can view own org data" ON pq_events
+  FOR SELECT 
+  USING (
+    auth.jwt() ->> 'organization_id' = organization_id
+  );
+
+-- Allow authenticated users to insert events
+CREATE POLICY "Authenticated users can insert" ON pq_events
+  FOR INSERT 
+  WITH CHECK (auth.role() = 'authenticated');
+
+-- Admin-only updates
+CREATE POLICY "Admins can update" ON pq_events
+  FOR UPDATE 
+  USING (
+    auth.jwt() ->> 'role' = 'admin'
+  );
+```
+
+**Security Checklist**:
+- [ ] RLS enabled on all public tables
+- [ ] Policies restrict data access by user role
+- [ ] Service role key NEVER exposed to frontend
+- [ ] API rate limiting enabled in Supabase dashboard
+- [ ] Database backups scheduled
+- [ ] Audit logs enabled for sensitive tables
+
+**Key Types**:
+- **anon key**: Public-facing, limited permissions, enforced by RLS
+- **service_role key**: Full admin access, ONLY use in backend/server functions
+
+### Environment Variable Recovery
+
+If credentials are accidentally exposed:
+
+1. **Immediate Actions**:
+   ```bash
+   # 1. Remove from Git history
+   git filter-branch --force --index-filter \
+     "git rm --cached --ignore-unmatch .env" \
+     --prune-empty --tag-name-filter cat -- --all
+   
+   # 2. Force push to GitHub
+   git push origin --force --all
+   ```
+
+2. **Rotate Credentials**:
+   - Go to Supabase Dashboard → Settings → API
+   - Click "Reset" for anon key
+   - Update all deployment environments
+   - Update local `.env` files for all team members
+
+3. **Audit Access**:
+   - Check Supabase logs for suspicious activity
+   - Review recent database operations
+   - Monitor for unusual API usage patterns
+
+### Setup Script for New Developers
+
+Create `setup-env.sh` in project root:
+```bash
+#!/bin/bash
+# Environment setup script for new developers
+
+echo "🚀 Setting up PQMAP development environment..."
+
+# Check if .env exists
+if [ ! -f .env ]; then
+  echo "📝 Creating .env from .env.example..."
+  cp .env.example .env
+  echo "⚠️  Please edit .env and add your Supabase credentials"
+  echo "   Get them from: https://supabase.com/dashboard/project/[your-project]/settings/api"
+else
+  echo "✅ .env already exists"
+fi
+
+# Ensure .env is in .gitignore
+if ! grep -q "^\.env$" .gitignore 2>/dev/null; then
+  echo ".env" >> .gitignore
+  echo "✅ Added .env to .gitignore"
+else
+  echo "✅ .env already in .gitignore"
+fi
+
+# Install dependencies
+echo "📦 Installing dependencies..."
+npm install
+
+echo ""
+echo "✅ Setup complete!"
+echo ""
+echo "Next steps:"
+echo "1. Edit .env with your Supabase credentials"
+echo "2. Run: npm run dev"
+echo "3. Open: http://localhost:5173"
+```
+
+Make executable:
+```bash
+chmod +x setup-env.sh
+./setup-env.sh
+```
+
+### Best Practices Summary
+
+**Development**:
+- Use `.env` for local development only
+- Never commit sensitive credentials
+- Use `.env.example` for team documentation
+- Rotate keys if exposed
+
+**Deployment**:
+- Use platform-specific secret management (Vercel Environment Variables, GitHub Secrets)
+- Enable RLS on all database tables
+- Monitor API usage and logs
+- Set up alerts for suspicious activity
+
+**Team Workflow**:
+- New developers run `setup-env.sh`
+- Credentials shared via secure channels (1Password, LastPass)
+- Document environment variables in `.env.example`
+- Regular security audits of access logs
 
 ---
 
