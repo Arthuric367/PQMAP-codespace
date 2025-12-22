@@ -1117,6 +1117,12 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                 {currentEvent.voltage_level && (
                   <p className="text-xs text-blue-600 mt-1">⚡ Event Level: {currentEvent.voltage_level}</p>
                 )}
+                {currentEvent.site_id && (
+                  <p className="text-xs text-slate-600 mt-1">Site ID: {currentEvent.site_id}</p>
+                )}
+                {currentEvent.region && (
+                  <p className="text-xs text-slate-600 mt-1">Region: {currentEvent.region}</p>
+                )}
               </div>
 
               <div className="p-4 bg-slate-50 rounded-lg">

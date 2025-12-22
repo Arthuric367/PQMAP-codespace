@@ -37,20 +37,15 @@ export interface Substation {
 export interface PQMeter {
   id: string;
   meter_id: string;
-  substation_id: string;
-  location: string;
-  status: MeterStatus;
-  last_communication: string | null;
-  firmware_version: string | null;
-  installed_date: string | null;
-  created_at: string;
-  meter_type?: string;
-  voltage_level?: string;
-  // New fields from Meter Inventory (Migration 20251210000001)
+  // PQ Meter location
   site_id?: string;
+  voltage_level?: string; 
+  substation_id: string;
   circuit_id?: string;
+  location: string;
   region?: string;
   oc?: string;
+  // Assets detail
   brand?: string;
   model?: string;
   nominal_voltage?: number;
@@ -58,8 +53,15 @@ export interface PQMeter {
   asset_number?: string;
   serial_number?: string;
   ip_address?: string;
+  firmware_version: string | null;
   framework_version?: string;
+  // Meter status
+  meter_type?: string;
+  status: MeterStatus;
   active?: boolean;
+  last_communication: string | null;
+  installed_date: string | null;
+  created_at: string;
   // Transformer Code fields (Migration 20251217000000)
   area: string;
   ss400?: string | null;
@@ -93,63 +95,31 @@ export interface WaveformData {
 
 export interface PQEvent {
   id: string;
-  event_type: EventType;
-  substation_id: string | null;
-  meter_id: string | null;
-  timestamp: string;
-  duration_ms: number | null;
-  magnitude: number | null;
-  severity: SeverityLevel;
-  status: EventStatus;
+  // Event characteristics
   is_mother_event: boolean;
-  parent_event_id: string | null;
-  affected_phases: string[];
-  waveform_data: WaveformData | null;
-  created_at: string;
-  resolved_at: string | null;
-  // Mother Event Grouping properties
   is_child_event: boolean;
-  grouping_type: 'automatic' | 'manual' | null;
-  grouped_at: string | null;
-  // Enhanced properties for Event Management
-  voltage_level: string;
-  circuit_id: string;
-  customer_count: number | null;
-  remaining_voltage: number | null;
-  validated_by_adms: boolean;
+  parent_event_id: string | null;
   is_special_event: boolean;
-  // False Event Tracking (replaces status='false')
   false_event: boolean;
-  // Metadata Fields
+  // Event timestamp
+  timestamp: string;
+  // Event location (reference from PQmeter)
+  event_type: EventType;
+  meter_id: string | null;
+  site_id: string | null;
+  voltage_level: string | null;
+  substation_id: string | null;
+  circuit_id: string;
+  region: string | null;
   oc: string | null;
-  remarks: string | null;
-  idr_no: string | null;
-  // Location & Equipment Details
-  address: string | null;
-  equipment_type: string | null;
-  // Cause Analysis
-  cause_group: string | null;
-  cause: string | null;
-  description: string | null;
-  // Equipment Fault Details
-  object_part_group: string | null;
-  object_part_code: string | null;
-  damage_group: string | null;
-  damage_code: string | null;
-  // Event Context
-  outage_type: string | null;
-  weather: string | null;
-  total_cmi: number | null;
-  // IDR (Incident Data Record) Fields
-  fault_type: string | null;
-  weather_condition: string | null;
-  responsible_oc: string | null;
-  manual_create_idr: boolean;
-  // Voltage Measurements (V1, V2, V3)
+  // Event impact & measurements
+  duration_ms: number | null;
+    // Voltage Measurements (V1, V2, V3)
   v1: number | null;
   v2: number | null;
   v3: number | null;
-  // SARFI Indices
+  customer_count: number | null;
+    // SARFI Indices
   sarfi_10: number | null;
   sarfi_20: number | null;
   sarfi_30: number | null;
@@ -159,6 +129,42 @@ export interface PQEvent {
   sarfi_70: number | null;
   sarfi_80: number | null;
   sarfi_90: number | null;
+  magnitude: number | null;
+  remaining_voltage: number | null;
+  affected_phases: string[];
+  severity: SeverityLevel;
+  waveform_data: WaveformData | null;
+  validated_by_adms: boolean;
+  status: EventStatus;
+  // Mother Event Grouping properties
+  grouping_type: 'automatic' | 'manual' | null;
+  grouped_at: string | null;
+  remarks: string | null;
+  // IDR details
+  idr_no: string | null;
+  created_at: string;
+  resolved_at: string | null;
+    // Location & Equipment Details
+  address: string | null;
+  equipment_type: string | null;
+   // Cause Analysis
+  cause_group: string | null;
+  cause: string | null;
+  description: string | null;
+    // Equipment Fault Details
+  object_part_group: string | null;
+  object_part_code: string | null;
+  damage_group: string | null;
+  damage_code: string | null;
+    // Event Context
+  outage_type: string | null;
+  weather: string | null;
+  total_cmi: number | null;
+   // IDR (Incident Data Record) Fields
+  fault_type: string | null;
+  weather_condition: string | null;
+  responsible_oc: string | null;
+  manual_create_idr: boolean;
   substation?: Substation;
   meter?: PQMeter;
   customer_impacts?: EventCustomerImpact[];
