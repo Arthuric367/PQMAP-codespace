@@ -182,6 +182,8 @@ export default function EventManagement() {
         // Auto-load default profile if exists
         const defaultProfile = data?.find(p => p.is_default);
         if (defaultProfile) {
+          const savedFilters = defaultProfile.filters as any;
+          
           // Merge with default filter values to ensure all properties are defined
           setFilters({
             startDate: '',
@@ -201,8 +203,17 @@ export default function EventManagement() {
             showOnlyUnvalidated: false,
             showOnlyStandaloneEvents: false,
             showFalseEventsOnly: false,
-            ...(defaultProfile.filters as any)
+            ...savedFilters
           });
+          
+          // Restore UI preferences
+          if (savedFilters.showFilters !== undefined) {
+            setShowFilters(savedFilters.showFilters);
+          }
+          if (savedFilters.sortBy !== undefined) {
+            setSortBy(savedFilters.sortBy);
+          }
+          
           setSelectedProfileId(defaultProfile.id);
         }
       }
