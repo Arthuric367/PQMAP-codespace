@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Settings } from 'lucide-react';
+import { X, Settings, Edit2 } from 'lucide-react';
 import { SARFIFilters, SARFIProfile } from '../../types/database';
 
 interface SARFIConfigModalProps {
@@ -8,6 +8,7 @@ interface SARFIConfigModalProps {
   filters: SARFIFilters;
   onApply: (filters: SARFIFilters) => void;
   profiles: SARFIProfile[];
+  onEditProfile?: (profile: SARFIProfile) => void;
 }
 
 export default function SARFIConfigModal({ 
@@ -15,7 +16,8 @@ export default function SARFIConfigModal({
   onClose, 
   filters, 
   onApply,
-  profiles 
+  profiles,
+  onEditProfile 
 }: SARFIConfigModalProps) {
   const [localFilters, setLocalFilters] = useState<SARFIFilters>(filters);
 
@@ -64,18 +66,34 @@ export default function SARFIConfigModal({
             <label className="block text-sm font-semibold text-slate-700 mb-2">
               Profile
             </label>
-            <select
-              value={localFilters.profileId}
-              onChange={(e) => setLocalFilters({ ...localFilters, profileId: e.target.value })}
-              className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-            >
-              <option value="">Select Profile</option>
-              {profiles.map(profile => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name} ({profile.year})
-                </option>
-              ))}
-            </select>
+            <div className="relative flex gap-2">
+              <select
+                value={localFilters.profileId}
+                onChange={(e) => setLocalFilters({ ...localFilters, profileId: e.target.value })}
+                className="flex-1 px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              >
+                <option value="">Select Profile</option>
+                {profiles.map(profile => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name} ({profile.year})
+                  </option>
+                ))}
+              </select>
+              {localFilters.profileId && onEditProfile && (
+                <button
+                  onClick={() => {
+                    const profile = profiles.find(p => p.id === localFilters.profileId);
+                    if (profile) {
+                      onEditProfile(profile);
+                    }
+                  }}
+                  className="px-3 py-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                  title="Edit Profile"
+                >
+                  <Edit2 className="w-4 h-4 text-slate-600" />
+                </button>
+              )}
+            </div>
             <p className="text-xs text-slate-500 mt-1">
               Profiles define weighting factors for SARFI calculations
             </p>

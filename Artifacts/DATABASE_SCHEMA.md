@@ -420,20 +420,32 @@ Historical events (created before the trigger was added) will have `customer_cou
 ### 9. `pq_service_records`
 **Purpose:** Power quality service and consultation records
 
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `id` | uuid | PRIMARY KEY | Unique identifier |
-| `customer_id` | uuid | FK → customers | Customer |
-| `service_date` | date | NOT NULL | Service date |
-| `service_type` | service_type | NOT NULL | site_survey, harmonic_analysis, etc. |
-| `findings` | text | | Service findings |
-| `recommendations` | text | | Recommendations |
-| `benchmark_standard` | text | | Standard reference |
-| `engineer_id` | uuid | FK → profiles | Assigned engineer |
-| `created_at` | timestamptz | DEFAULT now() | Creation timestamp |
+| Column | Type | Constraints | Description | Example |
+|--------|------|-------------|-------------|--------|
+| `id` | uuid | PRIMARY KEY | Unique identifier | `s1t2u3v4-w5x6-7890-yzab-cd1234567890` |
+| `customer_id` | uuid | FK → customers | Customer | `c1d2e3f4-a5b6-7890-cdef-ab1234567890` |
+| `event_id` | uuid | FK → pq_events | Related event (optional) | `e1f2a3b4-c5d6-7890-efab-cd1234567890` |
+| `service_date` | date | NOT NULL | Service date | `2025-12-15` |
+| `service_type` | service_type | NOT NULL | site_survey, harmonic_analysis, consultation, on_site_study, power_quality_audit, installation_support | `harmonic_analysis` |
+| `findings` | text | | Service findings | `THD levels exceed IEEE 519 limits` |
+| `recommendations` | text | | Recommendations | `Install harmonic filters` |
+| `benchmark_standard` | text | | Standard reference | `IEEE 519-2014` |
+| `engineer_id` | uuid | FK → profiles | Assigned engineer | `550e8400-e29b-41d4-a716-446655440000` |
+| `content` | text | | Additional content | |
+| `created_at` | timestamptz | DEFAULT now() | Creation timestamp | `2025-12-15 14:30:00+00` |
+| `updated_at` | timestamptz | DEFAULT now() | Last update timestamp | `2025-12-15 16:45:00+00` |
+
+**Relationships:**
+- **event_id → pq_events**: Links service records to specific power quality events (one event can have multiple service records)
+- **customer_id → customers**: Associates service with customer account
+- **engineer_id → profiles**: Tracks which engineer performed the service
 
 **TypeScript Interface:** `PQServiceRecord`  
 **Status:** ✅ Matches database
+
+**Usage in UI:**
+- Displayed in Affected Customer Chart: Shows service types for each event
+- PQ Services Management: Full CRUD operations for service records
 
 ---
 

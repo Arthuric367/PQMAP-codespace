@@ -309,13 +309,14 @@ export async function fetchFilteredSARFIData(filters: SARFIFilters): Promise<SAR
     const remainingVoltage = event.remaining_voltage ?? event.magnitude ?? 100;
 
     // Calculate SARFI thresholds (remaining voltage %)
-    // SARFI-X counts events where remaining voltage is <= (100 - X)%
-    if (remainingVoltage <= 90) dataPoint.sarfi_10++;
-    if (remainingVoltage <= 70) dataPoint.sarfi_30++;
-    if (remainingVoltage <= 50) dataPoint.sarfi_50++;
-    if (remainingVoltage <= 30) dataPoint.sarfi_70++;
-    if (remainingVoltage <= 20) dataPoint.sarfi_80++;
-    if (remainingVoltage <= 10) dataPoint.sarfi_90++;
+    // SARFI-X counts events where remaining voltage drops below (100 - X)%
+    // i.e., voltage dip is X% or greater
+    if (remainingVoltage < 90) dataPoint.sarfi_10++;  // Dip >= 10%
+    if (remainingVoltage < 70) dataPoint.sarfi_30++;  // Dip >= 30%
+    if (remainingVoltage < 50) dataPoint.sarfi_50++;  // Dip >= 50%
+    if (remainingVoltage < 30) dataPoint.sarfi_70++;  // Dip >= 70%
+    if (remainingVoltage < 20) dataPoint.sarfi_80++;  // Dip >= 80%
+    if (remainingVoltage < 10) dataPoint.sarfi_90++;  // Dip >= 90%
   });
 
   const result = Array.from(meterMap.values());

@@ -8,6 +8,7 @@ import StatsCards from './StatsCards';
 import RootCauseChart from './RootCauseChart';
 import InsightChart from './InsightChart';
 import SARFI70Monitor from './SARFI70Monitor';
+import AffectedCustomerChart from './AffectedCustomerChart';
 
 export default function Dashboard() {
   const [events, setEvents] = useState<PQEvent[]>([]);
@@ -79,6 +80,9 @@ export default function Dashboard() {
         <RootCauseChart events={events} />
         <InsightChart events={events} />
       </div>
+
+      {/* Affected Customer Chart - Full Width */}
+      <AffectedCustomerChart />
 
       <EventList events={events} substations={substations} />
 

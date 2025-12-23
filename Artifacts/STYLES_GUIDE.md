@@ -17,6 +17,7 @@
 7. [Spacing & Layout](#spacing--layout)
 8. [Animation Standards](#animation-standards)
 9. [Modal Patterns](#modal-patterns)
+10. [Profile Edit Modal Patterns](#profile-edit-modal-patterns)
 
 ---
 
@@ -1538,6 +1539,262 @@ const sortedData = [...filteredData].sort((a, b) => {
 8. **Hover Effect**: 
    - Inline: `hover:text-blue-600` on column headers
    - Dropdown: `hover:bg-slate-50` on button and menu items
+
+---
+
+## Profile Edit Modal Patterns
+
+**IMPORTANT RULE**: Profile edit modals should adapt to their context - use compact quick filters in space-constrained areas, or full criteria selection in dedicated management pages.
+
+### Pattern 1: Compact Profile Edit (Dashboard/Narrow Sections)
+
+**Use When:**
+- Dashboard widgets with limited space
+- Sidebar or narrow panel contexts
+- Quick profile updates needed
+- User needs rapid filter adjustments
+
+**Key Features:**
+- **Quick Filter Buttons**: Small, compact button groups for rapid selection
+- **Date Quick Filters**: Today / Last 7 Days / Last Month / This Year
+- **Meter Quick Select**: Voltage level buttons (400kV, 132kV, etc.) to auto-select all meters
+- **Active Filter Toggle**: Checkbox to show only active meters
+- **Compact Styling**: `text-xs` buttons, minimal padding, `flex-wrap` for responsive layout
+
+**Implementation Example:**
+
+```tsx
+import { useState } from 'react';
+import { Edit2, X } from 'lucide-react';
+
+export default function CompactProfileEditModal({ profile, onSave }) {
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [selectedMeterIds, setSelectedMeterIds] = useState<string[]>([]);
+  const [voltageFilter, setVoltageFilter] = useState('All');
+  const [showActiveOnly, setShowActiveOnly] = useState(false);
+
+  // Date quick filter handler
+  const handleDateQuickFilter = (filter: 'today' | 'last7days' | 'lastMonth' | 'thisYear') => {
+    const today = new Date();
+    const formatDate = (date: Date) => date.toISOString().split('T')[0];
+
+    switch (filter) {
+      case 'today':
+        setStartDate(formatDate(today));
+        setEndDate(formatDate(today));
+        break;
+      case 'last7days':
+        const last7 = new Date(today);
+        last7.setDate(today.getDate() - 7);
+        setStartDate(formatDate(last7));
+        setEndDate(formatDate(today));
+        break;
+      case 'lastMonth':
+        const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+        setStartDate(formatDate(lastMonthStart));
+        setEndDate(formatDate(lastMonthEnd));
+        break;
+      case 'thisYear':
+        const yearStart = new Date(today.getFullYear(), 0, 1);
+        const yearEnd = new Date(today.getFullYear(), 11, 31);
+        setStartDate(formatDate(yearStart));
+        setEndDate(formatDate(yearEnd));
+        break;
+    }
+  };
+
+  // Quick select meters by voltage level
+  const handleQuickSelectVoltage = (voltageLevel: string) => {
+    const filtered = meters.filter(m => 
+      m.voltage_level === voltageLevel &&
+      (!showActiveOnly || m.is_active)
+    );
+    setSelectedMeterIds(filtered.map(m => m.id));
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Date Range with Quick Filters */}
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">
+          Date Range
+        </label>
+        {/* Quick Date Filters - Compact */}
+        <div className="flex gap-2 mb-3">
+          <button
+            type="button"
+            onClick={() => handleDateQuickFilter('today')}
+            className="flex-1 px-2 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded text-xs font-medium transition-colors"
+          >
+            Today
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDateQuickFilter('last7days')}
+            className="flex-1 px-2 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded text-xs font-medium transition-colors"
+          >
+            Last 7 Days
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDateQuickFilter('lastMonth')}
+            className="flex-1 px-2 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded text-xs font-medium transition-colors"
+          >
+            Last Month
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDateQuickFilter('thisYear')}
+            className="flex-1 px-2 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded text-xs font-medium transition-colors"
+          >
+            This Year
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        </div>
+      </div>
+
+      {/* Meter Selection with Quick Filters */}
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">
+          Select PQ Meters
+        </label>
+        {/* Quick Select by Voltage - Compact */}
+        <div className="flex gap-2 flex-wrap mb-3">
+          <button
+            type="button"
+            onClick={() => handleQuickSelectVoltage('400kV')}
+            className="px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded text-xs font-medium"
+          >
+            ⚡ 400kV
+          </button>
+          <button
+            type="button"
+            onClick={() => handleQuickSelectVoltage('132kV')}
+            className="px-2 py-1 bg-cyan-50 text-cyan-700 hover:bg-cyan-100 rounded text-xs font-medium"
+          >
+            ⚡ 132kV
+          </button>
+          {/* More voltage levels... */}
+        </div>
+        {/* Meter dropdown with filters */}
+      </div>
+    </div>
+  );
+}
+```
+
+**Styling Key Points:**
+- Button size: `px-2 py-1.5` for date filters, `px-2 py-1` for voltage quick selects
+- Text size: `text-xs` for all quick filter buttons
+- Colors: Voltage buttons use specific colors (blue-400kV, cyan-132kV, teal-33kV, green-11kV, yellow-380V)
+- Layout: `flex gap-2` with `flex-wrap` for responsive wrapping
+- Spacing: `mb-3` between quick filters and main inputs
+
+---
+
+### Pattern 2: Full Width Profile Edit (Management Pages)
+
+**Use When:**
+- Event Management or dedicated profile management pages
+- Full-width modals or pages
+- Complex criteria selection needed
+- User has time to carefully configure filters
+
+**Key Features:**
+- **No Quick Filters**: Users manually select all criteria
+- **Full Criteria Display**: All filters visible and configurable
+- **Update Profile Button**: Explicit save action required
+- **Detailed Validation**: Comprehensive error messages
+- **Multi-step Forms**: Can include tabs or sections for organization
+
+**Implementation Example:**
+
+```tsx
+export default function FullWidthProfileEdit({ profile, onUpdate }) {
+  return (
+    <div className="space-y-6">
+      {/* Profile Name */}
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">
+          Profile Name
+        </label>
+        <input
+          type="text"
+          className="w-full px-4 py-2.5 border border-slate-300 rounded-lg"
+          placeholder="Enter profile name"
+        />
+      </div>
+
+      {/* Date Range - No Quick Filters */}
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">
+          Date Range
+        </label>
+        <div className="grid grid-cols-2 gap-4">
+          <input type="date" className="w-full px-4 py-2.5 border border-slate-300 rounded-lg" />
+          <input type="date" className="w-full px-4 py-2.5 border border-slate-300 rounded-lg" />
+        </div>
+      </div>
+
+      {/* Meter Selection - No Quick Select Buttons */}
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">
+          Select PQ Meters
+        </label>
+        <select multiple className="w-full px-4 py-2.5 border border-slate-300 rounded-lg h-48">
+          {/* Meter options */}
+        </select>
+      </div>
+
+      {/* Explicit Save Action */}
+      <div className="flex gap-3 justify-end">
+        <button className="px-5 py-2.5 border border-slate-300 rounded-lg">
+          Cancel
+        </button>
+        <button className="px-5 py-2.5 bg-blue-600 text-white rounded-lg">
+          Update Profile
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+**Styling Key Points:**
+- Standard input size: `px-4 py-2.5` (larger than compact)
+- Text size: `text-sm` or regular (not `text-xs`)
+- Spacing: `space-y-6` for generous vertical spacing
+- No quick filter buttons - users configure manually
+- Prominent action buttons at bottom
+
+---
+
+### Pattern Selection Guide
+
+| Context | Pattern | Quick Filters | Button Size | Use Case |
+|---------|---------|---------------|-------------|----------|
+| **Dashboard Widgets** | Compact | Yes | `text-xs`, `px-2 py-1` | SARFI Chart config |
+| **Sidebar Panels** | Compact | Yes | `text-xs`, `px-2 py-1` | Quick profile edits |
+| **Event Management** | Full Width | No | `text-sm`, `px-4 py-2.5` | Comprehensive filter setup |
+| **Profile Management Page** | Full Width | No | `text-sm`, `px-4 py-2.5` | Create/edit profiles |
+| **Modal (< 600px)** | Compact | Yes | `text-xs`, `px-2 py-1` | Space-constrained modals |
+| **Modal (> 600px)** | Full Width | Optional | `text-sm`, `px-4 py-2.5` | Large modals |
+
+### Best Practices
+
+1. **Choose Pattern Based on Context**: Dashboard = Compact, Management Pages = Full Width
+2. **Consistent Sizing**: Compact buttons always `text-xs`, Full width always `text-sm` or larger
+3. **Quick Filters for Speed**: Only add quick filters when users need rapid updates
+4. **Validation**: Both patterns need validation, but Full Width can show more detailed errors
+5. **Mobile**: Compact pattern works better on mobile due to smaller buttons
+6. **Accessibility**: Always include labels and ARIA attributes regardless of pattern
+
+---
 9. **Button Styling**: Use `flex items-center gap-1` or `gap-2` for proper icon alignment
 10. **Non-Sortable Columns**: Don't add sort buttons to action columns or non-data columns
 

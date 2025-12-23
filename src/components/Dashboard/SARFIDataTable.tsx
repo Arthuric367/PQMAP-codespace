@@ -29,31 +29,31 @@ export default function SARFIDataTable({ data }: SARFIDataTableProps) {
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50 sticky top-0 z-10">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider sticky left-0 bg-slate-50 z-20">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider sticky left-0 bg-slate-50 z-20 w-40">
                     Meter No.
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-48">
                     Location
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider w-24">
                     SARFI-10
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider w-24">
                     SARFI-30
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider w-24">
                     SARFI-50
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider w-24">
                     SARFI-70
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider w-24">
                     SARFI-80
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider w-24">
                     SARFI-90
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider bg-blue-50">
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider bg-blue-50 w-32">
                     Weight Factor
                   </th>
                 </tr>
@@ -69,31 +69,31 @@ export default function SARFIDataTable({ data }: SARFIDataTableProps) {
                       key={row.meter_id}
                       className="hover:bg-slate-50 transition-colors"
                     >
-                      <td className="px-4 py-3 text-sm font-medium text-slate-900 sticky left-0 bg-white hover:bg-slate-50">
+                      <td className="px-4 py-3 text-sm font-medium text-slate-900 sticky left-0 bg-white hover:bg-slate-50 w-40">
                         {row.meter_no}
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-600">
+                      <td className="px-4 py-3 text-sm text-slate-600 w-48">
                         {row.location}
                       </td>
-                      <td className="px-4 py-3 text-sm text-center text-slate-900">
+                      <td className="px-4 py-3 text-sm text-center text-slate-900 w-24">
                         {row.sarfi_10}
                       </td>
-                      <td className="px-4 py-3 text-sm text-center text-slate-900">
+                      <td className="px-4 py-3 text-sm text-center text-slate-900 w-24">
                         {row.sarfi_30}
                       </td>
-                      <td className="px-4 py-3 text-sm text-center text-slate-900">
+                      <td className="px-4 py-3 text-sm text-center text-slate-900 w-24">
                         {row.sarfi_50}
                       </td>
-                      <td className="px-4 py-3 text-sm text-center text-slate-900">
+                      <td className="px-4 py-3 text-sm text-center text-slate-900 w-24">
                         {row.sarfi_70}
                       </td>
-                      <td className="px-4 py-3 text-sm text-center text-slate-900">
+                      <td className="px-4 py-3 text-sm text-center text-slate-900 w-24">
                         {row.sarfi_80}
                       </td>
-                      <td className="px-4 py-3 text-sm text-center text-slate-900">
+                      <td className="px-4 py-3 text-sm text-center text-slate-900 w-24">
                         {row.sarfi_90}
                       </td>
-                      <td className="px-4 py-3 text-sm text-center font-semibold text-blue-600 bg-blue-50/50">
+                      <td className="px-4 py-3 text-sm text-center font-semibold text-blue-600 bg-blue-50/50 w-32">
                         {row.weight_factor.toFixed(4)}
                       </td>
                     </tr>
