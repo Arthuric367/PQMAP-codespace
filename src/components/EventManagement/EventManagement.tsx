@@ -301,7 +301,11 @@ export default function EventManagement() {
           .from('filter_profiles')
           .update({
             name: profileName.trim(),
-            filters: filters,
+            filters: {
+              ...filters,
+              showFilters,
+              sortBy
+            },
             updated_at: new Date().toISOString()
           })
           .eq('id', editingProfileId)
@@ -324,7 +328,11 @@ export default function EventManagement() {
           .insert({
             user_id: user.id,
             name: profileName.trim(),
-            filters: filters,
+            filters: {
+              ...filters,
+              showFilters,
+              sortBy
+            },
             is_default: false
           });
 
@@ -354,6 +362,8 @@ export default function EventManagement() {
   const handleLoadProfile = (profileId: string) => {
     const profile = filterProfiles.find(p => p.id === profileId);
     if (profile) {
+      const savedFilters = profile.filters as any;
+      
       // Merge with default filter values to ensure all properties are defined
       setFilters({
         startDate: '',
@@ -373,8 +383,17 @@ export default function EventManagement() {
         showOnlyUnvalidated: false,
         showOnlyStandaloneEvents: false,
         showFalseEventsOnly: false,
-        ...(profile.filters as any)
+        ...savedFilters
       });
+      
+      // Restore UI preferences
+      if (savedFilters.showFilters !== undefined) {
+        setShowFilters(savedFilters.showFilters);
+      }
+      if (savedFilters.sortBy !== undefined) {
+        setSortBy(savedFilters.sortBy);
+      }
+      
       setSelectedProfileId(profileId);
     }
   };
