@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Settings } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { PQEvent, Substation, SARFIMetrics } from '../../types/database';
+import { PQEvent, Substation, SARFIMetrics, UserRole } from '../../types/database';
 import { DashboardLayout, DEFAULT_LAYOUTS, WidgetId } from '../../types/dashboard';
 import DashboardLayoutManager from './DashboardLayoutManager';
 import SubstationMap from './SubstationMap';
@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [editMode, setEditMode] = useState(false);
   const [layout, setLayout] = useState<DashboardLayout | null>(null);
   const [tempLayout, setTempLayout] = useState<DashboardLayout | null>(null);
+  const [userRole, setUserRole] = useState<UserRole>('admin');
 
   useEffect(() => {
     loadDashboardData();
@@ -39,23 +40,31 @@ export default function Dashboard() {
         .single();
 
       if (error) {
-        console.error('Error loading user profile:', error);
+        console.error('[Dashboard] Error loading user profile:', error);
         // Use admin default as fallback
         setLayout(DEFAULT_LAYOUTS.admin);
+        setUserRole('admin');
         return;
       }
 
+      const role = (profile?.role || 'admin') as UserRole;
+      setUserRole(role);
+      console.log('[Dashboard] User role:', role);
+
       if (profile?.dashboard_layout) {
         // User has saved layout
+        console.log('[Dashboard] Loaded custom layout');
         setLayout(profile.dashboard_layout as DashboardLayout);
       } else {
         // Use role-based default
-        const defaultLayout = DEFAULT_LAYOUTS[profile?.role || 'admin'];
+        const defaultLayout = DEFAULT_LAYOUTS[role];
+        console.log('[Dashboard] Using default layout for role:', role);
         setLayout(defaultLayout);
       }
     } catch (error) {
-      console.error('Error loading user layout:', error);
+      console.error('[Dashboard] Error loading user layout:', error);
       setLayout(DEFAULT_LAYOUTS.admin);
+      setUserRole('admin');
     }
   };
   const loadDashboardData = async () => {
@@ -90,6 +99,7 @@ export default function Dashboard() {
     if (!user || !tempLayout) return;
 
     try {
+      console.log('[Dashboard] Saving layout:', tempLayout);
       const { error } = await supabase
         .from('profiles')
         .update({ dashboard_layout: tempLayout })
@@ -101,7 +111,7 @@ export default function Dashboard() {
       setEditMode(false);
       alert('Dashboard layout saved successfully!');
     } catch (error) {
-      console.error('Error saving layout:', error);
+      console.error('[Dashboard] Error saving layout:', error);
       alert('Failed to save layout. Please try again.');
     }
   };
@@ -109,6 +119,18 @@ export default function Dashboard() {
   const handleCancelEdit = () => {
     setTempLayout(null);
     setEditMode(false);
+  };
+
+  const handleResetToDefault = () => {
+    const defaultLayout = DEFAULT_LAYOUTS[userRole];
+    const confirmed = window.confirm(
+      `Are you sure you want to reset the dashboard to the default ${userRole} layout? This will discard your current customizations.`
+    );
+    
+    if (confirmed) {
+      console.log('[Dashboard] Resetting to default layout for role:', userRole);
+      setTempLayout(defaultLayout);
+    }
   };
 
   const renderWidget = (widgetId: WidgetId) => {
@@ -164,6 +186,7 @@ export default function Dashboard() {
         onLayoutChange={setTempLayout}
         onSave={handleSaveLayout}
         onCancel={handleCancelEdit}
+        onResetToDefault={handleResetToDefault}
       />
     );
   }
@@ -171,6 +194,8 @@ export default function Dashboard() {
   const visibleWidgets = layout.widgets
     .filter(w => w.visible)
     .sort((a, b) => a.row - b.row);
+
+  console.log('[Dashboard] Rendering visible widgets:', visibleWidgets);
 
   return (
     <div className="p-6 space-y-6">
@@ -195,20 +220,37 @@ export default function Dashboard() {
       {visibleWidgets.map((widget, index) => {
         const isHalfWidth = widget.width === 6;
         const nextWidget = visibleWidgets[index + 1];
-        const shouldPairWithNext = isHalfWidth && nextWidget?.width === 6 && nextWidget.row === widget.row;
+        
+        // Two consecutive half-width widgets should pair side-by-side
+        const shouldPairWithNext = isHalfWidth && 
+                                   nextWidget?.width === 6 && 
+                                   (nextWidget.row === widget.row || nextWidget.row === widget.row + 1);
+
+        console.log(`[Dashboard] Widget ${widget.id}: width=${widget.width}, row=${widget.row}, index=${index}`);
+        if (nextWidget) {
+          console.log(`[Dashboard]   Next: ${nextWidget.id}, width=${nextWidget.width}, row=${nextWidget.row}, shouldPair=${shouldPairWithNext}`);
+        }
 
         if (isHalfWidth && shouldPairWithNext) {
+          console.log(`[Dashboard] Pairing ${widget.id} with ${nextWidget.id} on row ${widget.row}`);
           return (
-            <div key={`pair-${widget.row}`} className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <div key={`pair-${widget.row}-${index}`} className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               <div>{renderWidget(widget.id)}</div>
               <div>{renderWidget(nextWidget.id)}</div>
             </div>
           );
-        } else if (isHalfWidth && visibleWidgets[index - 1]?.row === widget.row) {
-          return null; // Already rendered in pair
-        } else {
-          return <div key={widget.id}>{renderWidget(widget.id)}</div>;
+        } else if (isHalfWidth && index > 0) {
+          const prevWidget = visibleWidgets[index - 1];
+          const wasPairedWithPrev = prevWidget?.width === 6 && 
+                                    (prevWidget.row === widget.row || prevWidget.row === widget.row - 1);
+          if (wasPairedWithPrev) {
+            console.log(`[Dashboard] Skipping ${widget.id} - already paired with previous`);
+            return null; // Already rendered in pair
+          }
         }
+        
+        console.log(`[Dashboard] Rendering ${widget.id} as single widget (width: ${widget.width === 12 ? 'full' : 'half'})`);
+        return <div key={widget.id}>{renderWidget(widget.id)}</div>;
       })}
     </div>
   );

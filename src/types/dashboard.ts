@@ -20,6 +20,7 @@ export interface WidgetConfig {
   title: string;
   description: string;
   defaultSize: WidgetSize;
+  locked?: boolean; // If true, width cannot be changed
   icon?: string;
   component?: ComponentType<any>;
   settings?: Record<string, any>;
@@ -48,48 +49,56 @@ export const WIDGET_CATALOG: Record<WidgetId, WidgetConfig> = {
     title: 'Statistics Cards',
     description: 'Overview statistics: total events, critical events, active substations',
     defaultSize: 'full',
+    locked: true,
   },
   'substation-map': {
     id: 'substation-map',
     title: 'Substation Map',
     description: 'Geographic visualization of substations with incident counts',
     defaultSize: 'full',
+    locked: true,
   },
   'sarfi-chart': {
     id: 'sarfi-chart',
     title: 'SARFI Chart',
     description: 'SARFI-70/80/90 trends with integrated data table',
     defaultSize: 'full',
+    locked: true,
   },
   'root-cause-chart': {
     id: 'root-cause-chart',
     title: 'Root Cause Analysis',
     description: 'Top 10 causes of power quality events',
     defaultSize: 'half',
+    locked: true,
   },
   'insight-chart': {
     id: 'insight-chart',
     title: 'Insights & Trends',
     description: 'Voltage dip trends and high-incident substations',
     defaultSize: 'half',
+    locked: true,
   },
   'affected-customer-chart': {
     id: 'affected-customer-chart',
     title: 'Affected Customers',
     description: 'Customer impact visualization',
     defaultSize: 'full',
+    locked: true,
   },
   'event-list': {
     id: 'event-list',
     title: 'Recent Events',
     description: 'Latest power quality events',
     defaultSize: 'full',
+    locked: true,
   },
   'sarfi-70-monitor': {
     id: 'sarfi-70-monitor',
     title: 'SARFI-70 KPI Monitor',
     description: '3-year trend comparison with monthly breakdown',
     defaultSize: 'full',
+    locked: true,
   },
 };
 

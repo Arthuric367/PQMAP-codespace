@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Plus, Download, Upload, X, GripVertical, Maximize2, Minimize2 } from 'lucide-react';
+import { Settings, Plus, Download, Upload, X, GripVertical, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { WidgetLayout, DashboardLayout, WIDGET_CATALOG, WidgetId, exportLayoutToXML, importLayoutFromXML } from '../../types/dashboard';
 
 interface DashboardLayoutManagerProps {
@@ -7,6 +7,7 @@ interface DashboardLayoutManagerProps {
   onLayoutChange: (layout: DashboardLayout) => void;
   onSave: () => void;
   onCancel: () => void;
+  onResetToDefault?: () => void;
 }
 
 export default function DashboardLayoutManager({
@@ -14,6 +15,7 @@ export default function DashboardLayoutManager({
   onLayoutChange,
   onSave,
   onCancel,
+  onResetToDefault,
 }: DashboardLayoutManagerProps) {
   const [availableWidgets, setAvailableWidgets] = useState<WidgetId[]>([]);
   const [draggedWidget, setDraggedWidget] = useState<WidgetId | null>(null);
@@ -26,9 +28,12 @@ export default function DashboardLayoutManager({
       id => !visibleIds.includes(id as WidgetId)
     ) as WidgetId[];
     setAvailableWidgets(available);
+    console.log('[DashboardLayoutManager] Available widgets:', available);
+    console.log('[DashboardLayoutManager] Current layout:', layout);
   }, [layout]);
 
   const handleDragStart = (widgetId: WidgetId, source: 'sidebar' | 'dashboard') => {
+    console.log('[DashboardLayoutManager] Drag started:', widgetId, 'from', source);
     setDraggedWidget(widgetId);
   };
 
@@ -41,14 +46,19 @@ export default function DashboardLayoutManager({
     e.preventDefault();
     setDragOverIndex(null);
 
-    if (!draggedWidget) return;
+    if (!draggedWidget) {
+      console.log('[DashboardLayoutManager] Drop failed: no dragged widget');
+      return;
+    }
+
+    console.log('[DashboardLayoutManager] Drop:', draggedWidget, 'at index', targetIndex);
 
     const sourceWidget = layout.widgets.find(w => w.id === draggedWidget);
     
-    if (!sourceWidget) {
+    if (!sourceWidget || !sourceWidget.visible) {
       // Dragging from sidebar - add new widget
+      console.log('[DashboardLayoutManager] Adding new widget from sidebar:', draggedWidget);
       const widgetConfig = WIDGET_CATALOG[draggedWidget];
-      const visibleWidgets = layout.widgets.filter(w => w.visible);
       
       const newWidget: WidgetLayout = {
         id: draggedWidget,
@@ -58,29 +68,53 @@ export default function DashboardLayoutManager({
         visible: true,
       };
 
-      // Update rows for widgets after insertion point
-      const updatedWidgets = layout.widgets.map(w => {
-        if (w.visible && w.row >= targetIndex) {
+      console.log('[DashboardLayoutManager] New widget config:', newWidget);
+
+      // Get current visible widgets and update rows
+      const visibleWidgets = layout.widgets.filter(w => w.visible);
+      
+      // Update rows for widgets at or after insertion point
+      const updatedVisible = visibleWidgets.map(w => {
+        if (w.row >= targetIndex) {
           return { ...w, row: w.row + 1 };
         }
         return w;
       });
 
-      // Add the new widget
-      const widgetIndex = updatedWidgets.findIndex(w => w.id === draggedWidget);
-      if (widgetIndex !== -1) {
-        updatedWidgets[widgetIndex] = newWidget;
-      } else {
-        updatedWidgets.push(newWidget);
-      }
+      // Insert new widget at target index
+      updatedVisible.splice(targetIndex, 0, newWidget);
 
-      onLayoutChange({ ...layout, widgets: updatedWidgets });
-    } else if (sourceWidget.visible) {
+      // Renumber all rows to be sequential
+      const reorderedVisible = updatedVisible.map((w, index) => ({
+        ...w,
+        row: index,
+        col: 0,
+      }));
+
+      // Get all widgets (including hidden ones) and update the one we just added
+      const allWidgets = layout.widgets.map(w => {
+        if (w.id === draggedWidget) {
+          return newWidget;
+        }
+        return w;
+      });
+
+      // Merge visible (reordered) with hidden widgets
+      const hiddenWidgets = allWidgets.filter(w => !w.visible && w.id !== draggedWidget);
+      const finalWidgets = [...reorderedVisible, ...hiddenWidgets];
+
+      console.log('[DashboardLayoutManager] Final widgets after add:', finalWidgets);
+      onLayoutChange({ ...layout, widgets: finalWidgets });
+    } else {
       // Reordering within dashboard
+      console.log('[DashboardLayoutManager] Reordering widget:', draggedWidget);
       const visibleWidgets = layout.widgets.filter(w => w.visible);
       const sourceIndex = visibleWidgets.findIndex(w => w.id === draggedWidget);
       
-      if (sourceIndex === -1 || sourceIndex === targetIndex) return;
+      if (sourceIndex === -1 || sourceIndex === targetIndex) {
+        console.log('[DashboardLayoutManager] No reorder needed');
+        return;
+      }
 
       // Reorder widgets
       const reordered = [...visibleWidgets];
@@ -97,6 +131,7 @@ export default function DashboardLayoutManager({
       // Merge with hidden widgets
       const hiddenWidgets = layout.widgets.filter(w => !w.visible);
       
+      console.log('[DashboardLayoutManager] Final widgets after reorder:', [...updatedVisible, ...hiddenWidgets]);
       onLayoutChange({
         ...layout,
         widgets: [...updatedVisible, ...hiddenWidgets],
@@ -112,6 +147,7 @@ export default function DashboardLayoutManager({
   };
 
   const handleRemoveWidget = (widgetId: WidgetId) => {
+    console.log('[DashboardLayoutManager] Removing widget:', widgetId);
     const visibleWidgets = layout.widgets.filter(w => w.visible && w.id !== widgetId);
     
     // Reorder remaining widgets
@@ -129,6 +165,7 @@ export default function DashboardLayoutManager({
       hiddenWidgets.push({ ...removedWidget, visible: false });
     }
 
+    console.log('[DashboardLayoutManager] After removal, visible:', updatedVisible, 'hidden:', hiddenWidgets);
     onLayoutChange({
       ...layout,
       widgets: [...updatedVisible, ...hiddenWidgets],
@@ -136,6 +173,15 @@ export default function DashboardLayoutManager({
   };
 
   const handleToggleWidth = (widgetId: WidgetId) => {
+    const config = WIDGET_CATALOG[widgetId];
+    
+    // Check if widget is locked
+    if (config.locked) {
+      console.log('[DashboardLayoutManager] Width toggle blocked: widget is locked', widgetId);
+      return;
+    }
+
+    console.log('[DashboardLayoutManager] Toggling width for:', widgetId);
     onLayoutChange({
       ...layout,
       widgets: layout.widgets.map(w =>
@@ -202,6 +248,16 @@ export default function DashboardLayoutManager({
               <Download className="w-4 h-4" />
               Export
             </button>
+            {onResetToDefault && (
+              <button
+                onClick={onResetToDefault}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-2"
+                title="Reset to role-based default layout"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Default
+              </button>
+            )}
             <label className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 flex items-center gap-2 cursor-pointer">
               <Upload className="w-4 h-4" />
               Import
@@ -230,6 +286,13 @@ export default function DashboardLayoutManager({
         {/* Dashboard Grid Preview */}
         <div className="p-6 min-h-screen">
           <div className="space-y-4">
+            {visibleWidgets.length === 0 && (
+              <div className="text-center py-12">
+                <Settings className="w-16 h-16 mx-auto mb-4 text-slate-300" />
+                <p className="text-slate-500">No widgets on dashboard. Drag widgets from the right sidebar to add them.</p>
+              </div>
+            )}
+            
             {visibleWidgets.map((widget, index) => {
               const config = WIDGET_CATALOG[widget.id];
               const isDragging = draggedWidget === widget.id;
@@ -271,17 +334,24 @@ export default function DashboardLayoutManager({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleToggleWidth(widget.id)}
-                          className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded"
-                          title={widget.width === 12 ? 'Make half width' : 'Make full width'}
-                        >
-                          {widget.width === 12 ? (
-                            <Minimize2 className="w-4 h-4" />
-                          ) : (
-                            <Maximize2 className="w-4 h-4" />
-                          )}
-                        </button>
+                        {!config.locked && (
+                          <button
+                            onClick={() => handleToggleWidth(widget.id)}
+                            className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded"
+                            title={widget.width === 12 ? 'Make half width' : 'Make full width'}
+                          >
+                            {widget.width === 12 ? (
+                              <Minimize2 className="w-4 h-4" />
+                            ) : (
+                              <Maximize2 className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
+                        {config.locked && (
+                          <div className="px-2 py-1 text-xs bg-slate-200 text-slate-600 rounded" title="Width is locked for this widget">
+                            {widget.width === 12 ? 'Full Width' : 'Half Width'}
+                          </div>
+                        )}
                         <button
                           onClick={() => handleRemoveWidget(widget.id)}
                           className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded"
