@@ -51,6 +51,126 @@ export default function DashboardLayoutManager({
     e.stopPropagation();
   };
 
+  const handleDropBeside = (e: React.DragEvent, targetRow: number, insertIndex: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverIndex(null);
+
+    if (!draggedWidget) {
+      console.log('[DashboardLayoutManager] Drop beside failed: no dragged widget');
+      return;
+    }
+
+    console.log('[DashboardLayoutManager] ====== DROP BESIDE EVENT ======');
+    console.log('[DashboardLayoutManager] Dragged widget:', draggedWidget);
+    console.log('[DashboardLayoutManager] Target row:', targetRow);
+    console.log('[DashboardLayoutManager] Insert index:', insertIndex);
+
+    const sourceWidget = layout.widgets.find(w => w.id === draggedWidget);
+    const widgetConfig = WIDGET_CATALOG[draggedWidget];
+    
+    if (!sourceWidget || !sourceWidget.visible) {
+      // Adding new widget from sidebar beside existing widget
+      console.log('[DashboardLayoutManager] Adding new widget from sidebar beside existing widget');
+      
+      const newWidget: WidgetLayout = {
+        id: draggedWidget,
+        col: 6,
+        row: targetRow,
+        width: 6, // Force half-width when dropping beside
+        visible: true,
+      };
+
+      console.log('[DashboardLayoutManager] New widget config:', newWidget);
+
+      // Get current visible widgets
+      const visibleWidgets = layout.widgets.filter(w => w.visible);
+      
+      // Update rows for widgets after insertion point
+      const updatedVisible = visibleWidgets.map(w => {
+        if (w.row > targetRow) {
+          return { ...w, row: w.row + 1 };
+        }
+        return w;
+      });
+
+      // Insert new widget
+      updatedVisible.splice(insertIndex, 0, newWidget);
+
+      // Renumber all rows sequentially
+      let currentRow = 0;
+      const reorderedVisible = updatedVisible.map((w, idx) => {
+        if (idx > 0 && updatedVisible[idx - 1].row !== w.row) {
+          currentRow++;
+        }
+        return {
+          ...w,
+          row: currentRow,
+        };
+      });
+
+      // Update all widgets
+      const allWidgets = layout.widgets.map(w => {
+        if (w.id === draggedWidget) {
+          return newWidget;
+        }
+        return w;
+      });
+
+      const hiddenWidgets = allWidgets.filter(w => !w.visible && w.id !== draggedWidget);
+      const finalWidgets = [...reorderedVisible, ...hiddenWidgets];
+
+      console.log('[DashboardLayoutManager] Final widgets after drop beside:', finalWidgets.filter(w => w.visible).map(w => ({ id: w.id, row: w.row, col: w.col })));
+      onLayoutChange({ ...layout, widgets: finalWidgets });
+    } else {
+      // Moving existing widget beside another
+      console.log('[DashboardLayoutManager] Moving existing widget beside another');
+      const visibleWidgets = layout.widgets.filter(w => w.visible);
+      const sourceIndex = visibleWidgets.findIndex(w => w.id === draggedWidget);
+      
+      if (sourceIndex === -1) {
+        console.log('[DashboardLayoutManager] Error: source widget not found');
+        return;
+      }
+
+      // Remove from current position
+      const reordered = [...visibleWidgets];
+      const [removed] = reordered.splice(sourceIndex, 1);
+      
+      // Adjust insert index if moving down
+      const adjustedInsertIndex = sourceIndex < insertIndex ? insertIndex - 1 : insertIndex;
+      
+      // Insert at new position with same row as target
+      removed.row = targetRow;
+      removed.col = 6;
+      removed.width = 6; // Force half-width
+      reordered.splice(adjustedInsertIndex, 0, removed);
+
+      // Renumber rows
+      let currentRow = 0;
+      const updatedVisible = reordered.map((w, idx) => {
+        if (idx > 0 && reordered[idx - 1].row !== w.row) {
+          currentRow++;
+        }
+        return {
+          ...w,
+          row: currentRow,
+        };
+      });
+
+      const hiddenWidgets = layout.widgets.filter(w => !w.visible);
+      
+      console.log('[DashboardLayoutManager] Final widgets after move beside:', updatedVisible.map(w => ({ id: w.id, row: w.row, col: w.col })));
+      onLayoutChange({
+        ...layout,
+        widgets: [...updatedVisible, ...hiddenWidgets],
+      });
+    }
+
+    setDraggedWidget(null);
+    console.log('[DashboardLayoutManager] ====== DROP BESIDE COMPLETE ======');
+  };
+
   const handleDrop = (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
     e.stopPropagation();
@@ -325,6 +445,8 @@ export default function DashboardLayoutManager({
               const isDragging = draggedWidget === widget.id;
               const isDropTarget = dragOverIndex === index;
               const isHalfWidth = widget.width === 6;
+              const nextWidget = visibleWidgets[index + 1];
+              const hasRoomOnRight = isHalfWidth && (!nextWidget || nextWidget.row !== widget.row);
 
               return (
                 <div key={widget.id} className="relative">
@@ -363,35 +485,37 @@ export default function DashboardLayoutManager({
                     )}
                   </div>
 
-                  <div
-                    draggable
-                    onDragStart={(e) => {
-                      console.log('[DashboardLayoutManager] Widget drag start:', widget.id, 'index:', index);
-                      handleDragStart(widget.id, 'dashboard');
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                    onDragEnter={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      console.log('[DashboardLayoutManager] Drop on widget body ignored:', widget.id);
-                    }}
-                    onDragEnd={handleDragEnd}
-                    className={`bg-white rounded-lg border-2 transition-all ${
-                      isDragging
-                        ? 'border-blue-500 shadow-xl opacity-50'
-                        : 'border-slate-200 hover:border-slate-300'
-                    }`}
-                    style={{
-                      width: widget.width === 12 ? '100%' : '50%',
-                    }}
-                  >
+                  {/* Widget and optional side drop zone container */}
+                  <div className={`flex gap-4 ${isHalfWidth ? 'w-full' : ''}`}>
+                    <div
+                      draggable
+                      onDragStart={(e) => {
+                        console.log('[DashboardLayoutManager] Widget drag start:', widget.id, 'index:', index);
+                        handleDragStart(widget.id, 'dashboard');
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onDragEnter={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('[DashboardLayoutManager] Drop on widget body ignored:', widget.id);
+                      }}
+                      onDragEnd={handleDragEnd}
+                      className={`bg-white rounded-lg border-2 transition-all ${
+                        isDragging
+                          ? 'border-blue-500 shadow-xl opacity-50'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                      style={{
+                        width: widget.width === 12 ? '100%' : '50%',
+                      }}
+                    >
                     {/* Widget Header */}
                     <div 
                       className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50 cursor-move"
@@ -452,6 +576,42 @@ export default function DashboardLayoutManager({
                         <p className="text-sm">{config.title}</p>
                       </div>
                     </div>
+                  </div>
+
+                    {/* Drop zone on the right side for half-width widgets */}
+                    {hasRoomOnRight && (
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          console.log('[DashboardLayoutManager] Drag over RIGHT DROP ZONE beside widget:', widget.id, 'index:', index + 0.5);
+                          handleDragOver(e, index + 0.5);
+                        }}
+                        onDragEnter={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          console.log('[DashboardLayoutManager] Drag enter RIGHT DROP ZONE beside widget:', widget.id);
+                        }}
+                        onDrop={(e) => {
+                          console.log('[DashboardLayoutManager] DROP on RIGHT zone beside widget:', widget.id, 'placing at same row');
+                          handleDropBeside(e, widget.row, index + 1);
+                        }}
+                        className={`flex-1 border-2 border-dashed rounded-lg flex items-center justify-center text-sm font-medium transition-all cursor-pointer ${
+                          dragOverIndex === index + 0.5 && draggedWidget !== widget.id
+                            ? 'bg-blue-100 border-blue-400 text-blue-600'
+                            : draggedWidget ? 'border-slate-300 hover:border-blue-300 hover:bg-blue-50 text-slate-500' : 'border-slate-200 bg-slate-50 text-slate-400'
+                        }`}
+                        style={{ minHeight: '250px' }}
+                      >
+                        {dragOverIndex === index + 0.5 && draggedWidget !== widget.id ? (
+                          <span className="font-semibold">⬇ Drop beside ⬇</span>
+                        ) : draggedWidget ? (
+                          <span>Drop beside {config.title}</span>
+                        ) : (
+                          <span className="text-xs">Drop zone</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
