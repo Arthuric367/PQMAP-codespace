@@ -1,6 +1,6 @@
 # PQMAP Database Schema Documentation
 
-**Last Updated:** December 19, 2025
+**Last Updated:** December 29, 2025
 
 ## Overview
 Complete database schema for the Power Quality Monitoring and Analysis Platform (PQMAP).
@@ -77,6 +77,41 @@ Complete database schema for the Power Quality Monitoring and Analysis Platform 
 - **Historical Events**: Run `scripts/backfill_customer_impacts.sql` to populate customer impacts for existing events
 - **Event Display**: Yellow card shows `customer_count` (estimate), blue card shows actual `event_customer_impact` records
 - **Data Consistency**: Customer names only appear after backfill creates detailed impact records
+
+### ✅ Applied Enhancement - Report Builder
+**Migration:** `20250101000000_create_saved_reports.sql`  
+**Status:** ✅ **APPLIED**  
+**Date:** January 1, 2025  
+**Purpose:** User-created report configurations with pivot tables and calculated fields  
+**Features:**
+- New `saved_reports` table for storing user report configurations
+- Support for pivot table settings (rows, cols, aggregation)
+- Calculated fields with custom expressions
+- Report sharing between users
+- RLS policies for owner and shared access
+- Automatic `updated_at` timestamp via trigger
+- **25 Real CLP Substations**: Replaced test data with production substation codes (APA through CYS)
+- **Circuit ID Format**: Updated to H1/H2/H3 (real transformer numbers, 1-3 per substation)
+- **Region Standardization**: Substations.region uses 'WE' (West), 'NR' (North), 'CN' (Central)
+- **Backfill Support**: Script available to generate customer impacts for historical events
+
+**Important Notes:**
+- **Historical Events**: Run `scripts/backfill_customer_impacts.sql` to populate customer impacts for existing events
+- **Event Display**: Yellow card shows `customer_count` (estimate), blue card shows actual `event_customer_impact` records
+- **Data Consistency**: Customer names only appear after backfill creates detailed impact records
+
+### ✅ Applied Enhancement - Report Builder
+**Migration:** `20250101000000_create_saved_reports.sql`  
+**Status:** ✅ **APPLIED**  
+**Date:** January 1, 2025  
+**Purpose:** User-created report configurations with pivot tables and calculated fields  
+**Features:**
+- New `saved_reports` table for storing user report configurations
+- Support for pivot table settings (rows, cols, aggregation)
+- Calculated fields with custom expressions
+- Report sharing between users
+- RLS policies for owner and shared access
+- Automatic `updated_at` timestamp via trigger
 
 ---
 
@@ -302,7 +337,62 @@ Production substations with official codes and coordinates:
 
 ---
 
-### 6. `customer_transformer_matching`
+### 6. `saved_reports` ✨ NEW (January 2025)
+**Purpose:** User-created report configurations with pivot tables and calculated fields
+
+| Column | Type | Constraints | Description | Example |
+|--------|------|-------------|-------------|--------|
+| `id` | uuid | PRIMARY KEY | Unique identifier | `r1e2p3o4-r5t6-7890-abcd-ef1234567890` |
+| `user_id` | uuid | FK → auth.users, NOT NULL | Report owner | `550e8400-e29b-41d4-a716-446655440000` |
+| `name` | text | NOT NULL | Report name | `Monthly Voltage Dip Analysis` |
+| `description` | text | | Report description | `Analysis of voltage dips by substation and severity` |
+| `config` | jsonb | NOT NULL | Report configuration (filters, pivot settings, calculated fields) | `{"filters": {...}, "pivotConfig": {...}}` |
+| `is_shared` | boolean | DEFAULT false | Is report shared with others? | `true` |
+| `shared_with` | uuid[] | DEFAULT '{}'::uuid[] | User IDs with access | `{user_id_1, user_id_2}` |
+| `created_at` | timestamptz | DEFAULT now() | Creation timestamp | `2025-12-28 10:30:00+00` |
+| `updated_at` | timestamptz | DEFAULT now() | Last update timestamp | `2025-12-29 08:15:00+00` |
+
+**TypeScript Interface:** `SavedReport`  
+**Status:** ✅ Matches database
+
+**RLS Policies:**
+- `SELECT`: Users can view own reports OR reports shared with them
+- `INSERT`: Users can create reports (user_id = auth.uid())
+- `UPDATE`: Users can update own reports only
+- `DELETE`: Users can delete own reports only
+
+**Trigger:** `update_saved_reports_updated_at` - Automatically updates `updated_at` on modification
+
+**Config Structure:**
+```jsonb
+{
+  "filters": {
+    "dateRange": "last30days",
+    "eventTypes": ["voltage_dip", "voltage_swell"],
+    "severityLevels": ["critical", "high"],
+    "excludeFalseEvents": true
+  },
+  "pivotConfig": {
+    "rows": ["substation.name"],
+    "cols": ["severity"],
+    "vals": ["duration_ms"],
+    "aggregatorName": "Average",
+    "rendererName": "Bar Chart"
+  },
+  "calculatedFields": [
+    {
+      "name": "duration_sec",
+      "expression": "[duration_ms] / 1000",
+      "type": "number"
+    }
+  ],
+  "refreshInterval": 60000
+}
+```
+
+---
+
+### 7. `customer_transformer_matching`
 **Purpose:** Maps customers to substations and circuits for automatic impact generation
 
 | Column | Type | Constraints | Description | Example |
@@ -340,7 +430,7 @@ Production substations with official codes and coordinates:
 
 ---
 
-### 7. `event_customer_impact`
+### 8. `event_customer_impact`
 **Purpose:** Links events to affected customers (auto-generated via trigger)
 
 | Column | Type | Constraints | Description | Example |
@@ -376,7 +466,7 @@ Historical events (created before the trigger was added) will have `customer_cou
 
 ---
 
-### 7. `notifications`
+### 9. `notifications`
 **Purpose:** Alert and notification records
 
 | Column | Type | Constraints | Description |
@@ -397,7 +487,7 @@ Historical events (created before the trigger was added) will have `customer_cou
 
 ---
 
-### 8. `notification_rules`
+### 10. `notification_rules`
 **Purpose:** Notification automation rules
 
 | Column | Type | Constraints | Description |
@@ -417,7 +507,7 @@ Historical events (created before the trigger was added) will have `customer_cou
 
 ---
 
-### 9. `pq_service_records`
+### 11. `pq_service_records`
 **Purpose:** Power quality service and consultation records
 
 | Column | Type | Constraints | Description | Example |

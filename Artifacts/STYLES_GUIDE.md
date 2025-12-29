@@ -1,7 +1,7 @@
 # PQMAP Styles Guide
 
-**Version:** 1.3  
-**Last Updated:** December 19, 2025  
+**Version:** 1.4  
+**Last Updated:** December 29, 2025  
 **Purpose:** Document reusable UI patterns, export/import utilities, and design standards for PQMAP application
 
 ---
@@ -2214,4 +2214,407 @@ className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
 
 ---
 
+## Report Builder Patterns
+
+### Interactive Pivot Table Interface
+
+**Component**: `src/components/Dashboard/ReportBuilder/ReportBuilder.tsx`
+
+**Libraries Used**:
+- `react-pivottable` - Pivot table and aggregation
+- `plotly.js` + `react-plotly.js` - Chart rendering
+- `xlsx` - Excel export
+- `jspdf` + `jspdf-autotable` - PDF export
+
+#### Key UI Patterns
+
+**Pivot Table Container**:
+```tsx
+<div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-200">
+  <PivotTableUI
+    data={filteredData}
+    onChange={s => setPivotState(s)}
+    renderers={Object.assign({}, TableRenderers, PlotlyRenderers)}
+    {...pivotState}
+  />
+</div>
+```
+
+**Filter Section Layout**:
+```tsx
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+  {/* Date Range Preset */}
+  <div>
+    <label className="block text-sm font-medium text-slate-700 mb-2">
+      Date Range
+    </label>
+    <select className="w-full px-3 py-2 border border-slate-300 rounded-lg">
+      <option value="today">Today</option>
+      <option value="last7days">Last 7 Days</option>
+      <option value="last30days">Last 30 Days</option>
+      {/* ... more options */}
+    </select>
+  </div>
+  
+  {/* Multi-Select Filter */}
+  <div>
+    <label className="block text-sm font-medium text-slate-700 mb-2">
+      Event Types
+    </label>
+    <select 
+      multiple 
+      className="w-full px-3 py-2 border border-slate-300 rounded-lg h-32"
+    >
+      <option value="voltage_dip">Voltage Dip</option>
+      <option value="voltage_swell">Voltage Swell</option>
+      {/* ... more options */}
+    </select>
+  </div>
+</div>
+```
+
+**Action Button Row**:
+```tsx
+<div className="flex flex-wrap items-center gap-3 mb-6">
+  {/* Primary Actions */}
+  <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 
+                     transition-all shadow-md flex items-center gap-2">
+    <Save className="w-4 h-4" />
+    Save Report
+  </button>
+  
+  {/* Secondary Actions */}
+  <button className="px-4 py-2 bg-white border border-slate-300 text-slate-700 
+                     rounded-lg hover:bg-slate-50 transition-all flex items-center gap-2">
+    <Download className="w-4 h-4" />
+    Export
+  </button>
+  
+  {/* Auto-Refresh Toggle */}
+  <label className="flex items-center gap-2 cursor-pointer">
+    <input 
+      type="checkbox" 
+      className="w-4 h-4 text-blue-600 rounded border-slate-300 
+                 focus:ring-blue-500"
+    />
+    <span className="text-sm font-medium text-slate-700">Auto-Refresh</span>
+  </label>
+  
+  {/* Refresh Interval Selector (when enabled) */}
+  {autoRefresh && (
+    <select className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+      <option value={30000}>30 seconds</option>
+      <option value={60000}>1 minute</option>
+      <option value={300000}>5 minutes</option>
+      {/* ... more options */}
+    </select>
+  )}
+</div>
+```
+
+**Calculated Field Button**:
+```tsx
+<button 
+  onClick={() => setShowCalculatedFieldEditor(true)}
+  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 
+             transition-all shadow-md flex items-center gap-2"
+  title="Create custom calculated field"
+>
+  <Plus className="w-4 h-4" />
+  Add Calculated Field
+</button>
+```
+
+### Calculated Field Editor Modal
+
+**Component**: `src/components/Dashboard/ReportBuilder/CalculatedFieldEditor.tsx`
+
+**Modal Structure**:
+```tsx
+<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] 
+                  overflow-hidden flex flex-col">
+    {/* Header */}
+    <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-4 
+                    flex items-center justify-between">
+      <h3 className="text-xl font-bold text-white">
+        Calculated Field Editor
+      </h3>
+      <button onClick={onClose} className="text-white/80 hover:text-white">
+        <X className="w-5 h-5" />
+      </button>
+    </div>
+    
+    {/* Content (scrollable) */}
+    <div className="p-6 overflow-y-auto flex-1">
+      {/* Field Name Input */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-slate-700 mb-2">
+          Field Name <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          placeholder="e.g., duration_sec"
+          className="w-full px-3 py-2 border border-slate-300 rounded-lg 
+                     focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+        />
+      </div>
+      
+      {/* Expression Input */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-slate-700 mb-2">
+          Expression <span className="text-red-500">*</span>
+        </label>
+        <textarea
+          placeholder="e.g., [duration_ms] / 1000"
+          rows={3}
+          className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono 
+                     text-sm focus:ring-2 focus:ring-purple-500"
+        />
+        <p className="text-xs text-slate-500 mt-1">
+          Use [Field Name] syntax. Example: [v1] + [v2] + [v3]
+        </p>
+      </div>
+      
+      {/* Available Fields Grid */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-slate-700 mb-2">
+          Available Fields (click to insert)
+        </label>
+        <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto 
+                        border border-slate-200 rounded-lg p-3 bg-slate-50">
+          {fields.map(field => (
+            <button
+              key={field}
+              onClick={() => insertField(field)}
+              className="px-2 py-1 bg-white border border-slate-300 rounded 
+                         hover:bg-blue-50 hover:border-blue-400 text-xs 
+                         font-mono text-left transition-all"
+            >
+              {field}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+    
+    {/* Footer */}
+    <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 
+                    flex justify-end gap-3">
+      <button onClick={onClose} className="px-4 py-2 border border-slate-300 
+                                           text-slate-700 rounded-lg hover:bg-white">
+        Cancel
+      </button>
+      <button onClick={handleSave} className="px-4 py-2 bg-purple-600 text-white 
+                                               rounded-lg hover:bg-purple-700">
+        Add Field
+      </button>
+    </div>
+  </div>
+</div>
+```
+
+### Share Report Modal
+
+**Component**: `src/components/Dashboard/ReportBuilder/ShareReportModal.tsx`
+
+**User Selection Pattern**:
+```tsx
+{/* Search Input */}
+<input
+  type="text"
+  placeholder="Search users by name, email, or department..."
+  className="w-full px-4 py-2 border border-slate-300 rounded-lg 
+             focus:ring-2 focus:ring-blue-500 mb-4"
+/>
+
+{/* User List with Checkboxes */}
+<div className="space-y-2 max-h-64 overflow-y-auto border border-slate-200 
+                rounded-lg p-3 bg-slate-50">
+  {filteredUsers.map(user => (
+    <label
+      key={user.id}
+      className="flex items-center gap-3 p-3 bg-white rounded-lg 
+                 hover:bg-blue-50 cursor-pointer border border-transparent 
+                 hover:border-blue-300 transition-all"
+    >
+      <input
+        type="checkbox"
+        checked={selectedUsers.includes(user.id)}
+        className="w-4 h-4 text-blue-600 rounded border-slate-300 
+                   focus:ring-blue-500"
+      />
+      <div className="flex-1">
+        <p className="font-medium text-slate-900">{user.full_name}</p>
+        <p className="text-xs text-slate-500">{user.email}</p>
+        {user.department && (
+          <p className="text-xs text-slate-400">{user.department}</p>
+        )}
+      </div>
+    </label>
+  ))}
+</div>
+
+{/* Selection Summary */}
+<div className="mt-4 p-3 bg-blue-50 rounded-lg">
+  <p className="text-sm text-blue-800">
+    {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} selected
+  </p>
+</div>
+```
+
+**Optional Message**:
+```tsx
+<div className="mt-4">
+  <label className="block text-sm font-medium text-slate-700 mb-2">
+    Message (optional)
+  </label>
+  <textarea
+    placeholder="Add a message to notify users about this report..."
+    rows={3}
+    className="w-full px-3 py-2 border border-slate-300 rounded-lg 
+               focus:ring-2 focus:ring-blue-500"
+  />
+</div>
+```
+
+### Report List Pattern
+
+**Saved Reports Display**:
+```tsx
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  {reports.map(report => (
+    <div
+      key={report.id}
+      className="bg-white rounded-xl shadow-md hover:shadow-lg 
+                 transition-all border border-slate-200 p-4"
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex-1">
+          <h4 className="font-semibold text-slate-900 mb-1">{report.name}</h4>
+          {report.description && (
+            <p className="text-sm text-slate-600 line-clamp-2">
+              {report.description}
+            </p>
+          )}
+        </div>
+        {report.is_shared && (
+          <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 
+                           text-xs rounded-full">
+            Shared
+          </span>
+        )}
+      </div>
+      
+      {/* Metadata */}
+      <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
+        <Calendar className="w-3 h-3" />
+        <span>{formatDate(report.created_at)}</span>
+      </div>
+      
+      {/* Actions */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => loadReport(report)}
+          className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg 
+                     hover:bg-blue-700 text-sm font-medium"
+        >
+          Load
+        </button>
+        <button
+          onClick={() => shareReport(report)}
+          className="px-3 py-2 border border-slate-300 text-slate-700 
+                     rounded-lg hover:bg-slate-50 text-sm"
+          title="Share report"
+        >
+          <Share2 className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => deleteReport(report)}
+          className="px-3 py-2 border border-red-300 text-red-600 
+                     rounded-lg hover:bg-red-50 text-sm"
+          title="Delete report"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  ))}
+</div>
+```
+
+### Date Range Preset Options
+
+**Standard Presets**:
+```typescript
+const datePresets = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'last7days', label: 'Last 7 Days' },
+  { value: 'last30days', label: 'Last 30 Days' },
+  { value: 'last90days', label: 'Last 90 Days' },
+  { value: 'thisMonth', label: 'This Month' },
+  { value: 'lastMonth', label: 'Last Month' },
+  { value: 'thisQuarter', label: 'This Quarter' },
+  { value: 'lastQuarter', label: 'Last Quarter' },
+  { value: 'thisYear', label: 'This Year' },
+  { value: 'lastYear', label: 'Last Year' },
+  { value: 'last365days', label: 'Last 365 Days' },
+  { value: 'custom', label: 'Custom Range...' }
+];
+```
+
+**Custom Date Range Picker** (when preset is 'custom'):
+```tsx
+<div className="grid grid-cols-2 gap-4">
+  <div>
+    <label className="block text-sm font-medium text-slate-700 mb-2">
+      Start Date
+    </label>
+    <input
+      type="datetime-local"
+      className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+    />
+  </div>
+  <div>
+    <label className="block text-sm font-medium text-slate-700 mb-2">
+      End Date
+    </label>
+    <input
+      type="datetime-local"
+      className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+    />
+  </div>
+</div>
+```
+
+### CSS Import Requirements
+
+**Add to `src/index.css`**:
+```css
+/* React PivotTable CSS */
+@import 'react-pivottable/pivottable.css';
+
+/* Optional: Custom pivot table styles */
+.pvtUi {
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.pvtTable {
+  border-collapse: collapse;
+}
+
+.pvtTable thead tr th,
+.pvtTable tbody tr th {
+  background-color: #f8fafc;
+  font-weight: 600;
+  color: #334155;
+}
+```
+
+---
+
 **End of Styles Guide**
+

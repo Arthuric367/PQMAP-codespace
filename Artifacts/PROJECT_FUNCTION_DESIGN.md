@@ -1,7 +1,7 @@
 # PQMAP - Project Function Design Document
 
-**Document Version:** 1.3  
-**Last Updated:** December 19, 2025  
+**Document Version:** 1.4  
+**Last Updated:** December 29, 2025  
 **Purpose:** Comprehensive functional design reference for continuous development
 
 ---
@@ -99,6 +99,9 @@ src/
 - **SubstationMap**: Geographic bubble chart with Hong Kong map background
 - **SARFIChart**: SARFI-70/80/90 trends with optional data table
 - **RootCauseChart**: Bar chart showing top 10 event causes
+- **InsightChart**: Voltage dip trends and substation analysis
+- **SARFI70Monitor**: KPI monitoring with 3-year comparison
+- **ReportBuilder**: Interactive pivot tables and custom reports (NEW - Dec 2025)
 - **EventList**: Recent events with quick filters
 
 #### Key Features
@@ -520,7 +523,102 @@ availability = (count / expectedCount) * 100
 
 **Purpose**: Generate compliance and performance reports
 
-#### Report Types
+#### Interactive Report Builder ✨ NEW (December 2025)
+
+**Location**: Dashboard → Report Builder Widget
+
+**Purpose**: Self-service analytics with drag-and-drop pivot tables and dynamic visualizations
+
+**Key Features**:
+1. **Pivot Table Interface**
+   - Powered by react-pivottable with Plotly charts
+   - Drag-and-drop field selection (rows, columns, values)
+   - Real-time aggregation (sum, count, average, min, max)
+   - Multiple chart types: bar, line, scatter, heatmap, pie
+
+2. **Data Filtering**
+   - Date range presets (today, last 7/30/90 days, this month/quarter/year, custom)
+   - Event type filter (voltage_dip, voltage_swell, harmonic, etc.)
+   - Severity filter (critical, high, medium, low)
+   - False event exclusion toggle
+
+3. **Calculated Fields**
+   - Custom expressions using [Field Name] syntax
+   - Examples:
+     - `[duration_ms] / 1000` → duration in seconds
+     - `[v1] + [v2] + [v3]` → total voltage
+     - `[customer_count] * [duration_ms] / 60000` → customer-minutes
+   - Field type selection: text, number, date
+   - Live expression validation
+
+4. **Save & Share**
+   - Save reports with name and description
+   - Share with specific users (search by name/email/department)
+   - Optional notification message
+   - View shared reports from other users
+
+5. **Export Options**
+   - Excel (.xlsx) - preserves pivot table structure
+   - CSV (.csv) - flattened data
+   - PDF (.pdf) - rendered chart and table
+
+6. **Auto-Refresh**
+   - Configurable refresh interval (30s, 1min, 5min, 15min, 30min, 1hr)
+   - Disabled by default, enabled via toggle
+   - Visual countdown timer when active
+
+**Data Structure**:
+```typescript
+interface SavedReport {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  config: ReportConfig;  // JSON: filters, pivot config, calculated fields
+  is_shared: boolean;
+  shared_with: string[];  // User IDs
+  created_at: string;
+  updated_at: string;
+}
+
+interface ReportConfig {
+  filters: {
+    dateRange: DateFilterPreset | 'custom';
+    startDate?: string;
+    endDate?: string;
+    eventTypes: EventType[];
+    severityLevels: SeverityLevel[];
+    excludeFalseEvents: boolean;
+  };
+  pivotConfig: {
+    rows: string[];
+    cols: string[];
+    vals: string[];
+    aggregatorName: string;  // "Count", "Sum", "Average", etc.
+    rendererName: string;    // "Table", "Bar Chart", "Line Chart", etc.
+  };
+  calculatedFields: CalculatedField[];
+  refreshInterval?: number;  // milliseconds
+}
+```
+
+**Database Table**: `saved_reports` (migration: `20250101000000_create_saved_reports.sql`)
+
+**Component Files**:
+- `src/components/Dashboard/ReportBuilder/ReportBuilder.tsx` (main component)
+- `src/components/Dashboard/ReportBuilder/CalculatedFieldEditor.tsx` (field editor modal)
+- `src/components/Dashboard/ReportBuilder/ShareReportModal.tsx` (sharing UI)
+- `src/types/report.ts` (type definitions)
+
+**Integration**:
+- Added to Dashboard as new widget type: `'report-builder'`
+- Imports react-pivottable, react-plotly.js, plotly.js
+- Uses Supabase for report persistence
+- RLS policies ensure users only see their own and shared reports
+
+---
+
+#### Standard Report Types
 
 ##### 1. Supply Reliability Report
 **Data Included**:
@@ -994,6 +1092,27 @@ CREATE INDEX idx_pq_events_false ON pq_events(false_event) WHERE false_event = t
 - created_at (timestamptz)
 - updated_at (timestamptz)
 ```
+
+#### 8. saved_reports ✨ NEW (January 2025)
+**Purpose**: User-created report configurations with pivot tables and calculated fields
+
+```sql
+- id (uuid, primary key)
+- user_id (uuid, foreign key to auth.users)
+- name (text, NOT NULL)
+- description (text)
+- config (jsonb, NOT NULL) -- ReportConfig object (filters, pivot settings, calculated fields)
+- is_shared (boolean, DEFAULT false)
+- shared_with (uuid[], DEFAULT '{}'::uuid[]) -- Array of user IDs with access
+- created_at (timestamptz, DEFAULT now())
+- updated_at (timestamptz, DEFAULT now())
+```
+
+**RLS Policies**:
+- Users can view their own reports: `user_id = auth.uid()`
+- Users can view reports shared with them: `auth.uid() = ANY(shared_with)`
+- Users can insert/update/delete their own reports only
+- Automatic `updated_at` timestamp via trigger
 
 ### Recent Database Enhancements
 
@@ -1862,6 +1981,26 @@ docs(artifacts): create comprehensive project function design document
 
 ### D. Recent Updates Log
 
+**Version 1.4 (December 29, 2025)**:
+- Added Report Builder module documentation (interactive pivot tables)
+- Added saved_reports database table schema
+- Updated component list with ReportBuilder widget
+- Documented calculated fields feature
+- Added report sharing functionality
+- Updated tech stack with react-pivottable and plotly.js
+
+**Version 1.3 (December 19, 2025)**:
+- Added Meter Availability Report documentation
+- Updated Asset Management module with availability monitoring
+- Documented mock data generation for PQMS/CPDIS integration
+- Added time range configuration patterns
+
+**Version 1.2 (December 15, 2025)**:
+- Added Customer Transformer Matching module
+- Documented automatic customer impact generation
+- Updated circuit ID format (H1/H2/H3)
+- Added 25 real CLP substations with production codes
+
 **Version 1.1 (December 15, 2025)**:
 - Added Event Database Reorganization script documentation
 - Updated Meter Management with 11 new inventory fields
@@ -1879,8 +2018,8 @@ docs(artifacts): create comprehensive project function design document
 ---
 
 **Document Prepared By**: AI Development Assistant  
-**Current Version**: 1.1  
-**Review Status**: Updated - December 15, 2025  
+**Current Version**: 1.4  
+**Review Status**: Updated - December 29, 2025  
 **Next Review Date**: As needed based on major feature additions
 
 ---
