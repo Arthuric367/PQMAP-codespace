@@ -447,6 +447,16 @@ export default function DashboardLayoutManager({
               const isHalfWidth = widget.width === 6;
               const nextWidget = visibleWidgets[index + 1];
               const hasRoomOnRight = isHalfWidth && (!nextWidget || nextWidget.row !== widget.row);
+              const prevWidget = visibleWidgets[index - 1];
+              const isSecondInRow = isHalfWidth && prevWidget && prevWidget.row === widget.row && prevWidget.width === 6;
+
+              // Skip rendering if this is the second widget in a row (will be rendered with the first)
+              if (isSecondInRow) {
+                return null;
+              }
+
+              // Check if next widget should be paired
+              const shouldPairWithNext = isHalfWidth && nextWidget && nextWidget.width === 6 && nextWidget.row === widget.row;
 
               return (
                 <div key={widget.id} className="relative">
@@ -473,7 +483,7 @@ export default function DashboardLayoutManager({
                         : draggedWidget ? 'border-slate-300 hover:border-blue-300 hover:bg-blue-50 text-slate-500' : 'border-slate-200 bg-slate-50 text-slate-400'
                     }`}
                     style={{
-                      width: isHalfWidth ? '50%' : '100%',
+                      width: shouldPairWithNext ? '100%' : isHalfWidth ? '50%' : '100%',
                     }}
                   >
                     {isDropTarget && draggedWidget !== widget.id ? (
@@ -485,98 +495,196 @@ export default function DashboardLayoutManager({
                     )}
                   </div>
 
-                  {/* Widget and optional side drop zone container */}
-                  <div className={`flex gap-4 ${isHalfWidth ? 'w-full' : ''}`}>
-                    <div
-                      draggable
-                      onDragStart={(e) => {
-                        console.log('[DashboardLayoutManager] Widget drag start:', widget.id, 'index:', index);
-                        handleDragStart(widget.id, 'dashboard');
-                      }}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onDragEnter={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        console.log('[DashboardLayoutManager] Drop on widget body ignored:', widget.id);
-                      }}
-                      onDragEnd={handleDragEnd}
-                      className={`bg-white rounded-lg border-2 transition-all ${
-                        isDragging
-                          ? 'border-blue-500 shadow-xl opacity-50'
-                          : 'border-slate-200 hover:border-slate-300'
-                      }`}
-                      style={{
-                        width: widget.width === 12 ? '100%' : '50%',
-                      }}
-                    >
-                    {/* Widget Header */}
-                    <div 
-                      className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50 cursor-move"
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onDragEnter={handleDragEnter}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="text-slate-400 hover:text-slate-600">
-                          <GripVertical className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h3 className="font-medium text-slate-900">{config.title}</h3>
-                          <p className="text-xs text-slate-600">{config.description}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {!config.locked && (
-                          <button
-                            onClick={() => handleToggleWidth(widget.id)}
-                            className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded"
-                            title={widget.width === 12 ? 'Make half width' : 'Make full width'}
-                          >
-                            {widget.width === 12 ? (
-                              <Minimize2 className="w-4 h-4" />
-                            ) : (
-                              <Maximize2 className="w-4 h-4" />
-                            )}
-                          </button>
-                        )}
-                        {config.locked && (
-                          <div className="px-2 py-1 text-xs bg-slate-200 text-slate-600 rounded" title="Width is locked for this widget">
-                            {widget.width === 12 ? 'Full Width' : 'Half Width'}
-                          </div>
-                        )}
-                        <button
-                          onClick={() => handleRemoveWidget(widget.id)}
-                          className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded"
-                          title="Remove widget"
+                  {/* Widget container - flex for side-by-side display */}
+                  <div className={`flex gap-4 ${shouldPairWithNext ? 'w-full' : ''}`}>
+                    {/* First widget */}
+                    <div className="flex-1" style={{ maxWidth: widget.width === 12 ? '100%' : '50%' }}>
+                      <div
+                        draggable
+                        onDragStart={(e) => {
+                          console.log('[DashboardLayoutManager] Widget drag start:', widget.id, 'index:', index);
+                          handleDragStart(widget.id, 'dashboard');
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onDragEnter={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          console.log('[DashboardLayoutManager] Drop on widget body ignored:', widget.id);
+                        }}
+                        onDragEnd={handleDragEnd}
+                        className={`bg-white rounded-lg border-2 transition-all ${
+                          isDragging
+                            ? 'border-blue-500 shadow-xl opacity-50'
+                            : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        {/* Widget Header */}
+                        <div 
+                          className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50 cursor-move"
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onDragEnter={handleDragEnter}
                         >
-                          <X className="w-4 h-4" />
-                        </button>
+                          <div className="flex items-center gap-3">
+                            <div className="text-slate-400 hover:text-slate-600">
+                              <GripVertical className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h3 className="font-medium text-slate-900">{config.title}</h3>
+                              <p className="text-xs text-slate-600">{config.description}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {!config.locked && (
+                              <button
+                                onClick={() => handleToggleWidth(widget.id)}
+                                className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded"
+                                title={widget.width === 12 ? 'Make half width' : 'Make full width'}
+                              >
+                                {widget.width === 12 ? (
+                                  <Minimize2 className="w-4 h-4" />
+                                ) : (
+                                  <Maximize2 className="w-4 h-4" />
+                                )}
+                              </button>
+                            )}
+                            {config.locked && (
+                              <div className="px-2 py-1 text-xs bg-slate-200 text-slate-600 rounded" title="Width is locked for this widget">
+                                {widget.width === 12 ? 'Full Width' : 'Half Width'}
+                              </div>
+                            )}
+                            <button
+                              onClick={() => handleRemoveWidget(widget.id)}
+                              className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded"
+                              title="Remove widget"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                        {/* Widget Preview */}
+                        <div 
+                          className="p-6 h-48 flex items-center justify-center text-slate-400 bg-slate-50"
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onDragEnter={handleDragEnter}
+                        >
+                          <div className="text-center">
+                            <Settings className="w-12 h-12 mx-auto mb-2 text-slate-300" />
+                            <p className="text-sm">{config.title}</p>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    {/* Widget Preview */}
-                    <div 
-                      className="p-6 h-48 flex items-center justify-center text-slate-400 bg-slate-50"
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onDragEnter={handleDragEnter}
-                    >
-                      <div className="text-center">
-                        <Settings className="w-12 h-12 mx-auto mb-2 text-slate-300" />
-                        <p className="text-sm">{config.title}</p>
-                      </div>
-                    </div>
-                  </div>
+
+                    {/* Second widget if paired on same row */}
+                    {shouldPairWithNext && (() => {
+                      const nextConfig = WIDGET_CATALOG[nextWidget.id];
+                      const nextIsDragging = draggedWidget === nextWidget.id;
+                      
+                      return (
+                        <div className="flex-1" style={{ maxWidth: '50%' }}>
+                          <div
+                            draggable
+                            onDragStart={(e) => {
+                              console.log('[DashboardLayoutManager] Widget drag start:', nextWidget.id, 'index:', index + 1);
+                              handleDragStart(nextWidget.id, 'dashboard');
+                            }}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            onDragEnter={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              console.log('[DashboardLayoutManager] Drop on widget body ignored:', nextWidget.id);
+                            }}
+                            onDragEnd={handleDragEnd}
+                            className={`bg-white rounded-lg border-2 transition-all ${
+                              nextIsDragging
+                                ? 'border-blue-500 shadow-xl opacity-50'
+                                : 'border-slate-200 hover:border-slate-300'
+                            }`}
+                          >
+                            {/* Widget Header */}
+                            <div 
+                              className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50 cursor-move"
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                              onDragEnter={handleDragEnter}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="text-slate-400 hover:text-slate-600">
+                                  <GripVertical className="w-5 h-5" />
+                                </div>
+                                <div>
+                                  <h3 className="font-medium text-slate-900">{nextConfig.title}</h3>
+                                  <p className="text-xs text-slate-600">{nextConfig.description}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {!nextConfig.locked && (
+                                  <button
+                                    onClick={() => handleToggleWidth(nextWidget.id)}
+                                    className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded"
+                                    title={nextWidget.width === 12 ? 'Make half width' : 'Make full width'}
+                                  >
+                                    {nextWidget.width === 12 ? (
+                                      <Minimize2 className="w-4 h-4" />
+                                    ) : (
+                                      <Maximize2 className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                )}
+                                {nextConfig.locked && (
+                                  <div className="px-2 py-1 text-xs bg-slate-200 text-slate-600 rounded" title="Width is locked for this widget">
+                                    {nextWidget.width === 12 ? 'Full Width' : 'Half Width'}
+                                  </div>
+                                )}
+                                <button
+                                  onClick={() => handleRemoveWidget(nextWidget.id)}
+                                  className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded"
+                                  title="Remove widget"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                            {/* Widget Preview */}
+                            <div 
+                              className="p-6 h-48 flex items-center justify-center text-slate-400 bg-slate-50"
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                              onDragEnter={handleDragEnter}
+                            >
+                              <div className="text-center">
+                                <Settings className="w-12 h-12 mx-auto mb-2 text-slate-300" />
+                                <p className="text-sm">{nextConfig.title}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Drop zone on the right side for half-width widgets */}
                     {hasRoomOnRight && (
