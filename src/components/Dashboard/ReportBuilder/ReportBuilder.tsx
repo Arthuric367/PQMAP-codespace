@@ -253,6 +253,7 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
 
   const applyGrouping = (value: any, groupedField: GroupedField): string => {
     const { grouping } = groupedField;
+    console.log(`[Grouping] Applying ${grouping.type} grouping to value:`, value);
 
     if (grouping.type === 'time') {
       // Time grouping
@@ -467,10 +468,11 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    console.log('[ReportBuilder] Refreshing data...', {
-      filteredCount: filteredEvents.length,
-      calculatedFieldsCount: calculatedFields.length
-    });
+    console.log('[ReportBuilder] ===== REFRESH STARTED =====');
+    console.log('[ReportBuilder] Filtered events count:', filteredEvents.length);
+    console.log('[ReportBuilder] Calculated fields:', calculatedFields.length);
+    console.log('[ReportBuilder] Grouped fields:', groupedFields.length);
+    console.log('[ReportBuilder] Enabled grouped fields:', groupedFields.filter(f => f.enabled).length);
     // Update display data from current filtered events
     const newDisplayData = filteredEvents.map(event => {
       const substation = substations.find(s => s.id === event.substation_id);
@@ -511,14 +513,17 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
         }
       });
 
-      // Add grouped fields
-      groupedFields.forEach(field => {
+      // Add grouped fields (only enabled ones)
+      groupedFields.filter(f => f.enabled).forEach(field => {
         try {
           const sourceValue = baseData[field.grouping.sourceField];
+          if (sourceValue === undefined) {
+            console.warn(`[Grouping] Source field '${field.grouping.sourceField}' not found in baseData. Available fields:`, Object.keys(baseData));
+          }
           const groupedValue = applyGrouping(sourceValue, field);
           baseData[field.name] = groupedValue;
         } catch (error) {
-          console.error(`Error grouping field ${field.name}:`, error);
+          console.error(`[Grouping] Error grouping field ${field.name}:`, error);
           baseData[field.name] = null;
         }
       });
@@ -528,6 +533,11 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
     
     setDisplayData(newDisplayData);
     console.log('[ReportBuilder] Display data updated:', newDisplayData.length);
+    if (newDisplayData.length > 0) {
+      console.log('[ReportBuilder] Sample row fields:', Object.keys(newDisplayData[0]));
+      console.log('[ReportBuilder] Sample row data:', newDisplayData[0]);
+    }
+    console.log('[ReportBuilder] ===== REFRESH COMPLETE =====');
     await new Promise(resolve => setTimeout(resolve, 500));
     setLastRefresh(new Date());
     setIsRefreshing(false);
@@ -968,12 +978,18 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
                 {groupedFields.map(field => (
                   <span
                     key={field.id}
-                    className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded flex items-center gap-1"
+                    className={`px-2 py-1 text-xs rounded flex items-center gap-1 ${
+                      field.enabled 
+                        ? 'bg-purple-100 text-purple-800' 
+                        : 'bg-slate-200 text-slate-500'
+                    }`}
+                    title={field.enabled ? 'Enabled' : 'Disabled - Click to edit in Grouping Editor'}
                   >
+                    {!field.enabled && '⏸ '}
                     {field.name}
                     <button
                       onClick={() => setGroupedFields(fields => fields.filter(f => f.id !== field.id))}
-                      className="hover:text-purple-900"
+                      className={field.enabled ? 'hover:text-purple-900' : 'hover:text-slate-700'}
                     >
                       <X className="w-3 h-3" />
                     </button>

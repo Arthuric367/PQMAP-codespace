@@ -87,6 +87,7 @@ export interface GroupedField {
   id: string;
   name: string;
   description?: string;
+  enabled: boolean;
   grouping: TimeGrouping | NumericGrouping | CategoricalGrouping;
 }
 

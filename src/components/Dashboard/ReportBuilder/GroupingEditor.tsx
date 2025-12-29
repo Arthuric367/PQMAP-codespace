@@ -18,6 +18,7 @@ export default function GroupingEditor({ fields, availableFields, onSave, onClos
     const newField: GroupedField = {
       id: crypto.randomUUID(),
       name: 'New Group',
+      enabled: true,
       grouping: {
         type: 'time',
         sourceField: 'Timestamp',
@@ -89,10 +90,28 @@ export default function GroupingEditor({ fields, availableFields, onSave, onClos
                 {groupedFields.map(field => (
                   <div
                     key={field.id}
-                    className="bg-slate-50 border border-slate-200 rounded-lg p-4 hover:border-purple-300 transition-colors"
+                    className={`border rounded-lg p-4 transition-colors ${
+                      field.enabled 
+                        ? 'bg-slate-50 border-slate-200 hover:border-purple-300' 
+                        : 'bg-slate-100 border-slate-300 opacity-60'
+                    }`}
                   >
                     <div className="flex items-start justify-between">
-                      <div className="flex-1">
+                      <div className="flex items-center gap-3 flex-1">
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={field.enabled}
+                            onChange={(e) => {
+                              setGroupedFields(groupedFields.map(f => 
+                                f.id === field.id ? { ...f, enabled: e.target.checked } : f
+                              ));
+                            }}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                        </label>
+                        <div className="flex-1">
                         <h4 className="font-semibold text-slate-900 mb-1">{field.name}</h4>
                         <p className="text-sm text-slate-600 mb-2">
                           Type: <span className="font-medium capitalize">{field.grouping.type}</span> | 
@@ -113,6 +132,7 @@ export default function GroupingEditor({ fields, availableFields, onSave, onClos
                             Groups: {field.grouping.groups.length} defined
                           </p>
                         )}
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <button
