@@ -1,9 +1,9 @@
+/* React Pivot Table styles - must come before Tailwind */
+@import 'react-pivottable/pivottable.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* React Pivot Table styles */
-@import 'react-pivottable/pivottable.css';
 
 /* Custom scrollbar styles for SARFI table */
 @layer utilities {
