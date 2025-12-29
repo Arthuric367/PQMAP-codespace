@@ -324,6 +324,7 @@ export default function DashboardLayoutManager({
               const config = WIDGET_CATALOG[widget.id];
               const isDragging = draggedWidget === widget.id;
               const isDropTarget = dragOverIndex === index;
+              const isHalfWidth = widget.width === 6;
 
               return (
                 <div key={widget.id} className="relative">
@@ -349,6 +350,9 @@ export default function DashboardLayoutManager({
                         ? 'bg-blue-100 border-blue-400 text-blue-600'
                         : draggedWidget ? 'border-slate-300 hover:border-blue-300 hover:bg-blue-50 text-slate-500' : 'border-slate-200 bg-slate-50 text-slate-400'
                     }`}
+                    style={{
+                      width: isHalfWidth ? '50%' : '100%',
+                    }}
                   >
                     {isDropTarget && draggedWidget !== widget.id ? (
                       <span className="font-semibold">⬇ Drop here ⬇</span>
