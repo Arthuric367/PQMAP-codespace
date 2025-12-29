@@ -899,6 +899,7 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
           ` : ''}
         `}</style>
         <PivotTableUI
+          key={`pivot-${displayData.length}-${lastRefresh.getTime()}`}
           data={displayData}
           onChange={s => setPivotState(s)}
           renderers={Object.assign({}, TableRenderers, PlotlyRenderers)}
