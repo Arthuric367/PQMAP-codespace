@@ -10,7 +10,8 @@ import {
   Calculator,
   X,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Group
 } from 'lucide-react';
 import { PQEvent, Substation } from '../../../types/database';
 import { 
@@ -18,7 +19,8 @@ import {
   DateFilterPreset, 
   CalculatedField,
   SavedReport,
-  ReportFilter 
+  ReportFilter,
+  GroupedField
 } from '../../../types/report';
 import PivotTableUI from 'react-pivottable/PivotTableUI';
 import 'react-pivottable/pivottable.css';
@@ -32,6 +34,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import DateFilterPanel from './DateFilterPanel';
 import CalculatedFieldEditor from './CalculatedFieldEditor';
+import GroupingEditor from './GroupingEditor';
 import ShareReportModal from './ShareReportModal';
 
 const PlotlyRenderers = createPlotlyRenderers(Plot);
@@ -78,6 +81,10 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
   // Calculated fields
   const [calculatedFields, setCalculatedFields] = useState<CalculatedField[]>([]);
   const [showCalculatedFieldEditor, setShowCalculatedFieldEditor] = useState(false);
+  
+  // Grouped fields
+  const [groupedFields, setGroupedFields] = useState<GroupedField[]>([]);
+  const [showGroupingEditor, setShowGroupingEditor] = useState(false);
   
   // Share modal
   const [showShareModal, setShowShareModal] = useState(false);
@@ -244,6 +251,89 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
     }
   };
 
+  const applyGrouping = (value: any, groupedField: GroupedField): string => {
+    const { grouping } = groupedField;
+
+    if (grouping.type === 'time') {
+      // Time grouping
+      const date = new Date(value);
+      if (isNaN(date.getTime())) return 'Invalid Date';
+
+      const { interval, unit } = grouping;
+      
+      if (unit === 'days') {
+        const startOfPeriod = new Date(date);
+        startOfPeriod.setHours(0, 0, 0, 0);
+        const daysSinceEpoch = Math.floor(startOfPeriod.getTime() / (1000 * 60 * 60 * 24));
+        const periodNumber = Math.floor(daysSinceEpoch / interval);
+        const periodStart = new Date(periodNumber * interval * 24 * 60 * 60 * 1000);
+        const periodEnd = new Date((periodNumber + 1) * interval * 24 * 60 * 60 * 1000 - 1);
+        return `${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`;
+      } else if (unit === 'weeks') {
+        const startOfWeek = new Date(date);
+        startOfWeek.setDate(date.getDate() - date.getDay());
+        startOfWeek.setHours(0, 0, 0, 0);
+        const weekNumber = Math.floor(startOfWeek.getTime() / (1000 * 60 * 60 * 24 * 7 * interval));
+        const periodStart = new Date(weekNumber * interval * 7 * 24 * 60 * 60 * 1000);
+        const periodEnd = new Date((weekNumber + 1) * interval * 7 * 24 * 60 * 60 * 1000 - 1);
+        return `${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`;
+      } else if (unit === 'months') {
+        const periodNumber = Math.floor((date.getFullYear() * 12 + date.getMonth()) / interval);
+        const startYear = Math.floor(periodNumber * interval / 12);
+        const startMonth = (periodNumber * interval) % 12;
+        if (interval === 1) {
+          return new Date(startYear, startMonth).toLocaleString('default', { year: 'numeric', month: 'long' });
+        } else {
+          const endMonth = (startMonth + interval - 1) % 12;
+          const endYear = startYear + Math.floor((startMonth + interval - 1) / 12);
+          return `${new Date(startYear, startMonth).toLocaleString('default', { month: 'short', year: 'numeric' })} - ${new Date(endYear, endMonth).toLocaleString('default', { month: 'short', year: 'numeric' })}`;
+        }
+      } else if (unit === 'quarters') {
+        const quarter = Math.floor(date.getMonth() / 3);
+        const periodNumber = Math.floor((date.getFullYear() * 4 + quarter) / interval);
+        const startYear = Math.floor(periodNumber * interval / 4);
+        const startQuarter = (periodNumber * interval) % 4;
+        if (interval === 1) {
+          return `Q${startQuarter + 1} ${startYear}`;
+        } else {
+          const endQuarter = (startQuarter + interval - 1) % 4;
+          const endYear = startYear + Math.floor((startQuarter + interval - 1) / 4);
+          return `Q${startQuarter + 1} ${startYear} - Q${endQuarter + 1} ${endYear}`;
+        }
+      } else if (unit === 'years') {
+        const periodNumber = Math.floor(date.getFullYear() / interval);
+        const startYear = periodNumber * interval;
+        if (interval === 1) {
+          return startYear.toString();
+        } else {
+          return `${startYear} - ${startYear + interval - 1}`;
+        }
+      }
+    } else if (grouping.type === 'numeric') {
+      // Numeric range grouping
+      const numValue = parseFloat(value);
+      if (isNaN(numValue)) return 'Invalid Number';
+
+      for (const range of grouping.ranges) {
+        if (numValue >= range.min && numValue < range.max) {
+          return range.label;
+        }
+      }
+      return 'Out of Range';
+    } else if (grouping.type === 'categorical') {
+      // Categorical grouping
+      const strValue = String(value);
+      for (const group of grouping.groups) {
+        if (group.values.includes(strValue)) {
+          return group.label;
+        }
+      }
+      return 'Ungrouped';
+    }
+
+    return String(value);
+  };
+
   useEffect(() => {
     loadSavedReports();
   }, [user]);
@@ -314,6 +404,7 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
       aggregatorName: pivotState.aggregatorName || 'Count',
       rendererName: pivotState.rendererName || 'Table',
       calculatedFields,
+      groupedFields,
       includeFalseEvents,
       refreshInterval: autoRefresh ? refreshInterval : undefined,
       createdBy: user.id,
@@ -356,6 +447,7 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
       setCustomDateStart(config.customDateRange.start);
       setCustomDateEnd(config.customDateRange.end);
     }
+    setGroupedFields(config.groupedFields || []);
     setCalculatedFields(config.calculatedFields || []);
     setIncludeFalseEvents(config.includeFalseEvents);
     
@@ -419,6 +511,18 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
         }
       });
 
+      // Add grouped fields
+      groupedFields.forEach(field => {
+        try {
+          const sourceValue = baseData[field.grouping.sourceField];
+          const groupedValue = applyGrouping(sourceValue, field);
+          baseData[field.name] = groupedValue;
+        } catch (error) {
+          console.error(`Error grouping field ${field.name}:`, error);
+          baseData[field.name] = null;
+        }
+      });
+
       return baseData;
     });
     
@@ -427,7 +531,7 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
     await new Promise(resolve => setTimeout(resolve, 500));
     setLastRefresh(new Date());
     setIsRefreshing(false);
-  }, [filteredEvents, substations, calculatedFields]);
+  }, [filteredEvents, substations, calculatedFields, groupedFields]);
 
   const handleExportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(displayData);
@@ -821,7 +925,7 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
           </div>
         </div>
 
-        {/* Calculated Fields & Saved Reports Row */}
+        {/* Calculated Fields & Grouped Fields & Saved Reports Row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
@@ -830,6 +934,14 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
             >
               <Calculator className="w-4 h-4" />
               Calculated Fields ({calculatedFields.length})
+            </button>
+            
+            <button
+              onClick={() => setShowGroupingEditor(true)}
+              className="px-3 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+            >
+              <Group className="w-4 h-4" />
+              Grouping ({groupedFields.length})
             </button>
 
             {calculatedFields.length > 0 && (
@@ -843,6 +955,25 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
                     <button
                       onClick={() => setCalculatedFields(fields => fields.filter(f => f.id !== field.id))}
                       className="hover:text-amber-900"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            
+            {groupedFields.length > 0 && (
+              <div className="flex gap-2">
+                {groupedFields.map(field => (
+                  <span
+                    key={field.id}
+                    className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded flex items-center gap-1"
+                  >
+                    {field.name}
+                    <button
+                      onClick={() => setGroupedFields(fields => fields.filter(f => f.id !== field.id))}
+                      className="hover:text-purple-900"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -913,6 +1044,7 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
         <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
           <li>Use date range and filters to narrow down your data (updates count only)</li>
           <li>Click the refresh button (double-arrow icon) to update the table with filtered data</li>
+          <li>Create grouped fields for time intervals, numeric ranges, or categorical groups</li>
           <li>Drag fields from the top into Rows, Columns, or Values</li>
           <li>Select chart type from the dropdown (Table, Bar Chart, Line Chart, etc.)</li>
           <li>Click aggregation functions to change (Count, Sum, Average, etc.)</li>
@@ -933,6 +1065,20 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
           }}
           onClose={() => setShowCalculatedFieldEditor(false)}
           availableFields={Object.keys(displayData[0] || {})}
+        />
+      )}
+
+      {showGroupingEditor && (
+        <GroupingEditor
+          fields={groupedFields}
+          availableFields={Object.keys(displayData[0] || {})}
+          onSave={(fields) => {
+            setGroupedFields(fields);
+            setShowGroupingEditor(false);
+            // Refresh to apply new groupings
+            setTimeout(() => handleRefresh(), 100);
+          }}
+          onClose={() => setShowGroupingEditor(false)}
         />
       )}
 

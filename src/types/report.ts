@@ -55,6 +55,41 @@ export interface CalculatedField {
   type: 'number' | 'string' | 'boolean';
 }
 
+export type GroupingType = 'time' | 'numeric' | 'categorical';
+
+export interface TimeGrouping {
+  type: 'time';
+  sourceField: string;
+  interval: number; // in days for time grouping
+  unit: 'days' | 'weeks' | 'months' | 'quarters' | 'years';
+}
+
+export interface NumericGrouping {
+  type: 'numeric';
+  sourceField: string;
+  ranges: Array<{
+    label: string;
+    min: number;
+    max: number;
+  }>;
+}
+
+export interface CategoricalGrouping {
+  type: 'categorical';
+  sourceField: string;
+  groups: Array<{
+    label: string;
+    values: string[];
+  }>;
+}
+
+export interface GroupedField {
+  id: string;
+  name: string;
+  description?: string;
+  grouping: TimeGrouping | NumericGrouping | CategoricalGrouping;
+}
+
 export interface ReportFilter {
   field: string;
   operator: 'equals' | 'not_equals' | 'contains' | 'gt' | 'lt' | 'gte' | 'lte' | 'in' | 'not_in';
@@ -78,6 +113,7 @@ export interface ReportConfig {
   aggregatorName: AggregationFunction;
   rendererName: ChartType;
   calculatedFields: CalculatedField[];
+  groupedFields?: GroupedField[];
   includeFalseEvents: boolean;
   refreshInterval?: number; // minutes
   createdBy: string;
