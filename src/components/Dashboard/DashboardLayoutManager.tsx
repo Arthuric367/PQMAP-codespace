@@ -39,11 +39,19 @@ export default function DashboardLayoutManager({
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
+    e.stopPropagation();
+    console.log('[DashboardLayoutManager] Drag over index:', index, 'dragging:', draggedWidget);
     setDragOverIndex(index);
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   const handleDrop = (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
+    e.stopPropagation();
     setDragOverIndex(null);
 
     if (!draggedWidget) {
@@ -51,9 +59,13 @@ export default function DashboardLayoutManager({
       return;
     }
 
-    console.log('[DashboardLayoutManager] Drop:', draggedWidget, 'at index', targetIndex);
+    console.log('[DashboardLayoutManager] ====== DROP EVENT ======');
+    console.log('[DashboardLayoutManager] Dragged widget:', draggedWidget);
+    console.log('[DashboardLayoutManager] Target index:', targetIndex);
+    console.log('[DashboardLayoutManager] Current visible widgets:', layout.widgets.filter(w => w.visible).map(w => ({ id: w.id, row: w.row })));
 
     const sourceWidget = layout.widgets.find(w => w.id === draggedWidget);
+    console.log('[DashboardLayoutManager] Source widget found:', sourceWidget);
     
     if (!sourceWidget || !sourceWidget.visible) {
       // Dragging from sidebar - add new widget
@@ -103,7 +115,7 @@ export default function DashboardLayoutManager({
       const hiddenWidgets = allWidgets.filter(w => !w.visible && w.id !== draggedWidget);
       const finalWidgets = [...reorderedVisible, ...hiddenWidgets];
 
-      console.log('[DashboardLayoutManager] Final widgets after add:', finalWidgets);
+      console.log('[DashboardLayoutManager] Final widgets after add:', finalWidgets.filter(w => w.visible).map(w => ({ id: w.id, row: w.row })));
       onLayoutChange({ ...layout, widgets: finalWidgets });
     } else {
       // Reordering within dashboard
@@ -111,15 +123,27 @@ export default function DashboardLayoutManager({
       const visibleWidgets = layout.widgets.filter(w => w.visible);
       const sourceIndex = visibleWidgets.findIndex(w => w.id === draggedWidget);
       
-      if (sourceIndex === -1 || sourceIndex === targetIndex) {
-        console.log('[DashboardLayoutManager] No reorder needed');
+      console.log('[DashboardLayoutManager] Source index:', sourceIndex, 'Target index:', targetIndex);
+      
+      if (sourceIndex === -1) {
+        console.log('[DashboardLayoutManager] Error: source widget not found in visible widgets');
+        return;
+      }
+      
+      if (sourceIndex === targetIndex) {
+        console.log('[DashboardLayoutManager] No reorder needed - same position');
         return;
       }
 
       // Reorder widgets
       const reordered = [...visibleWidgets];
       const [removed] = reordered.splice(sourceIndex, 1);
-      reordered.splice(targetIndex, 0, removed);
+      
+      // Adjust target index if we're moving down
+      const adjustedTargetIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+      console.log('[DashboardLayoutManager] Adjusted target index:', adjustedTargetIndex);
+      
+      reordered.splice(adjustedTargetIndex, 0, removed);
 
       // Update row numbers
       const updatedVisible = reordered.map((w, index) => ({
@@ -131,7 +155,7 @@ export default function DashboardLayoutManager({
       // Merge with hidden widgets
       const hiddenWidgets = layout.widgets.filter(w => !w.visible);
       
-      console.log('[DashboardLayoutManager] Final widgets after reorder:', [...updatedVisible, ...hiddenWidgets]);
+      console.log('[DashboardLayoutManager] Final widgets after reorder:', updatedVisible.map(w => ({ id: w.id, row: w.row })));
       onLayoutChange({
         ...layout,
         widgets: [...updatedVisible, ...hiddenWidgets],
@@ -139,6 +163,7 @@ export default function DashboardLayoutManager({
     }
 
     setDraggedWidget(null);
+    console.log('[DashboardLayoutManager] ====== DROP COMPLETE ======');
   };
 
   const handleDragEnd = () => {
@@ -301,29 +326,55 @@ export default function DashboardLayoutManager({
               return (
                 <div key={widget.id}>
                   {/* Drop zone before widget */}
-                  {isDropTarget && draggedWidget !== widget.id && (
-                    <div className="h-24 bg-blue-100 border-2 border-dashed border-blue-400 rounded-lg mb-4 flex items-center justify-center text-blue-600 text-sm font-medium">
-                      Drop here
-                    </div>
-                  )}
+                  <div
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDragEnter={handleDragEnter}
+                    onDrop={(e) => handleDrop(e, index)}
+                    className={`h-16 border-2 border-dashed rounded-lg mb-4 flex items-center justify-center text-sm font-medium transition-all ${
+                      isDropTarget && draggedWidget !== widget.id
+                        ? 'bg-blue-100 border-blue-400 text-blue-600'
+                        : 'border-transparent hover:border-slate-300 hover:bg-slate-50 text-slate-400'
+                    }`}
+                  >
+                    {isDropTarget && draggedWidget !== widget.id ? 'Drop here' : 'Drop zone'}
+                  </div>
 
                   <div
                     draggable
-                    onDragStart={() => handleDragStart(widget.id, 'dashboard')}
-                    onDragOver={(e) => handleDragOver(e, index)}
-                    onDrop={(e) => handleDrop(e, index)}
+                    onDragStart={(e) => {
+                      console.log('[DashboardLayoutManager] Widget drag start:', widget.id);
+                      handleDragStart(widget.id, 'dashboard');
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('[DashboardLayoutManager] Drag over widget:', widget.id);
+                    }}
+                    onDragEnter={handleDragEnter}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('[DashboardLayoutManager] Attempted drop on widget (redirecting to zone):', widget.id);
+                    }}
                     onDragEnd={handleDragEnd}
                     className={`bg-white rounded-lg border-2 transition-all ${
                       isDragging
                         ? 'border-blue-500 shadow-xl opacity-50'
-                        : 'border-slate-200'
+                        : 'border-slate-200 hover:border-slate-300'
                     }`}
                     style={{
                       width: widget.width === 12 ? '100%' : '50%',
                     }}
                   >
                     {/* Widget Header */}
-                    <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50 cursor-move">
+                    <div 
+                      className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50 cursor-move"
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onDragEnter={handleDragEnter}
+                    >
                       <div className="flex items-center gap-3">
                         <div className="text-slate-400 hover:text-slate-600">
                           <GripVertical className="w-5 h-5" />
@@ -362,7 +413,14 @@ export default function DashboardLayoutManager({
                       </div>
                     </div>
                     {/* Widget Preview */}
-                    <div className="p-6 h-48 flex items-center justify-center text-slate-400 bg-slate-50">
+                    <div 
+                      className="p-6 h-48 flex items-center justify-center text-slate-400 bg-slate-50"
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onDragEnter={handleDragEnter}
+                    >
                       <div className="text-center">
                         <Settings className="w-12 h-12 mx-auto mb-2 text-slate-300" />
                         <p className="text-sm">{config.title}</p>
@@ -376,6 +434,7 @@ export default function DashboardLayoutManager({
             {/* Final drop zone */}
             <div
               onDragOver={(e) => handleDragOver(e, visibleWidgets.length)}
+              onDragEnter={handleDragEnter}
               onDrop={(e) => handleDrop(e, visibleWidgets.length)}
               className={`h-24 border-2 border-dashed rounded-lg flex items-center justify-center text-slate-400 transition-all ${
                 dragOverIndex === visibleWidgets.length
@@ -409,7 +468,10 @@ export default function DashboardLayoutManager({
               <div
                 key={widgetId}
                 draggable
-                onDragStart={() => handleDragStart(widgetId, 'sidebar')}
+                onDragStart={() => {
+                  console.log('[DashboardLayoutManager] Sidebar widget drag start:', widgetId);
+                  handleDragStart(widgetId, 'sidebar');
+                }}
                 onDragEnd={handleDragEnd}
                 className={`p-4 rounded-lg border-2 cursor-grab active:cursor-grabbing transition-all ${
                   isDragging
