@@ -462,6 +462,31 @@ export interface CustomerTransformerMatching {
   updated_by_profile?: Profile;
 }
 
+// Realtime PQ Data Interface
+export interface RealtimePQData {
+  // Volts/Amps Section
+  vln: { phaseA: number; phaseB: number; phaseC: number; avg: number };
+  vll: { phaseA: number; phaseB: number; phaseC: number; avg: number };
+  current: { phaseA: number; phaseB: number; phaseC: number; total: number };
+  activePower: { phaseA: number; phaseB: number; phaseC: number; total: number };
+  reactivePower: { phaseA: number; phaseB: number; phaseC: number; total: number };
+  apparentPower: { phaseA: number; phaseB: number; phaseC: number; total: number };
+  frequency: { phaseA: number; phaseB: number; phaseC: number; avg: number };
+  powerFactor: { phaseA: number; phaseB: number; phaseC: number; avg: number };
+  
+  // Power Quality Section
+  v2Unb: number;
+  vThd: { phaseA: number; phaseB: number; phaseC: number; avg: number };
+  iThf: { phaseA: number; phaseB: number; phaseC: number; avg: number };
+  iThdOdd: { phaseA: number; phaseB: number; phaseC: number; avg: number };
+  iTdd: { phaseA: number; phaseB: number; phaseC: number; avg: number };
+  iTddOdd: { phaseA: number; phaseB: number; phaseC: number; avg: number };
+  pst: { phaseA: number; phaseB: number; phaseC: number; avg: number };
+  plt: { phaseA: number; phaseB: number; phaseC: number; avg: number };
+  
+  timestamp: string;
+}
+
 // API Response Types
 export interface ApiResponse<T> {
   data: T;

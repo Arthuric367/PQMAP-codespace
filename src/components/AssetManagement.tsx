@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { PQMeter, Substation, PQEvent, EventType, EventStatus } from '../types/database';
-import { Database, Activity, X, Check, Info, Filter, Download, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BarChart3, Clock, Calendar, Settings2, Zap, AlertCircle } from 'lucide-react';
+import { PQMeter, Substation, PQEvent, EventType, EventStatus, PQServiceRecord, RealtimePQData } from '../types/database';
+import { Database, Activity, X, Check, Info, Filter, Download, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BarChart3, Clock, Calendar, Settings2, Zap, AlertCircle, Wrench, Radio } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface FilterState {
@@ -26,7 +26,7 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
   const [selectedMeter, setSelectedMeter] = useState<PQMeter | null>(null);
   
   // Meter detail modal states
-  const [activeTab, setActiveTab] = useState<'info' | 'events'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'events' | 'services' | 'realtime'>('info');
   
   // Event history states
   const [meterEvents, setMeterEvents] = useState<PQEvent[]>([]);
@@ -40,6 +40,14 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
   const [eventPage, setEventPage] = useState(1);
   const eventsPerPage = 20;
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  
+  // PQ Services states
+  const [meterServices, setMeterServices] = useState<PQServiceRecord[]>([]);
+  const [loadingServices, setLoadingServices] = useState(false);
+  
+  // Realtime PQ data states
+  const [realtimeData, setRealtimeData] = useState<RealtimePQData | null>(null);
+  const [loadingRealtime, setLoadingRealtime] = useState(false);
   
   // Filter states
   const [showFilterPanel, setShowFilterPanel] = useState(false);
@@ -106,6 +114,8 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
       if (meter) {
         setSelectedMeter(meter);
         loadMeterEvents(meter);
+        loadMeterServices(meter);
+        loadRealtimeData();
         // Clear the selectedMeterId after opening modal
         if (onClearSelectedMeter) {
           onClearSelectedMeter();
@@ -157,6 +167,167 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
     } finally {
       setLoadingEvents(false);
     }
+  };
+
+  // Load PQ Services for a specific meter
+  const loadMeterServices = async (meter: PQMeter) => {
+    setLoadingServices(true);
+    try {
+      // Step 1: Get all events for this meter
+      const { data: events, error: eventsError } = await supabase
+        .from('pq_events')
+        .select('id')
+        .eq('meter_id', meter.id);
+
+      if (eventsError) {
+        console.error('Error loading meter events for services:', eventsError);
+        setMeterServices([]);
+        return;
+      }
+
+      const eventIds = events?.map(e => e.id) || [];
+
+      if (eventIds.length === 0) {
+        setMeterServices([]);
+        return;
+      }
+
+      // Step 2: Get services linked to these events
+      const { data: services, error: servicesError } = await supabase
+        .from('pq_service_records')
+        .select('*, customer:customers(*), engineer:profiles(*)')
+        .in('event_id', eventIds)
+        .order('service_date', { ascending: false });
+
+      if (servicesError) {
+        console.error('Error loading services:', servicesError);
+        setMeterServices([]);
+      } else {
+        setMeterServices(services || []);
+        console.log(`✅ Loaded ${services?.length || 0} services for meter ${meter.meter_id}`);
+      }
+    } catch (error) {
+      console.error('Error loading meter services:', error);
+      setMeterServices([]);
+    } finally {
+      setLoadingServices(false);
+    }
+  };
+
+  // Generate mock realtime PQ data
+  const generateRealtimeData = (): RealtimePQData => {
+    const randomInRange = (min: number, max: number) => 
+      Math.random() * (max - min) + min;
+
+    const voltageNominal = 220; // Nominal voltage (V)
+    const currentNominal = 100; // Nominal current (A)
+
+    return {
+      // Volts/Amps Section
+      vln: {
+        phaseA: randomInRange(voltageNominal * 0.95, voltageNominal * 1.05),
+        phaseB: randomInRange(voltageNominal * 0.95, voltageNominal * 1.05),
+        phaseC: randomInRange(voltageNominal * 0.95, voltageNominal * 1.05),
+        avg: voltageNominal
+      },
+      vll: {
+        phaseA: randomInRange(380 * 0.95, 380 * 1.05),
+        phaseB: randomInRange(380 * 0.95, 380 * 1.05),
+        phaseC: randomInRange(380 * 0.95, 380 * 1.05),
+        avg: 380
+      },
+      current: {
+        phaseA: randomInRange(currentNominal * 0.7, currentNominal * 1.2),
+        phaseB: randomInRange(currentNominal * 0.7, currentNominal * 1.2),
+        phaseC: randomInRange(currentNominal * 0.7, currentNominal * 1.2),
+        total: currentNominal
+      },
+      activePower: {
+        phaseA: randomInRange(15, 25),
+        phaseB: randomInRange(15, 25),
+        phaseC: randomInRange(15, 25),
+        total: randomInRange(50, 70)
+      },
+      reactivePower: {
+        phaseA: randomInRange(5, 10),
+        phaseB: randomInRange(5, 10),
+        phaseC: randomInRange(5, 10),
+        total: randomInRange(15, 25)
+      },
+      apparentPower: {
+        phaseA: randomInRange(16, 27),
+        phaseB: randomInRange(16, 27),
+        phaseC: randomInRange(16, 27),
+        total: randomInRange(52, 73)
+      },
+      frequency: {
+        phaseA: randomInRange(49.95, 50.05),
+        phaseB: randomInRange(49.95, 50.05),
+        phaseC: randomInRange(49.95, 50.05),
+        avg: 50.00
+      },
+      powerFactor: {
+        phaseA: randomInRange(0.85, 0.95),
+        phaseB: randomInRange(0.85, 0.95),
+        phaseC: randomInRange(0.85, 0.95),
+        avg: 0.90
+      },
+      // Power Quality Section
+      v2Unb: randomInRange(0.5, 2.0),
+      vThd: {
+        phaseA: randomInRange(1.0, 3.0),
+        phaseB: randomInRange(1.0, 3.0),
+        phaseC: randomInRange(1.0, 3.0),
+        avg: randomInRange(1.0, 3.0)
+      },
+      iThf: {
+        phaseA: randomInRange(2.0, 5.0),
+        phaseB: randomInRange(2.0, 5.0),
+        phaseC: randomInRange(2.0, 5.0),
+        avg: randomInRange(2.0, 5.0)
+      },
+      iThdOdd: {
+        phaseA: randomInRange(1.5, 4.0),
+        phaseB: randomInRange(1.5, 4.0),
+        phaseC: randomInRange(1.5, 4.0),
+        avg: randomInRange(1.5, 4.0)
+      },
+      iTdd: {
+        phaseA: randomInRange(3.0, 7.0),
+        phaseB: randomInRange(3.0, 7.0),
+        phaseC: randomInRange(3.0, 7.0),
+        avg: randomInRange(3.0, 7.0)
+      },
+      iTddOdd: {
+        phaseA: randomInRange(2.5, 6.0),
+        phaseB: randomInRange(2.5, 6.0),
+        phaseC: randomInRange(2.5, 6.0),
+        avg: randomInRange(2.5, 6.0)
+      },
+      pst: {
+        phaseA: randomInRange(0.2, 0.8),
+        phaseB: randomInRange(0.2, 0.8),
+        phaseC: randomInRange(0.2, 0.8),
+        avg: randomInRange(0.2, 0.8)
+      },
+      plt: {
+        phaseA: randomInRange(0.15, 0.6),
+        phaseB: randomInRange(0.15, 0.6),
+        phaseC: randomInRange(0.15, 0.6),
+        avg: randomInRange(0.15, 0.6)
+      },
+      timestamp: new Date().toISOString()
+    };
+  };
+
+  // Load realtime data (mock for now)
+  const loadRealtimeData = () => {
+    setLoadingRealtime(true);
+    // Simulate API delay
+    setTimeout(() => {
+      setRealtimeData(generateRealtimeData());
+      setLoadingRealtime(false);
+    }, 500);
   };
 
   // Generate mock hourly communication records for past 30 days
@@ -934,6 +1105,8 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
                           setEventFilters({ startDate: '', endDate: '', eventTypes: [], statuses: [] });
                           setSelectedEventId(null);
                           loadMeterEvents(meter);
+                          loadMeterServices(meter);
+                          loadRealtimeData();
                         }}
                         className="text-blue-600 hover:text-blue-800 transition-colors"
                         title="View Details"
@@ -1241,6 +1414,35 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
                   <div className="flex items-center gap-2">
                     <Zap className="w-4 h-4" />
                     Event History ({meterEvents.length})
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab('services')}
+                  className={`px-4 py-3 font-semibold text-sm border-b-2 transition-colors ${
+                    activeTab === 'services'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Wrench className="w-4 h-4" />
+                    PQ Services ({meterServices.length})
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveTab('realtime');
+                    loadRealtimeData(); // Refresh data when switching to realtime tab
+                  }}
+                  className={`px-4 py-3 font-semibold text-sm border-b-2 transition-colors ${
+                    activeTab === 'realtime'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Radio className="w-4 h-4" />
+                    Realtime Data
                   </div>
                 </button>
               </div>
@@ -1758,6 +1960,290 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
                   </div>
                 );
               })()}
+
+              {/* PQ Services Tab */}
+              {activeTab === 'services' && (
+                <div className="p-6">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-bold text-slate-900">PQ Service History</h3>
+                    <p className="text-sm text-slate-600 mt-1">
+                      Services performed related to events from this meter
+                    </p>
+                  </div>
+
+                  {loadingServices ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  ) : meterServices.length > 0 ? (
+                    <div className="space-y-4">
+                      {meterServices.map((service) => (
+                        <div key={service.id} className="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded">
+                                  {service.service_type.replace(/_/g, ' ').toUpperCase()}
+                                </span>
+                                <span className="text-sm text-slate-600">
+                                  {new Date(service.service_date).toLocaleDateString('en-GB')}
+                                </span>
+                              </div>
+                              {service.customer && (
+                                <p className="text-sm font-medium text-slate-700">
+                                  Customer: {service.customer.name}
+                                </p>
+                              )}
+                            </div>
+                            {service.engineer && (
+                              <div className="text-right">
+                                <p className="text-xs text-slate-500">Engineer</p>
+                                <p className="text-sm font-medium text-slate-700">{service.engineer.full_name}</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {service.benchmark_standard && (
+                            <div className="mb-2">
+                              <span className="text-xs font-medium text-slate-600">Benchmark: </span>
+                              <span className="text-xs text-slate-700">{service.benchmark_standard}</span>
+                            </div>
+                          )}
+
+                          {service.findings && (
+                            <div className="mb-2">
+                              <p className="text-xs font-medium text-slate-600 mb-1">Findings:</p>
+                              <p className="text-sm text-slate-700 bg-slate-50 p-2 rounded">
+                                {service.findings}
+                              </p>
+                            </div>
+                          )}
+
+                          {service.recommendations && (
+                            <div className="mb-2">
+                              <p className="text-xs font-medium text-slate-600 mb-1">Recommendations:</p>
+                              <p className="text-sm text-slate-700 bg-slate-50 p-2 rounded">
+                                {service.recommendations}
+                              </p>
+                            </div>
+                          )}
+
+                          {service.event_id && (
+                            <div className="mt-2 pt-2 border-t border-slate-100">
+                              <span className="text-xs text-slate-500">Related Event ID: </span>
+                              <span className="text-xs font-mono text-slate-700">{service.event_id.slice(0, 8)}...</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <Wrench className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                      <p className="text-slate-600 font-medium">No PQ Services Found</p>
+                      <p className="text-sm text-slate-500 mt-1">
+                        No services have been recorded for events from this meter
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Realtime Data Tab */}
+              {activeTab === 'realtime' && (
+                <div className="p-6">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">Realtime Power Quality Data</h3>
+                      <p className="text-sm text-slate-600 mt-1">
+                        Live measurements from meter {selectedMeter.meter_id}
+                      </p>
+                    </div>
+                    <button
+                      onClick={loadRealtimeData}
+                      disabled={loadingRealtime}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+                    >
+                      {loadingRealtime ? 'Loading...' : 'Refresh'}
+                    </button>
+                  </div>
+
+                  {loadingRealtime ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  ) : realtimeData ? (
+                    <div className="space-y-6">
+                      {/* Timestamp */}
+                      <div className="text-xs text-slate-500 text-right">
+                        Last updated: {new Date(realtimeData.timestamp).toLocaleString()}
+                      </div>
+
+                      {/* Volts/Amps Section */}
+                      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                        <div className="bg-blue-600 text-white px-4 py-2 font-semibold">
+                          Volts/Amps
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-slate-50">
+                              <tr>
+                                <th className="px-4 py-2 text-left font-semibold text-slate-700 border-b border-slate-200">Parameter</th>
+                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Phase A</th>
+                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Phase B</th>
+                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Phase C</th>
+                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Total/Avg</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Vln (V)</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vln.phaseA.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vln.phaseB.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vln.phaseC.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.vln.avg.toFixed(2)}</td>
+                              </tr>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Vll (V)</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vll.phaseA.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vll.phaseB.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vll.phaseC.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.vll.avg.toFixed(2)}</td>
+                              </tr>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Current (A)</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.current.phaseA.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.current.phaseB.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.current.phaseC.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.current.total.toFixed(2)}</td>
+                              </tr>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Active Power (kW)</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.activePower.phaseA.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.activePower.phaseB.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.activePower.phaseC.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.activePower.total.toFixed(2)}</td>
+                              </tr>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Reactive Power (kVAR)</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.reactivePower.phaseA.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.reactivePower.phaseB.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.reactivePower.phaseC.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.reactivePower.total.toFixed(2)}</td>
+                              </tr>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Apparent Power (kVA)</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.apparentPower.phaseA.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.apparentPower.phaseB.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.apparentPower.phaseC.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.apparentPower.total.toFixed(2)}</td>
+                              </tr>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Frequency (Hz)</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.frequency.phaseA.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.frequency.phaseB.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.frequency.phaseC.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.frequency.avg.toFixed(2)}</td>
+                              </tr>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700">Power Factor (Ref: -IEEE, +ve: Lagging)</td>
+                                <td className="px-4 py-2 text-center text-slate-900">{realtimeData.powerFactor.phaseA.toFixed(3)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900">{realtimeData.powerFactor.phaseB.toFixed(3)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900">{realtimeData.powerFactor.phaseC.toFixed(3)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900">{realtimeData.powerFactor.avg.toFixed(3)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Power Quality Section */}
+                      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                        <div className="bg-amber-600 text-white px-4 py-2 font-semibold">
+                          Power Quality
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-slate-50">
+                              <tr>
+                                <th className="px-4 py-2 text-left font-semibold text-slate-700 border-b border-slate-200">Parameter</th>
+                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Phase A</th>
+                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Phase B</th>
+                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Phase C</th>
+                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Total/Avg</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">V2 Unb (%)</td>
+                                <td colSpan={3} className="px-4 py-2 text-center text-slate-400 border-b border-slate-100">--</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.v2Unb.toFixed(2)}</td>
+                              </tr>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">V THD (%)</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vThd.phaseA.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vThd.phaseB.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vThd.phaseC.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.vThd.avg.toFixed(2)}</td>
+                              </tr>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">I THF (%)</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iThf.phaseA.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iThf.phaseB.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iThf.phaseC.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.iThf.avg.toFixed(2)}</td>
+                              </tr>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">I THD odd (%)</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iThdOdd.phaseA.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iThdOdd.phaseB.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iThdOdd.phaseC.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.iThdOdd.avg.toFixed(2)}</td>
+                              </tr>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">I TDD (%)</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iTdd.phaseA.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iTdd.phaseB.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iTdd.phaseC.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.iTdd.avg.toFixed(2)}</td>
+                              </tr>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">I TDD odd (%)</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iTddOdd.phaseA.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iTddOdd.phaseB.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iTddOdd.phaseC.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.iTddOdd.avg.toFixed(2)}</td>
+                              </tr>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Pst</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.pst.phaseA.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.pst.phaseB.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.pst.phaseC.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.pst.avg.toFixed(2)}</td>
+                              </tr>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-medium text-slate-700">Plt</td>
+                                <td className="px-4 py-2 text-center text-slate-900">{realtimeData.plt.phaseA.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900">{realtimeData.plt.phaseB.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center text-slate-900">{realtimeData.plt.phaseC.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-center font-semibold text-slate-900">{realtimeData.plt.avg.toFixed(2)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <Radio className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                      <p className="text-slate-600 font-medium">No Realtime Data Available</p>
+                      <p className="text-sm text-slate-500 mt-1">
+                        Click refresh to load the latest measurements
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Footer */}
