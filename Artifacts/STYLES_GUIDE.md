@@ -868,6 +868,48 @@ When implementing import functionality, ensure:
 
 ## Dropdown Patterns
 
+### Substation Dropdown Format
+
+**IMPORTANT RULE**: When displaying substations in dropdown/select elements, always use the format `{code} - {name}` to help users quickly identify substations by their short code.
+
+**Standard Implementation:**
+
+```tsx
+// 1. Query substations with both code and name
+const { data: substations } = await supabase
+  .from('substations')
+  .select('id, code, name')
+  .order('code');
+
+// 2. Display format in dropdown options
+<select value={selectedSubstationId} onChange={handleChange}>
+  <option value="">Select Substation</option>
+  {substations?.map(s => (
+    <option key={s.id} value={s.id}>
+      {s.code} - {s.name}
+    </option>
+  ))}
+</select>
+
+// Example displays:
+// "APA - Airport A"
+// "BKK - Bangkok Central"
+// "CPT - Capital District"
+```
+
+**Why This Pattern:**
+- Users can quickly scan by familiar short codes
+- Full name provides context for unfamiliar substations
+- Consistent with industry standards for substation identification
+- Easier to find specific substations in long lists
+
+**Components Using This Pattern:**
+- `MeterFormModal.tsx` - Substation selection dropdown
+- Asset management forms
+- Any substation picker/selector
+
+---
+
 ### Dashboard Config Modal Pattern
 
 **IMPORTANT RULE**: For dashboard widgets with complex filtering needs (3+ filter types), use a comprehensive config modal instead of inline filter dropdowns. This provides better UX for profile management and multiple filter categories.

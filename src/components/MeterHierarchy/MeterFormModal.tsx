@@ -44,7 +44,7 @@ const MeterFormModal: React.FC<MeterFormModalProps> = ({ meter, onClose, onSucce
     firmware_version: meter?.firmware_version || undefined,
     framework_version: meter?.framework_version || undefined,
     status: meter?.status || 'active',
-    active: meter?.active !== false,
+    enable: meter?.enable !== false,
     area: meter?.area || '',
     ss400: meter?.ss400 || undefined,
     ss132: meter?.ss132 || undefined,
@@ -78,15 +78,18 @@ const MeterFormModal: React.FC<MeterFormModalProps> = ({ meter, onClose, onSucce
         setRegions(regionsData);
         setAreas(areasData);
 
-        // Load substations
+        // Load substations with code and name
         const { data: substationsData } = await supabase
           .from('substations')
-          .select('id, name')
+          .select('id, code, name')
           .eq('status', 'operational')
-          .order('name');
+          .order('code');
         
         if (substationsData) {
-          setSubstations(substationsData.map((s: any) => ({ id: s.id, name: s.name })));
+          setSubstations(substationsData.map((s: any) => ({ 
+            id: s.id, 
+            name: `${s.code} - ${s.name}` 
+          })));
         }
       } catch (error) {
         console.error('Error loading options:', error);
@@ -690,16 +693,16 @@ const MeterFormModal: React.FC<MeterFormModalProps> = ({ meter, onClose, onSucce
               </div>
             </div>
 
-            {/* Active Checkbox */}
+            {/* Enable Checkbox */}
             <div>
               <label className="flex items-center pt-7">
                 <input
                   type="checkbox"
-                  checked={formData.active}
-                  onChange={(e) => handleInputChange('active', e.target.checked)}
+                  checked={formData.enable}
+                  onChange={(e) => handleInputChange('enable', e.target.checked)}
                   className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <span className="text-sm font-medium text-gray-700">Active in System</span>
+                <span className="text-sm font-medium text-gray-700">Enable in System</span>
               </label>
             </div>
           </div>

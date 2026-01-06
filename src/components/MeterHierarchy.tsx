@@ -6,7 +6,7 @@ import {
   getRegions,
   getVoltageLevels,
   deleteMeter,
-  toggleMeterActive,
+  toggleMeterEnable,
   getMeterStatistics
 } from '../services/meterHierarchyService';
 import type { PQMeter } from '../types/database';
@@ -28,7 +28,7 @@ export default function MeterHierarchy() {
   const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
   const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
   const [selectedVoltageLevels, setSelectedVoltageLevels] = useState<string[]>([]);
-  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [enableFilter, setEnableFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
 
   // UI states
   const [showAreaDropdown, setShowAreaDropdown] = useState(false);
@@ -64,7 +64,7 @@ export default function MeterHierarchy() {
 
   useEffect(() => {
     applyFilters();
-  }, [meters, searchTerm, selectedAreas, selectedRegions, selectedVoltageLevels, activeFilter]);
+  }, [meters, searchTerm, selectedAreas, selectedRegions, selectedVoltageLevels, enableFilter]);
 
   // Click outside handler for import dropdown
   useEffect(() => {
@@ -130,9 +130,9 @@ export default function MeterHierarchy() {
       filtered = filtered.filter(m => m.voltage_level && selectedVoltageLevels.includes(m.voltage_level));
     }
 
-    // Active status filter
-    if (activeFilter !== 'all') {
-      filtered = filtered.filter(m => m.active === (activeFilter === 'active'));
+    // Enable status filter
+    if (enableFilter !== 'all') {
+      filtered = filtered.filter(m => m.enable === (enableFilter === 'enabled'));
     }
 
     setFilteredMeters(filtered);
@@ -172,12 +172,12 @@ export default function MeterHierarchy() {
     }
   };
 
-  const handleToggleActive = async (meter: PQMeter) => {
+  const handleToggleEnable = async (meter: PQMeter) => {
     try {
-      await toggleMeterActive(meter.id, !meter.active);
+      await toggleMeterEnable(meter.id, !meter.enable);
       await loadData();
     } catch (err: any) {
-      console.error('Error toggling meter active status:', err);
+      console.error('Error toggling meter enable status:', err);
       alert(err.message || 'Failed to update meter status');
     }
   };
@@ -193,7 +193,7 @@ export default function MeterHierarchy() {
     setSelectedAreas([]);
     setSelectedRegions([]);
     setSelectedVoltageLevels([]);
-    setActiveFilter('all');
+    setEnableFilter('all');
     setCurrentPage(1);
   };
 
@@ -202,7 +202,7 @@ export default function MeterHierarchy() {
     selectedAreas.length +
     selectedRegions.length +
     selectedVoltageLevels.length +
-    (activeFilter !== 'all' ? 1 : 0);
+    (enableFilter !== 'all' ? 1 : 0);
 
   // Apply sorting
   const sortedMeters = [...filteredMeters].sort((a, b) => {
@@ -663,17 +663,17 @@ export default function MeterHierarchy() {
                 )}
               </div>
 
-              {/* Active Status Filter */}
+              {/* Enable Status Filter */}
               <div className="flex items-center gap-2 px-3 py-2 border border-slate-300 rounded-lg">
-                <span className="text-sm text-slate-600">Status:</span>
+                <span className="text-sm text-slate-600">Enable:</span>
                 <select
-                  value={activeFilter}
-                  onChange={(e) => setActiveFilter(e.target.value as 'all' | 'active' | 'inactive')}
+                  value={enableFilter}
+                  onChange={(e) => setEnableFilter(e.target.value as 'all' | 'enabled' | 'disabled')}
                   className="text-sm border-0 focus:outline-none focus:ring-0 bg-transparent"
                 >
                   <option value="all">All</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
+                  <option value="enabled">Enabled</option>
+                  <option value="disabled">Disabled</option>
                 </select>
               </div>
 
@@ -786,9 +786,9 @@ export default function MeterHierarchy() {
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          meter.active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                          meter.enable ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
                         }`}>
-                          {meter.active ? 'Active' : 'Inactive'}
+                          {meter.enable ? 'Enabled' : 'Disabled'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm">
@@ -801,13 +801,13 @@ export default function MeterHierarchy() {
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleToggleActive(meter)}
+                            onClick={() => handleToggleEnable(meter)}
                             className={`p-2 ${
-                              meter.active ? 'text-orange-600 hover:bg-orange-50' : 'text-green-600 hover:bg-green-50'
+                              meter.enable ? 'text-orange-600 hover:bg-orange-50' : 'text-green-600 hover:bg-green-50'
                             } rounded-lg transition-colors`}
-                            title={meter.active ? 'Deactivate' : 'Activate'}
+                            title={meter.enable ? 'Disable' : 'Enable'}
                           >
-                            {meter.active ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
+                            {meter.enable ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
                           </button>
                           <button
                             onClick={() => handleDelete(meter)}

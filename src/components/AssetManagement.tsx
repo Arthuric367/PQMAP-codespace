@@ -630,10 +630,13 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
     currentPage * itemsPerPage
   );
 
+  // Calculate statistics for enabled meters only (enable !== false)
+  const enabledMeters = meters.filter(m => m.enable !== false);
   const statusStats = {
-    active: meters.filter(m => m.status === 'active').length,
-    abnormal: meters.filter(m => m.status === 'abnormal').length,
-    inactive: meters.filter(m => m.status === 'inactive').length,
+    active: enabledMeters.filter(m => m.status === 'active').length,
+    abnormal: enabledMeters.filter(m => m.status === 'abnormal').length,
+    inactive: enabledMeters.filter(m => m.status === 'inactive').length,
+    total: enabledMeters.length
   };
 
   // Clear all filters
@@ -673,7 +676,7 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
         'Brand': meter.brand || '-',
         'Model': meter.model || '-',
         'Nominal Voltage': meter.nominal_voltage ? `${meter.nominal_voltage} kV` : '-',
-        'Active': meter.active !== undefined ? (meter.active ? 'Yes' : 'No') : '-',
+        'Enable': meter.enable !== undefined ? (meter.enable ? 'Yes' : 'No') : '-',
         'Region': meter.region || '-',
         'IP Address': meter.ip_address || '-',
         'Load Type': meter.load_type || '-',
@@ -1489,10 +1492,10 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
                     </span>
                   </div>
                   <div className="bg-slate-50 p-3 rounded-lg">
-                    <p className="text-xs font-medium text-slate-600 mb-1">Active</p>
+                    <p className="text-xs font-medium text-slate-600 mb-1">Enable</p>
                     <p className="text-sm font-semibold text-slate-900">
-                      {selectedMeter.active !== undefined ? (
-                        selectedMeter.active ? (
+                      {selectedMeter.enable !== undefined ? (
+                        selectedMeter.enable ? (
                           <span className="text-green-600 flex items-center gap-1">
                             <Check className="w-4 h-4" /> Yes
                           </span>

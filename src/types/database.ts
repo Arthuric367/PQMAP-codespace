@@ -94,7 +94,7 @@ export interface PQMeter {
   framework_version?: string;
   // Meter status
   status: MeterStatus;
-  active?: boolean;
+  enable?: boolean;  // System enablement flag - when false, meter is excluded from KPIs and reports
   last_communication: string | null;
   installed_date: string | null;
   created_at: string;

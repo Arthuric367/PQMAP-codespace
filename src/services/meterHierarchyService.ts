@@ -28,7 +28,7 @@ export interface CreateMeterInput {
   firmware_version?: string;
   framework_version?: string;
   status: 'active' | 'abnormal' | 'inactive';
-  active: boolean;
+  enable: boolean;
   last_communication?: string;
   installed_date?: string;
   area: string;
@@ -372,18 +372,18 @@ export async function deleteMeter(meterId: string): Promise<void> {
 }
 
 /**
- * Toggle meter active status
+ * Toggle meter enable status
  */
-export async function toggleMeterActive(meterId: string, active: boolean): Promise<PQMeter> {
+export async function toggleMeterEnable(meterId: string, enable: boolean) {
   const { data, error } = await supabase
     .from('pq_meters')
-    .update({ active })
+    .update({ enable })
     .eq('id', meterId)
     .select('*, substation:substations(*)')
     .single();
 
   if (error) {
-    console.error('Error toggling meter active status:', error);
+    console.error('Error toggling meter enable status:', error);
     throw error;
   }
 
@@ -396,17 +396,20 @@ export async function toggleMeterActive(meterId: string, active: boolean): Promi
 export async function getMeterStatistics() {
   const { data, error } = await supabase
     .from('pq_meters')
-    .select('active, status');
+    .select('enable, status');
 
   if (error) {
     console.error('Error fetching meter statistics:', error);
     throw error;
   }
 
-  const total = data?.length || 0;
-  const activeCount = data?.filter(m => m.active === true).length || 0;
-  const inactiveCount = data?.filter(m => m.active === false).length || 0;
-  const abnormalCount = data?.filter(m => m.status === 'abnormal').length || 0;
+  // Filter out disabled meters (enable=false) from all statistics
+  const enabledMeters = data?.filter(m => m.enable !== false) || [];
+  
+  const total = enabledMeters.length;
+  const activeCount = enabledMeters.filter(m => m.status === 'active').length;
+  const inactiveCount = enabledMeters.filter(m => m.status === 'inactive').length;
+  const abnormalCount = enabledMeters.filter(m => m.status === 'abnormal').length;
 
   return {
     total,
