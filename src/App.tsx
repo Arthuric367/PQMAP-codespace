@@ -15,6 +15,7 @@ import UserManagement from './components/UserManagement';
 import SCADA from './components/SCADA';
 import MeterHierarchy from './components/MeterHierarchy';
 import WeightingFactors from './pages/DataMaintenance/WeightingFactors';
+import PQBenchmarking from './pages/DataMaintenance/PQBenchmarking';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -65,6 +66,7 @@ function AppContent() {
         {currentView === 'meterHierarchy' && <MeterHierarchy />}
         {currentView === 'customerTransformerMatching' && <CustomerTransformerMatching />}
         {currentView === 'weightingFactors' && <WeightingFactors />}
+        {currentView === 'pqBenchmarking' && <PQBenchmarking />}
       </main>
     </div>
   );

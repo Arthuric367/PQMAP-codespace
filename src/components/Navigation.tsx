@@ -1,4 +1,4 @@
-import { LayoutDashboard, Activity, Database as DatabaseIcon, FileText, Bell, Settings, LogOut, BarChart3, Wrench, Database, ChevronLeft, ChevronRight, Users, MapPin, Network, Scale } from 'lucide-react';
+import { LayoutDashboard, Activity, Database as DatabaseIcon, FileText, Bell, Settings, LogOut, BarChart3, Wrench, Database, ChevronLeft, ChevronRight, Users, MapPin, Network, Scale, Target } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface NavigationProps {
@@ -28,6 +28,7 @@ export default function Navigation({ currentView, onViewChange, collapsed, onTog
     { id: 'meterHierarchy', icon: Network, label: 'Meter Hierarchy' },
     { id: 'customerTransformerMatching', icon: Database, label: 'Customer Transformer' },
     { id: 'weightingFactors', icon: Scale, label: 'Weighting Factors' },
+    { id: 'pqBenchmarking', icon: Target, label: 'PQ Standard' },
   ];
 
   return (

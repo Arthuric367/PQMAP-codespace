@@ -501,6 +501,29 @@ export interface CustomerTransformerMatching {
   updated_by_profile?: Profile;
 }
 
+// PQ Benchmarking Standard Interfaces
+export interface PQBenchmarkStandard {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  created_by_profile?: Profile;
+}
+
+export interface PQBenchmarkThreshold {
+  id: string;
+  standard_id: string;
+  min_voltage: number;
+  duration: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  standard?: PQBenchmarkStandard;
+}
+
 // Realtime PQ Data Interface
 export interface RealtimePQData {
   // Volts/Amps Section
