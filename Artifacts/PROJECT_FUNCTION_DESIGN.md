@@ -121,46 +121,54 @@ src/
 
 **Navigation:** Added 2 menu items (Scale icon, Target icon) in Data Maintenance section
 
-#### Active to Enable Migration (Jan 6, 2026)
-**Purpose:** Rename `active` field to `enable` to distinguish operational status from system enablement
+#### Meter Hierarchy Enhancements (Jan 6, 2026)
+**Features Added:**
+1. **Active to Enable Migration**
+   - Purpose: Rename `active` field to `enable` to distinguish system enablement from operational status
+   - Database: Migration `20260106000000_rename_active_to_enable.sql`
+   - Field Semantics:
+     - `enable` (boolean): System-level flag (default: true)
+     - `status` (enum): Operational state ('active' | 'abnormal' | 'inactive')
+   - KPI Calculation: Filter `enable = true` before counting by status
+   - UI Updates: Enable filter, toggle button, checkbox in forms
 
-**Changes:**
-- **Database:** Migration `20260106000000_rename_active_to_enable.sql`
-  - Renamed `pq_meters.active` → `pq_meters.enable`
-  - Added `ip_address` column if missing
-  - Added column comments for clarity
-  
-- **Field Semantics:**
-  - `enable` (boolean): System-level flag to include/exclude meters
-    - Default: `true` (enabled)
-    - When `false`: Meter excluded from KPI calculations and reports
-    - Display: "Enabled" / "Disabled"
-  - `status` (enum): Operational state ('active' | 'abnormal' | 'inactive')
-    - Independent of `enable` field
-    - Display: Colored status badges
+2. **Tree View in Asset Management**
+   - Added "Tree View" button to Meter Inventory header
+   - Visualizes meter hierarchical relationships (SS400 → SS132 → SS011)
+   - Shared TreeViewModal component between Asset Management and Meter Hierarchy
+   - Button styled in purple to match MeterHierarchy design
 
-- **KPI Calculation Rules:**
-  - Total Meters: COUNT WHERE `enable = true`
-  - Active/Abnormal/Inactive: Filter by status within enabled meters only
+3. **Column Header Updates**
+   - Changed "Remarks" to "Location" in MeterHierarchy table
+   - Matches actual data source (`meter.location`)
 
-- **UI Updates:**
-  - MeterHierarchy: Enable filter (All/Enabled/Disabled), toggle button
-  - AssetManagement: Updated statistics and export column
-  - MeterFormModal: "Enable in System" checkbox, substation format "{code} - {name}"
+4. **Substation Dropdown Fix**
+   - Fixed query filter from `active = true` to `status = 'operational'`
+   - Loads operational substations correctly in Add/Edit Meter forms
 
-**Files Modified:** 7 files across types/services/components
+5. **Area/Region Backfill**
+   - Script: `backfill-meter-area-region.sql`
+   - Updates NULL `area` values: YUE, LME, TSE, TPE, CPK
+   - Updates NULL `region` values: WE, NR, CN
+   - Random assignment for existing data (real data from actual assignments)
 
 ---
 
 ### December 2025
 
-#### Report Builder (Jan 1, 2026)
-- Interactive pivot tables with drag-and-drop interface
-- Powered by react-pivottable + Plotly charts
-- Calculated fields with custom expressions
-- Save/share reports with other users
-- Auto-refresh intervals (30s to 1hr)
-- Export: Excel/CSV/PDF
+#### Report Builder (Dec 2025 - Jan 2026)
+**Features:**
+- **Pivot Tables:** Interactive drag-and-drop interface powered by react-pivottable
+- **10 Chart Types:** Table, Bar, Line, Pie, Scatter, Area, Heatmap, Box Plot, Stacked Bar, Stacked Area
+- **20+ Aggregations:** Count, Sum, Average, Median, Min, Max, etc.
+- **Calculated Fields:** Custom expressions (e.g., `Duration Hours = [duration_ms] / 3600000`)
+- **Smart Filters:** 13 date presets, event type, severity, false events toggle
+- **Auto-Refresh:** 1, 5, 15, 30, 60-minute intervals with manual refresh
+- **Save & Share:** Save reports with name/description, share with specific users
+- **Export:** Excel (XLSX) with formatting, PDF with headers
+- **Database:** `saved_reports` table with RLS policies
+- **Installation:** Automated setup scripts (Windows .bat, Mac/Linux .sh)
+- **Dependencies:** react-pivottable, plotly.js, react-plotly.js, xlsx, jspdf, jspdf-autotable
 
 #### Customer Transformer Matching (Dec 15, 2025)
 - Auto customer impact generation via PostgreSQL trigger

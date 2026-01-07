@@ -79,6 +79,9 @@ The following documents have been moved to **Archive/** folder as their content 
 | ACTIVE_TO_ENABLE_MIGRATION.md | Completed feature | PROJECT_FUNCTION_DESIGN.md + DATABASE_SCHEMA.md |
 | SARFI_ARCHITECTURE.md | Technical architecture | ARCHITECTURE.md (SARFI System Architecture) |
 | ASSET_MANAGEMENT_EVENT_HISTORY.md | Completed feature | PROJECT_FUNCTION_DESIGN.md (Change History Dec 2025) |
+| METER_HIERARCHY_UPDATES_2026-01-06.md | Completed feature | PROJECT_FUNCTION_DESIGN.md (Change History Jan 2026) |
+| WEIGHTING_FACTORS_IMPLEMENTATION.md | Implementation summary | PROJECT_FUNCTION_DESIGN.md (Data Maintenance Module) |
+| REPORT_BUILDER_README.md | Installation guide | PROJECT_FUNCTION_DESIGN.md (Report Builder Dec 2025) |
 
 **Previously Archived (December 2025):**
 - CUSTOMER_TRANSFORMER_MATCHING_IMPLEMENTATION.md
@@ -90,7 +93,7 @@ The following documents have been moved to **Archive/** folder as their content 
 - SETUP_GUIDE.md
 - IMPLEMENTATION_PLAN.md
 
-**Total Archived:** 21 documents  
+**Total Archived:** 24 documents  
 **Total Active (Core):** 5 documents
 
 ---
