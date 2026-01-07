@@ -191,8 +191,8 @@ export default function CustomerTransformerMatching() {
 
   // Permission check helper
   function canAddCustomer() {
-    // All users except watcher can add customers
-    return profile?.role !== 'watcher';
+    // All users except viewer can add customers
+    return profile?.role !== 'viewer';
   }
 
   // Handle customer modal
@@ -218,7 +218,7 @@ export default function CustomerTransformerMatching() {
     if (!user || !canAddCustomer()) return;
 
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('customers')
         .insert({
           name: customerFormData.name,

@@ -1,6 +1,6 @@
 # PQMAP Database Schema Documentation
 
-**Last Updated:** December 29, 2025
+**Last Updated:** January 7, 2026
 
 ## Overview
 Complete database schema for the Power Quality Monitoring and Analysis Platform (PQMAP).
@@ -90,28 +90,40 @@ Complete database schema for the Power Quality Monitoring and Analysis Platform 
 - Report sharing between users
 - RLS policies for owner and shared access
 - Automatic `updated_at` timestamp via trigger
-- **25 Real CLP Substations**: Replaced test data with production substation codes (APA through CYS)
-- **Circuit ID Format**: Updated to H1/H2/H3 (real transformer numbers, 1-3 per substation)
-- **Region Standardization**: Substations.region uses 'WE' (West), 'NR' (North), 'CN' (Central)
-- **Backfill Support**: Script available to generate customer impacts for historical events
 
-**Important Notes:**
-- **Historical Events**: Run `scripts/backfill_customer_impacts.sql` to populate customer impacts for existing events
-- **Event Display**: Yellow card shows `customer_count` (estimate), blue card shows actual `event_customer_impact` records
-- **Data Consistency**: Customer names only appear after backfill creates detailed impact records
-
-### ✅ Applied Enhancement - Report Builder
-**Migration:** `20250101000000_create_saved_reports.sql`  
+### ✅ Applied Enhancement - SARFI Weighting Factors
+**Migration:** `20260107000000_add_customer_count_to_weights.sql`  
 **Status:** ✅ **APPLIED**  
-**Date:** January 1, 2025  
-**Purpose:** User-created report configurations with pivot tables and calculated fields  
+**Date:** January 7, 2026  
+**Purpose:** Add customer count tracking for SARFI weight factor calculations  
 **Features:**
-- New `saved_reports` table for storing user report configurations
-- Support for pivot table settings (rows, cols, aggregation)
-- Calculated fields with custom expressions
-- Report sharing between users
-- RLS policies for owner and shared access
-- Automatic `updated_at` timestamp via trigger
+- New `customer_count` column in `sarfi_profile_weights` table
+- Auto-calculation of weight factors based on customer distribution
+- Formula: `weight_factor = customer_count / SUM(all_customer_counts_in_profile)`
+- CSV import/export support for bulk customer count updates
+- Inline editing with automatic recalculation on changes
+
+**UI Component:** `src/pages/DataMaintenance/WeightingFactors.tsx`  
+**Service Layer:** `src/services/sarfiService.ts`
+
+### ✅ Applied Enhancement - PQ Benchmarking Standard
+**Migration:** `20260107000001_create_pq_benchmarking_tables.sql`  
+**Status:** ✅ **APPLIED**  
+**Date:** January 7, 2026  
+**Purpose:** International PQ compliance benchmarking standards management  
+**Features:**
+- New `pq_benchmark_standards` table for standard definitions (IEC, SEMI F47, ITIC)
+- New `pq_benchmark_thresholds` table for voltage/duration compliance thresholds
+- Seeded with 3 international standards:
+  - **IEC 61000-4-34**: 4 thresholds for voltage dip immunity testing
+  - **SEMI F47**: 5 thresholds for semiconductor equipment
+  - **ITIC**: 5 thresholds for IT equipment tolerance
+- Sortable threshold tables with inline editing
+- Validation: min_voltage (0-100%), duration (0-1s), unique per standard
+- CSV import/export for threshold bulk operations
+
+**UI Component:** `src/pages/DataMaintenance/PQBenchmarking.tsx`  
+**Service Layer:** `src/services/benchmarkingService.ts`
 
 ---
 
@@ -633,9 +645,81 @@ Historical events (created before the trigger was added) will have `customer_cou
 **TypeScript Interface:** `SARFIProfileWeight`  
 **Status:** ✅ Matches database
 
+**Migration:** `20260107000000_add_customer_count_to_weights.sql` (January 7, 2026)
+
+**Enhanced Fields:**
+| Column | Type | Constraints | Description | Example |
+|--------|------|-------------|-------------|---------|
+| `customer_count` | integer | DEFAULT 0 | Number of customers served | `1250` |
+
+**Business Logic:**
+- Weight factor = customer_count / SUM(all_customer_counts_in_profile)
+- Auto-recalculation on any customer count change
+- Used for weighted SARFI calculations across profiles
+
 ---
 
-### 15. `filter_profiles`
+### 15. `pq_benchmark_standards`
+**Purpose:** International PQ benchmarking standards (IEC, SEMI, ITIC, etc.)
+
+| Column | Type | Constraints | Description | Example |
+|--------|------|-------------|-------------|---------|
+| `id` | uuid | PRIMARY KEY | Unique identifier | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` |
+| `name` | text | NOT NULL UNIQUE | Standard name | `IEC 61000-4-34` |
+| `description` | text | | Standard description | `IEC standard for voltage dip immunity testing...` |
+| `is_active` | boolean | DEFAULT true | Active status | `true` |
+| `created_at` | timestamptz | DEFAULT now() | Creation timestamp | `2026-01-07 08:00:00+00` |
+| `updated_at` | timestamptz | DEFAULT now() | Last update timestamp | `2026-01-07 08:00:00+00` |
+| `created_by` | uuid | FK → profiles | Creator user | `550e8400-e29b-41d4-a716-446655440000` |
+
+**TypeScript Interface:** `PQBenchmarkStandard`  
+**Status:** ✅ Matches database
+
+**Migration:** `20260107000001_create_pq_benchmarking_tables.sql` (January 7, 2026)
+
+**Indexes:**
+- `idx_benchmark_standards_active` on `is_active`
+
+**Seeded Standards:**
+- **IEC 61000-4-34**: Voltage dip immunity for equipment with input current up to 16A per phase (4 thresholds)
+- **SEMI F47**: Voltage sag immunity for semiconductor manufacturing equipment (5 thresholds)
+- **ITIC**: Information Technology Industry Council voltage tolerance curve for IT equipment (5 thresholds)
+
+---
+
+### 16. `pq_benchmark_thresholds`
+**Purpose:** Voltage/duration thresholds for each benchmarking standard
+
+| Column | Type | Constraints | Description | Example |
+|--------|------|-------------|-------------|---------|
+| `id` | uuid | PRIMARY KEY | Unique identifier | `b2c3d4e5-f6a7-8901-bcde-fa2345678901` |
+| `standard_id` | uuid | NOT NULL FK → pq_benchmark_standards ON DELETE CASCADE | Parent standard | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` |
+| `min_voltage` | decimal(6,3) | NOT NULL CHECK (0-100) | Minimum voltage percentage | `70.000` |
+| `duration` | decimal(6,3) | NOT NULL CHECK (0-1) | Duration in seconds | `0.500` |
+| `sort_order` | integer | DEFAULT 0 | Display order | `1` |
+| `created_at` | timestamptz | DEFAULT now() | Creation timestamp | `2026-01-07 08:00:00+00` |
+| `updated_at` | timestamptz | DEFAULT now() | Last update timestamp | `2026-01-07 08:00:00+00` |
+
+**TypeScript Interface:** `PQBenchmarkThreshold`  
+**Status:** ✅ Matches database
+
+**Constraints:**
+- `unique_threshold_per_standard` UNIQUE (standard_id, min_voltage, duration)
+- CHECK: `min_voltage >= 0 AND min_voltage <= 100`
+- CHECK: `duration >= 0 AND duration <= 1`
+
+**Indexes:**
+- `idx_benchmark_thresholds_standard` on `standard_id`
+- `idx_benchmark_thresholds_sort` on `(standard_id, sort_order)`
+
+**Seeded Thresholds:**
+- **IEC 61000-4-34**: 4 thresholds (100%/0.02s, 40%/0.2s, 70%/0.5s, 80%/1s)
+- **SEMI F47**: 5 thresholds (50%/0.02s, 50%/0.2s, 70%/0.5s, 80%/1s, 87%/1s)
+- **ITIC**: 5 thresholds (0%/0.02s, 70%/0.02s, 70%/0.5s, 80%/1s, 90%/1s)
+
+---
+
+### 17. `filter_profiles`
 **Purpose:** User-defined filter configurations for event management with multi-device sync
 
 | Column | Type | Constraints | Description |
@@ -996,6 +1080,89 @@ sarfi_profiles
 
 ## Migration History
 
+### Quick Summary
+- **Total Migrations:** 32 applied
+- **Latest:** January 7, 2026 (PQ Benchmarking + Weighting Factors)
+- **Database Tables:** 17 tables
+- **Schema Version:** 1.6
+
+### 2026 Migrations (Q1)
+
+| Date | File | Tables Affected | Purpose | Status |
+|------|------|-----------------|---------|--------|
+| 2026-01-07 | `20260107000001_create_pq_benchmarking_tables.sql` | pq_benchmark_standards, pq_benchmark_thresholds | PQ compliance standards (IEC/SEMI/ITIC) | ✅ Applied |
+| 2026-01-07 | `20260107000000_add_customer_count_to_weights.sql` | sarfi_profile_weights | Add customer_count for weight calculations | ✅ Applied |
+| 2026-01-06 | `20260106000000_rename_active_to_enable.sql` | pq_meters | Rename active→enable column, add ip_address | ✅ Applied |
+| 2026-01-05 | `20260105000000_add_substation_audit_fields.sql` | substations | Add audit trail fields | ✅ Applied |
+
+### 2025 Migrations (Q4)
+
+| Date | File | Tables Affected | Purpose | Status |
+|------|------|-----------------|---------|--------|
+| 2025-12-24 | `20251224000001_add_dashboard_layout.sql` | dashboard_layouts | User dashboard customization | ✅ Applied |
+| 2025-12-23 | `20251223000001_add_meter_id_index.sql` | pq_events | Performance index on meter_id for Asset Management | ✅ Applied |
+| 2025-12-22 | `20251222000001_column_reordering_guide.sql` | - | Documentation only | ✅ Applied |
+| 2025-12-22 | `20251222000000_add_site_id_region_to_events.sql` | pq_events | Add site_id and region fields | ✅ Applied |
+| 2025-12-18 | `20251218000001_update_pq_service_records.sql` | pq_service_records | Update service tracking | ✅ Applied |
+| 2025-12-18 | `20251218000000_create_idr_records.sql` | idr_records | Incident Data Record system | ✅ Applied |
+| 2025-12-17 | `20251217000002_update_meters_voltage_site_ss.sql` | pq_meters | Update meter metadata | ✅ Applied |
+| 2025-12-17 | `20251217000001_backfill_ss_codes.sql` | substations | Backfill substation codes | ✅ Applied |
+| 2025-12-17 | `20251217000000_add_meter_transformer_codes.sql` | pq_meters | Add transformer code tracking | ✅ Applied |
+| 2025-12-15 | `20251215160000_update_circuit_ids_h1_h2_h3.sql` | customer_transformer_matching | Update to H1/H2/H3 format | ✅ Applied |
+| 2025-12-15 | `20251215150000_randomize_substation_assignments.sql` | - | Test data generation | ✅ Applied |
+| 2025-12-15 | `20251215140000_cleanup_backups.sql` | - | Remove backup tables | ✅ Applied |
+| 2025-12-15 | `20251215130000_rollback_restore_backups.sql` | - | Rollback utility | ✅ Applied |
+| 2025-12-15 | `20251215120000_update_clp_substations.sql` | substations | 25 real CLP substations | ✅ Applied |
+| 2025-12-15 | `20251215110000_backup_tables.sql` | - | Backup before major update | ✅ Applied |
+| 2025-12-15 | `20251215000003_create_auto_customer_impact_function.sql` | - | Auto customer impact trigger | ✅ Applied |
+| 2025-12-15 | `20251215000002_remove_transformer_id_from_customers.sql` | customers | Remove obsolete column | ✅ Applied |
+| 2025-12-15 | `20251215000001_create_customer_transformer_matching.sql` | customer_transformer_matching | Circuit-customer relationships | ✅ Applied |
+| 2025-12-12 | `20251212000001_add_idr_fields.sql` | pq_events | IDR tracking fields | ✅ Applied |
+| 2025-12-11 | `20251211000001_populate_null_causes.sql` | pq_events | Backfill NULL causes | ✅ Applied |
+| 2025-12-11 | `20251211000000_migrate_root_cause_to_cause.sql` | pq_events | Rename root_cause→cause | ✅ Applied |
+| 2025-12-10 | `20251210000000_create_filter_profiles.sql` | filter_profiles | User filter configurations | ⏳ Pending |
+| 2025-12-10 | `20251210000000_add_export_fields_and_false_event.sql` | pq_events | Export fields + false_event | ✅ Applied |
+| 2025-12-09 | `20251209000001_add_sarfi_columns.sql` | pq_events, pq_meters | SARFI calculation fields | ✅ Applied |
+| 2025-12-09 | `20251209000000_create_sarfi_profiles.sql` | sarfi_profiles, sarfi_profile_weights | SARFI profile system | ✅ Applied |
+| 2025-11-03 | `20251103021739_fix_security_and_performance_issues.sql` | - | RLS policies + indexes | ✅ Applied |
+| 2025-11-03 | `20251103020125_create_pqmap_schema.sql` | All base tables | Initial schema (17 tables) | ✅ Applied |
+
+### 2025 Migrations (Q1)
+
+| Date | File | Tables Affected | Purpose | Status |
+|------|------|-----------------|---------|--------|
+| 2025-01-01 | `20250101000000_create_saved_reports.sql` | saved_reports | Report Builder configurations | ✅ Applied |
+
+### 2024 Migrations (Q4)
+
+| Date | File | Tables Affected | Purpose | Status |
+|------|------|-----------------|---------|--------|
+| 2024-12-01 | `20241201000000_add_mother_event_grouping.sql` | pq_events | Mother event grouping fields | ✅ Applied |
+
+### Utility Scripts
+
+| File | Purpose | Status |
+|------|---------|--------|
+| `cleanup_orphaned_child_events.sql` | Remove orphaned child events | Available |
+
+### Migration Notes
+
+**Key Schema Changes:**
+1. **Active to Enable (Jan 6, 2026):** Renamed `pq_meters.active` → `pq_meters.enable` to distinguish system enablement from operational status
+   - `enable` (boolean): System-level flag (default: true)
+   - `status` (enum): Operational state ('active' | 'abnormal' | 'inactive')
+   - KPI rules: Filter `enable = true` before counting by status
+2. **Customer Count (Jan 7, 2026):** Weight factors now calculated from customer distribution
+3. **PQ Benchmarking (Jan 7, 2026):** International standards (IEC/SEMI/ITIC) with 14 thresholds
+4. **Event History Index (Dec 23, 2025):** Performance index on `pq_events.meter_id` for Asset Management Event History tab
+5. **Customer Transformer (Dec 2025):** Auto customer impact via PostgreSQL trigger
+6. **Report Builder (Jan 2025):** Pivot table configurations with calculated fields
+7. **Mother Events (Dec 2024):** Automatic grouping within 10-minute windows
+
+---
+
+## Legacy Migration History (Old Format)
+
 | Date | Migration File | Status | Description |
 |------|---------------|---------|-------------|
 | 2025-11-03 | `20251103020125_create_pqmap_schema.sql` | ✅ Applied | Initial schema creation |
@@ -1004,6 +1171,8 @@ sarfi_profiles
 | 2025-12-09 | `20251209000000_create_sarfi_profiles.sql` | ✅ Applied | SARFI profiles and weights tables |
 | 2025-12-09 | `20251209000001_add_sarfi_columns.sql` | ✅ Applied | Add SARFI columns to pq_events and pq_meters |
 | 2025-12-10 | `20251210000000_create_filter_profiles.sql` | ⏳ **Pending** | **Filter profiles for multi-device sync** |
+| 2026-01-07 | `20260107000000_add_customer_count_to_weights.sql` | ✅ Applied | Add customer_count to sarfi_profile_weights |
+| 2026-01-07 | `20260107000001_create_pq_benchmarking_tables.sql` | ✅ Applied | Create PQ benchmarking standards and thresholds |
 
 ---
 
@@ -1015,11 +1184,14 @@ The database schema is well-designed, complete, and fully operational. All TypeS
 ### Current Status ✅
 - ✅ Migration `20251209000001_add_sarfi_columns.sql` successfully applied
 - ⏳ Migration `20251210000000_create_filter_profiles.sql` **ready to apply**
+- ✅ Migration `20260107000000_add_customer_count_to_weights.sql` successfully applied (Jan 7, 2026)
+- ✅ Migration `20260107000001_create_pq_benchmarking_tables.sql` successfully applied (Jan 7, 2026)
 - ✅ All seed scripts execute without errors (with ENUM type casting)
 - ✅ SARFI functionality fully operational (89 meters, 487 events)
 - ✅ Infinite loop bugs resolved in profile fetching and data loading
 - ✅ UI improvements: scrollable table with fixed header/footer
 - ✅ Filter profile management with multi-device sync
+- ✅ Data Maintenance: Weighting Factors and PQ Benchmarking Standard features
 - ✅ No data type mismatches between TypeScript and PostgreSQL
 
 ### Schema Health
@@ -1027,19 +1199,20 @@ The database schema is well-designed, complete, and fully operational. All TypeS
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| Database Schema | ✅ Complete | 15/15 tables with proper columns |
+| Database Schema | ✅ Complete | 17/17 tables with proper columns |
 | TypeScript Interfaces | ✅ Aligned | All interfaces match database |
 | Seed Scripts | ✅ Working | ENUM type casting applied |
 | SARFI Functionality | ✅ Operational | 89 meters, 487 events, 251 weights |
 | Filter Profiles | ✅ Implemented | Multi-device sync via Supabase |
+| Data Maintenance | ✅ Complete | Weighting Factors + PQ Benchmarking |
 | Application Performance | ✅ Optimized | Infinite loops fixed, logging cleaned |
 | UI/UX | ✅ Enhanced | Scrollable table, custom styling |
 
-### Recent Improvements (December 2024)
-1. **Schema Migration**: Added SARFI columns to `pq_meters` and `pq_events`
-2. **Type Safety**: Fixed ENUM type casting in seed scripts
-3. **Performance**: Eliminated infinite rendering loops in React components
-4. **User Experience**: Made SARFI table scrollable (10 visible rows from 89 total)
-5. **Code Quality**: Reduced verbose logging by 90%
+### Recent Improvements (January 2026)
+1. **SARFI Weighting**: Added customer_count field for weight factor calculations
+2. **PQ Benchmarking**: New tables for IEC/SEMI/ITIC compliance standards
+3. **Data Maintenance**: Two new master data management features
+4. **UI Enhancements**: Sortable tables, inline editing, import/export
+5. **Standards Seeding**: Pre-loaded 3 international PQ standards with thresholds
 
 **All systems operational and ready for production use.** ✅

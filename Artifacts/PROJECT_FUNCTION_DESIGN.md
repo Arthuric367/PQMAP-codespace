@@ -10,23 +10,20 @@
 
 1. [System Overview](#system-overview)
 2. [Architecture & Tech Stack](#architecture--tech-stack)
-3. [Core Functional Modules](#core-functional-modules)
+3. [Change History & Feature Updates](#change-history--feature-updates) 🆕
+4. [Core Functional Modules](#core-functional-modules)
    - [1. Dashboard Module](#1-dashboard-module)
    - [2. Event Management Module](#2-event-management-module)
    - [3. Data Analytics Module](#3-data-analytics-module)
    - [4. Asset Management Module](#4-asset-management-module)
    - [5. Reporting Module](#5-reporting-module)
-   - [6. Notification System](#6-notification-system)
-   - [7. PQ Services Module](#7-pq-services-module)
-   - [8. Data Maintenance Module](#8-data-maintenance-module)
-   - [9. User Management Module](#9-user-management-module) ✨ NEW
-   - [10. SCADA Substation Management](#10-scada-substation-management-module) ✨ NEW
-   - [11. System Health Module](#11-system-health-module)
-4. [Data Models & Database Schema](#data-models--database-schema)
-5. [Key Design Patterns](#key-design-patterns)
-6. [Integration Points](#integration-points)
-7. [Environment Configuration & Security](#environment-configuration--security)
-8. [Development Guidelines](#development-guidelines)
+   - [6. Data Maintenance Module](#6-data-maintenance-module)
+   - [7. System Health Module](#7-system-health-module)
+5. [Data Models & Database Schema](#data-models--database-schema)
+6. [Key Design Patterns](#key-design-patterns)
+7. [Integration Points](#integration-points)
+8. [Environment Configuration & Security](#environment-configuration--security)
+9. [Development Guidelines](#development-guidelines)
 
 ---
 
@@ -96,6 +93,161 @@ src/
 │   └── falseEventDetection.ts
 └── App.tsx              # Main application component
 ```
+
+---
+
+## Change History & Feature Updates
+
+### January 2026
+
+#### Data Maintenance Module (Jan 7, 2026)
+**Features Added:**
+- **Weighting Factors Management**
+  - Customer count tracking for SARFI weight calculations
+  - Formula: `weight_factor = customer_count / SUM(all_customer_counts)`
+  - Inline editing with auto-recalculation
+  - CSV import/export with validation
+  - Component: `WeightingFactors.tsx` (757 lines)
+  - Database: Added `customer_count` column to `sarfi_profile_weights`
+
+- **PQ Benchmarking Standard**
+  - International standards management (IEC 61000-4-34, SEMI F47, ITIC)
+  - Sortable threshold table (voltage %, duration s)
+  - Inline editing with validation (0-100%, 0-1s, unique per standard)
+  - CSV import/export with template download
+  - Component: `PQBenchmarking.tsx` (860+ lines)
+  - Service: `benchmarkingService.ts` (11 functions)
+  - Database: 2 new tables with 14 seeded thresholds
+
+**Navigation:** Added 2 menu items (Scale icon, Target icon) in Data Maintenance section
+
+#### Active to Enable Migration (Jan 6, 2026)
+**Purpose:** Rename `active` field to `enable` to distinguish operational status from system enablement
+
+**Changes:**
+- **Database:** Migration `20260106000000_rename_active_to_enable.sql`
+  - Renamed `pq_meters.active` → `pq_meters.enable`
+  - Added `ip_address` column if missing
+  - Added column comments for clarity
+  
+- **Field Semantics:**
+  - `enable` (boolean): System-level flag to include/exclude meters
+    - Default: `true` (enabled)
+    - When `false`: Meter excluded from KPI calculations and reports
+    - Display: "Enabled" / "Disabled"
+  - `status` (enum): Operational state ('active' | 'abnormal' | 'inactive')
+    - Independent of `enable` field
+    - Display: Colored status badges
+
+- **KPI Calculation Rules:**
+  - Total Meters: COUNT WHERE `enable = true`
+  - Active/Abnormal/Inactive: Filter by status within enabled meters only
+
+- **UI Updates:**
+  - MeterHierarchy: Enable filter (All/Enabled/Disabled), toggle button
+  - AssetManagement: Updated statistics and export column
+  - MeterFormModal: "Enable in System" checkbox, substation format "{code} - {name}"
+
+**Files Modified:** 7 files across types/services/components
+
+---
+
+### December 2025
+
+#### Report Builder (Jan 1, 2026)
+- Interactive pivot tables with drag-and-drop interface
+- Powered by react-pivottable + Plotly charts
+- Calculated fields with custom expressions
+- Save/share reports with other users
+- Auto-refresh intervals (30s to 1hr)
+- Export: Excel/CSV/PDF
+
+#### Customer Transformer Matching (Dec 15, 2025)
+- Auto customer impact generation via PostgreSQL trigger
+- Substation-circuit-customer relationship mapping
+- 25 real CLP substations (APA through CYS)
+- Circuit format: H1/H2/H3 (transformer numbers)
+- Severity mapping: critical→severe, high→moderate, medium/low→minor
+
+#### Root Cause Analysis Restoration (Dec 11, 2025)
+**Implementation Summary:**
+- Restored Root Cause chart to Dashboard with independent filtering
+- **Chart Features:**
+  - Shows top 10 causes by event count
+  - Includes all events (mother + child) but excludes false events
+  - Horizontal bar chart with gradient colors
+  - Percentage and count display per cause
+  - Analysis summary showing most common cause
+
+- **Filter Management:**
+  - Date range picker (start/end date)
+  - Profile system with create/load/delete/set default
+  - Profiles stored in localStorage as `rootCauseProfiles`
+  - Filter persistence: `rootCauseFilters` key
+
+- **UI Components:**
+  - `RootCauseChart.tsx` - Main chart with filtering
+  - `RootCauseConfigModal.tsx` - Configuration modal
+  - Export as PNG image via html2canvas
+  - Settings icon button for config modal
+
+- **Data Logic:**
+  - Uses `cause` field (migrated from `root_cause`)
+  - Filter: `false_event !== true AND timestamp IN range`
+  - Sort: Descending by count, take top 10
+  - Empty state when no events match filters
+
+- **Layout:** Half-width (50/50 with InsightChart on xl screens, stacked on smaller)
+
+#### Asset Management Event History (Dec 23, 2025)
+- **Purpose:** View and filter all PQ events for a specific meter
+- **Implementation:** Tabbed modal interface in Asset Management
+  - Tab 1: Meter Information (existing)
+  - Tab 2: Event History (new)
+- **Features:**
+  - 20 events per page with pagination
+  - Compact filters (quick date, event type, status)
+  - Summary statistics (total events, top 3 types)
+  - Row highlighting on click
+  - Performance index on `pq_events.meter_id`
+- **UI Pattern:** STYLES_GUIDE.md Pattern 1 (compact design)
+- **Database:** Migration `20251223000001_add_meter_id_index.sql`
+
+#### Meter Availability Report (Dec 19, 2025)
+- Communication monitoring dashboard
+- Mock data generation (hourly records for 30 days)
+- Time range presets: 24h, 7d, 30d, custom
+- Availability calculation: (count / expected) * 100%
+- Color-coded: ≥90% green, 50-89% orange, <50% red
+- Sortable table with filters (site ID, status, region)
+
+#### IDR Tab (Dec 12, 2025)
+- Comprehensive Incident Data Record management
+- 24+ fields including fault type, weather, responsible OC
+- Responsive 2-column grid layout
+- Integration with event management
+
+---
+
+### November 2025
+
+#### SARFI Profiles & Weights
+- Weight factor management for SARFI calculations
+- Meter assignment to profiles
+- Profile-based SARFI index computation
+- Database: `sarfi_profiles`, `sarfi_profile_weights` tables
+
+#### Mother Event Grouping
+- Automatic grouping: 10-minute window, same substation
+- Tree view display (mother events with children)
+- Manual grouping/ungrouping capabilities
+- Database: Added `is_mother_event`, `parent_event_id`, `grouping_type` columns
+
+#### False Event Detection
+- Configurable detection rules (5 types)
+- Short duration spikes, duplicates, meter malfunction
+- Detection analytics dashboard
+- Database: Added `false_event` boolean column
 
 ---
 
@@ -623,6 +775,157 @@ interface ReportConfig {
 
 **Integration**:
 - Added to Dashboard as new widget type: `'report-builder'`
+
+---
+
+### 6. Data Maintenance Module
+
+**Purpose**: Master data management for SARFI profiles and PQ benchmarking standards
+
+#### Sub-Modules
+
+##### 6.1 Weighting Factors (SARFI Profile Weights)
+
+**Location**: Navigation → Data Maintenance → Weighting Factors
+
+**Purpose**: Manage customer count and weight factors for SARFI calculations across PQ meter profiles
+
+**Key Features**:
+1. **Profile Management**
+   - Select from existing SARFI profiles
+   - View all meters in selected profile
+   - Display meter details: ID, location, substation, circuit
+
+2. **Customer Count Management**
+   - Inline editing with Save/Cancel buttons
+   - Add meter to profile with search functionality
+   - Remove meter from profile
+   - Customer count validation (integer >= 0)
+
+3. **Auto-calculation**
+   - Weight factor = customer_count / SUM(all_customer_counts)
+   - Automatic recalculation on any customer count change
+   - Real-time display of weight factor (5 decimal places)
+
+4. **Import/Export**
+   - **CSV Import**: meter_id, customer_count columns
+   - **Template Download**: Pre-formatted CSV with instructions
+   - **Excel Export**: Full profile data with metadata
+   - **CSV Export**: Data-only format
+   - Row-by-row validation with error reporting
+
+**Data Structure**:
+```typescript
+interface SARFIProfileWeight {
+  id: string;
+  profile_id: string;
+  meter_id: string;
+  weight_factor: number;
+  customer_count: number;  // NEW - Jan 2026
+  created_at: string;
+  updated_at: string;
+}
+```
+
+**Business Logic**:
+- Meter can only belong to one profile at a time
+- Total of all weight factors in profile must equal 1.0
+- Removing meter triggers recalculation for remaining meters
+- Import validates meter_id exists before insertion
+
+**Component**: `src/pages/DataMaintenance/WeightingFactors.tsx`  
+**Service**: `src/services/sarfiService.ts`  
+**Database**: `sarfi_profile_weights` table with `customer_count` column
+
+---
+
+##### 6.2 PQ Benchmarking Standard
+
+**Location**: Navigation → Data Maintenance → PQ Standard
+
+**Purpose**: Manage international PQ compliance benchmarking standards and their voltage/duration thresholds
+
+**Key Features**:
+1. **Standard Management**
+   - Create/Edit/Delete benchmarking standards
+   - Standard fields: name, description, is_active
+   - Pre-seeded with IEC 61000-4-34, SEMI F47, ITIC
+
+2. **Threshold Management**
+   - Sortable table (click column headers to toggle asc/desc)
+   - Default sort: Duration (s) ascending
+   - Inline editing with Save/Cancel buttons
+   - Add threshold modal with validation
+   - Delete threshold with confirmation
+
+3. **Data Validation**
+   - Min. Voltage: 0-100% (3 decimal places)
+   - Duration: 0-1 seconds (3 decimal places)
+   - Unique constraint per standard (no duplicate voltage+duration pairs)
+   - Numeric input validation with range checking
+
+4. **Import/Export**
+   - **CSV Import**: min_voltage, duration columns
+   - **Template Download**: Standard-specific template with instructions
+   - **Excel Export**: Full standard report with metadata
+   - **CSV Export**: Threshold data only
+   - Row-by-row validation with detailed error reporting
+
+**Data Structure**:
+```typescript
+interface PQBenchmarkStandard {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+}
+
+interface PQBenchmarkThreshold {
+  id: string;
+  standard_id: string;
+  min_voltage: number;  // 0-100%
+  duration: number;     // 0-1 seconds
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+```
+
+**International Standards**:
+1. **IEC 61000-4-34** (4 thresholds)
+   - Voltage dip immunity testing for equipment
+   - 100%/0.02s, 40%/0.2s, 70%/0.5s, 80%/1s
+
+2. **SEMI F47** (5 thresholds)
+   - Semiconductor manufacturing equipment
+   - 50%/0.02s, 50%/0.2s, 70%/0.5s, 80%/1s, 87%/1s
+
+3. **ITIC** (5 thresholds)
+   - IT equipment voltage tolerance curve
+   - 0%/0.02s, 70%/0.02s, 70%/0.5s, 80%/1s, 90%/1s
+
+**Business Logic**:
+- Cascade delete: Deleting standard removes all thresholds
+- Validation: No duplicate voltage+duration pairs per standard
+- Sorting: Manual reorder via sort_order field (deprecated - use table sorting)
+- Active status: Can deactivate standards without deletion
+
+**Component**: `src/pages/DataMaintenance/PQBenchmarking.tsx`  
+**Service**: `src/services/benchmarkingService.ts`  
+**Database**: `pq_benchmark_standards`, `pq_benchmark_thresholds` tables
+
+**Use Cases**:
+- Compliance evaluation of voltage dip events
+- Standard comparison across different industries
+- Threshold reference for event severity classification
+- Customer-specific SLA definitions
+
+---
+
+### 7. System Health Module
 - Imports react-pivottable, react-plotly.js, plotly.js
 - Uses Supabase for report persistence
 - RLS policies ensure users only see their own and shared reports
