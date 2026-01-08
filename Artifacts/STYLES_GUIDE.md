@@ -2150,6 +2150,378 @@ export default function FullWidthProfileEdit({ profile, onUpdate }) {
 
 ---
 
+## Dual-Column Selection Pattern
+
+### Overview
+
+**Use When:**
+- Adding multiple items from an available pool to a selected list
+- User needs to quickly select/deselect many items
+- Visual confirmation of selections is important
+- Batch operations are common
+
+**Key Features:**
+- Two-column layout with distinct visual styling
+- Immediate move on checkbox click
+- Bulk operations (Select All / Unselect All)
+- Search filters left column only
+- Clear visual distinction between available and selected
+
+### Standard Implementation
+
+**Reference:** `WeightingFactors.tsx` (Add Meter Modal)
+
+#### 1. Required State Variables
+
+```typescript
+const [showModal, setShowModal] = useState(false);
+const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+const [searchQuery, setSearchQuery] = useState<string>('');
+const [isProcessing, setIsProcessing] = useState(false);
+```
+
+#### 2. Handler Functions
+
+```typescript
+// Toggle individual item
+const handleToggleItem = (itemId: string) => {
+  const newSelected = new Set(selectedItemIds);
+  if (newSelected.has(itemId)) {
+    newSelected.delete(itemId);
+  } else {
+    newSelected.add(itemId);
+  }
+  setSelectedItemIds(newSelected);
+};
+
+// Select all visible items in left column
+const handleSelectAll = () => {
+  const newSelected = new Set(selectedItemIds);
+  filteredAvailableItems.forEach(item => newSelected.add(item.id));
+  setSelectedItemIds(newSelected);
+};
+
+// Unselect all items (move all from right to left)
+const handleUnselectAll = () => {
+  setSelectedItemIds(new Set());
+};
+
+// Process selected items
+const handleSubmit = async () => {
+  if (selectedItemIds.size === 0) {
+    alert('Please select at least one item');
+    return;
+  }
+
+  setIsProcessing(true);
+  try {
+    const promises = Array.from(selectedItemIds).map(itemId =>
+      addItemToList(itemId)
+    );
+    await Promise.all(promises);
+    
+    // Reload data and close modal
+    await loadData();
+    setShowModal(false);
+    setSelectedItemIds(new Set());
+    setSearchQuery('');
+  } catch (error: any) {
+    console.error('❌ Error:', error);
+    alert(error.message || 'Failed to add items');
+  } finally {
+    setIsProcessing(false);
+  }
+};
+```
+
+#### 3. Data Filtering Logic
+
+```typescript
+// Exclude already added items and selected items from left column
+const addedItemIds = new Set(existingItems.map(item => item.id));
+const availableItems = allItems.filter(item => 
+  !addedItemIds.has(item.id) && !selectedItemIds.has(item.id)
+);
+
+// Filter left column by search query
+const filteredAvailableItems = availableItems.filter(item => 
+  item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  item.description.toLowerCase().includes(searchQuery.toLowerCase())
+);
+
+// Get selected items for right column
+const selectedItems = allItems.filter(item => selectedItemIds.has(item.id));
+```
+
+#### 4. Modal UI Structure
+
+```tsx
+<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+  <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[85vh] flex flex-col">
+    {/* Header */}
+    <div className="flex items-center justify-between p-6 border-b border-slate-200">
+      <div>
+        <h3 className="text-xl font-bold text-slate-900">Select Items</h3>
+        <p className="text-sm text-slate-500 mt-1">
+          Click checkboxes to move items between columns
+        </p>
+      </div>
+      <button
+        onClick={() => {
+          setShowModal(false);
+          setSelectedItemIds(new Set());
+          setSearchQuery('');
+        }}
+        className="p-2 hover:bg-slate-100 rounded-lg"
+      >
+        <X className="w-5 h-5" />
+      </button>
+    </div>
+
+    {/* Search Bar */}
+    <div className="px-6 pt-6 pb-4">
+      <input
+        type="text"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder="Search available items..."
+        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+      />
+    </div>
+
+    {/* Dual Column Layout */}
+    <div className="flex-1 overflow-y-auto px-6 pb-6">
+      <div className="grid grid-cols-2 gap-4">
+        {/* Left Column - Available Items */}
+        <div className="border border-slate-300 rounded-lg overflow-hidden">
+          <div className="bg-slate-100 px-4 py-3 border-b border-slate-300 flex items-center justify-between">
+            <div>
+              <h4 className="font-semibold text-slate-900">Available Items</h4>
+              <p className="text-xs text-slate-600 mt-0.5">
+                {filteredAvailableItems.length} items
+              </p>
+            </div>
+            <button
+              onClick={handleSelectAll}
+              disabled={filteredAvailableItems.length === 0}
+              className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Select All
+            </button>
+          </div>
+          <div className="max-h-96 overflow-y-auto">
+            {filteredAvailableItems.length === 0 ? (
+              <div className="p-8 text-center text-slate-500">
+                <p className="text-sm">
+                  {searchQuery ? 'No items match your search' : 'No available items'}
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-200">
+                {filteredAvailableItems.map(item => (
+                  <label
+                    key={item.id}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      onChange={() => handleToggleItem(item.id)}
+                      className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate">
+                        {item.name}
+                      </p>
+                      <p className="text-xs text-slate-600 truncate">
+                        {item.description}
+                      </p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Column - Selected Items */}
+        <div className="border border-slate-300 rounded-lg overflow-hidden">
+          <div className="bg-green-100 px-4 py-3 border-b border-green-300 flex items-center justify-between">
+            <div>
+              <h4 className="font-semibold text-slate-900">Selected Items</h4>
+              <p className="text-xs text-slate-600 mt-0.5">
+                {selectedItemIds.size} selected
+              </p>
+            </div>
+            <button
+              onClick={handleUnselectAll}
+              disabled={selectedItemIds.size === 0}
+              className="px-3 py-1.5 text-xs font-medium bg-slate-600 text-white rounded hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Unselect All
+            </button>
+          </div>
+          <div className="max-h-96 overflow-y-auto">
+            {selectedItemIds.size === 0 ? (
+              <div className="p-8 text-center text-slate-500">
+                <p className="text-sm">No items selected</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Click checkboxes on the left to select items
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-200">
+                {selectedItems.map(item => (
+                  <label
+                    key={item.id}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-red-50 cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={true}
+                      onChange={() => handleToggleItem(item.id)}
+                      className="w-4 h-4 text-red-600 border-slate-300 rounded focus:ring-red-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate">
+                        {item.name}
+                      </p>
+                      <p className="text-xs text-slate-600 truncate">
+                        {item.description}
+                      </p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Footer */}
+    <div className="flex-shrink-0 flex items-center justify-between p-6 border-t border-slate-200 bg-slate-50">
+      <p className="text-sm text-slate-600">
+        {selectedItemIds.size} item{selectedItemIds.size !== 1 ? 's' : ''} selected
+      </p>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => {
+            setShowModal(false);
+            setSelectedItemIds(new Set());
+            setSearchQuery('');
+          }}
+          className="px-4 py-2 text-slate-700 hover:bg-slate-200 rounded-lg"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSubmit}
+          disabled={selectedItemIds.size === 0 || isProcessing}
+          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          {isProcessing ? (
+            <>
+              <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              <span>Processing...</span>
+            </>
+          ) : (
+            <>
+              <Plus className="w-4 h-4" />
+              <span>Add Items</span>
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
+### Styling Guidelines
+
+#### Color Scheme
+- **Left Column Header**: `bg-slate-100` with `border-slate-300`
+- **Right Column Header**: `bg-green-100` with `border-green-300` (success theme)
+- **Left Hover**: `hover:bg-blue-50` (indicates potential selection)
+- **Right Hover**: `hover:bg-red-50` (indicates potential removal)
+- **Select All Button**: `bg-blue-600 text-white hover:bg-blue-700`
+- **Unselect All Button**: `bg-slate-600 text-white hover:bg-slate-700`
+
+#### Layout
+- **Modal Width**: `max-w-5xl` for dual columns
+- **Modal Height**: `max-h-[85vh]` to fit most screens
+- **Column Grid**: `grid-cols-2 gap-4`
+- **Item List Height**: `max-h-96 overflow-y-auto` for scrolling
+- **Item Padding**: `px-4 py-3` for comfortable touch targets
+
+#### Typography
+- **Column Title**: `font-semibold text-slate-900`
+- **Item Count**: `text-xs text-slate-600`
+- **Item Name**: `text-sm font-medium text-slate-900 truncate`
+- **Item Description**: `text-xs text-slate-600 truncate`
+- **Button Text**: `text-xs font-medium` for action buttons
+
+#### Interactive Elements
+- **Checkbox Size**: `w-4 h-4` with proper focus rings
+- **Immediate Toggle**: Checkbox onChange calls `handleToggleItem` directly
+- **Transition**: `transition-colors` on hover states
+- **Disabled State**: `disabled:opacity-50 disabled:cursor-not-allowed`
+
+### Behavior Rules
+
+1. **Checkbox Click → Immediate Move**
+   - No "Move" button needed
+   - Click checkbox in left column → item appears in right column
+   - Click checkbox in right column → item returns to left column
+
+2. **Search Filters Left Column Only**
+   - Search bar only filters available items
+   - Selected items remain visible regardless of search
+   - Clear search input when closing modal
+
+3. **Bulk Operations**
+   - "Select All" adds all visible (filtered) items from left to right
+   - "Unselect All" moves all items from right to left
+   - Buttons disabled when no items available
+
+4. **Data Management**
+   - Left column excludes already added items AND selected items
+   - Right column shows only selected items
+   - Use Set for efficient ID management
+
+5. **Submit Action**
+   - Process all items in right column at once
+   - Show loading state during processing
+   - Close modal and reset state on success
+   - Keep modal open and show error on failure
+
+### Use Cases
+
+**Perfect For:**
+- Adding meters to SARFI profiles
+- Assigning users to groups
+- Selecting multiple filters
+- Building custom reports with data sources
+- Managing permissions (assign roles to users)
+- Creating event groupings
+
+**Not Recommended For:**
+- Single-item selection (use dropdown or radio buttons)
+- Small lists (<5 items) where multi-select dropdown suffices
+- Sequential wizards where order matters
+- Hierarchical selections (use tree view instead)
+
+### Accessibility Considerations
+
+1. **Keyboard Navigation**: Checkboxes are keyboard accessible
+2. **Screen Readers**: Clear labels on columns and buttons
+3. **Focus Management**: Visible focus rings on interactive elements
+4. **Color Independence**: Don't rely solely on color (use text labels)
+5. **Loading States**: Provide clear feedback during processing
+
+---
+
 ## Best Practices
 
 ### Export Implementation

@@ -35,9 +35,9 @@ export default function WeightingFactors() {
 
   // Add meter modal states
   const [showAddMeterModal, setShowAddMeterModal] = useState(false);
-  const [selectedMeterId, setSelectedMeterId] = useState<string>('');
-  const [newCustomerCount, setNewCustomerCount] = useState<number>(0);
+  const [selectedMeterIds, setSelectedMeterIds] = useState<Set<string>>(new Set());
   const [meterSearchQuery, setMeterSearchQuery] = useState<string>('');
+  const [isAddingMeters, setIsAddingMeters] = useState(false);
 
   // Load profiles on mount
   useEffect(() => {
@@ -150,23 +150,50 @@ export default function WeightingFactors() {
     }
   };
 
-  const handleAddMeter = async () => {
-    if (!selectedMeterId || newCustomerCount < 0) {
-      alert('Please select a meter and enter a valid customer count');
+  const handleAddMeters = async () => {
+    if (selectedMeterIds.size === 0) {
+      alert('Please select at least one meter to add');
       return;
     }
 
+    setIsAddingMeters(true);
     try {
-      await addMeterToProfile(selectedProfileId, selectedMeterId, newCustomerCount);
+      // Add all selected meters with customer_count = 0
+      const promises = Array.from(selectedMeterIds).map(meterId =>
+        addMeterToProfile(selectedProfileId, meterId, 0)
+      );
+      await Promise.all(promises);
+      
       await loadWeights();
       setShowAddMeterModal(false);
-      setSelectedMeterId('');
-      setNewCustomerCount(0);
+      setSelectedMeterIds(new Set());
       setMeterSearchQuery('');
     } catch (error: any) {
-      console.error('❌ Error adding meter:', error);
-      alert(error.message || 'Failed to add meter to profile');
+      console.error('❌ Error adding meters:', error);
+      alert(error.message || 'Failed to add meters to profile');
+    } finally {
+      setIsAddingMeters(false);
     }
+  };
+
+  const handleToggleMeter = (meterId: string) => {
+    const newSelected = new Set(selectedMeterIds);
+    if (newSelected.has(meterId)) {
+      newSelected.delete(meterId);
+    } else {
+      newSelected.add(meterId);
+    }
+    setSelectedMeterIds(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    const newSelected = new Set(selectedMeterIds);
+    filteredAvailableMeters.forEach(meter => newSelected.add(meter.id));
+    setSelectedMeterIds(newSelected);
+  };
+
+  const handleUnselectAll = () => {
+    setSelectedMeterIds(new Set());
   };
 
   // Export functions
@@ -330,13 +357,18 @@ export default function WeightingFactors() {
   const selectedProfile = profiles.find(p => p.id === selectedProfileId);
   const totalCustomers = weights.reduce((sum, w) => sum + (w.customer_count || 0), 0);
 
-  // Filter available meters (exclude already added ones)
+  // Filter available meters (exclude already added ones and selected ones)
   const addedMeterIds = new Set(weights.map(w => w.meter_id));
-  const availableMeters = allMeters.filter(m => !addedMeterIds.has(m.id));
+  const availableMeters = allMeters.filter(m => 
+    !addedMeterIds.has(m.id) && !selectedMeterIds.has(m.id)
+  );
   const filteredAvailableMeters = availableMeters.filter(m => 
     m.meter_id.toLowerCase().includes(meterSearchQuery.toLowerCase()) ||
     m.location.toLowerCase().includes(meterSearchQuery.toLowerCase())
   );
+
+  // Get selected meters for right column
+  const selectedMeters = allMeters.filter(m => selectedMeterIds.has(m.id));
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -591,17 +623,21 @@ export default function WeightingFactors() {
         </div>
       )}
 
-      {/* Add Meter Modal */}
+      {/* Add Meter Modal - Dual Column Selection */}
       {showAddMeterModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+          <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between p-6 border-b border-slate-200">
-              <h3 className="text-xl font-bold text-slate-900">Add Meter to Profile</h3>
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Add Meters to Profile</h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  Select meters to add. Customer counts can be updated after adding.
+                </p>
+              </div>
               <button
                 onClick={() => {
                   setShowAddMeterModal(false);
-                  setSelectedMeterId('');
-                  setNewCustomerCount(0);
+                  setSelectedMeterIds(new Set());
                   setMeterSearchQuery('');
                 }}
                 className="p-2 hover:bg-slate-100 rounded-lg"
@@ -611,75 +647,149 @@ export default function WeightingFactors() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6">
+              {/* Search Bar */}
               <div className="mb-4">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Search Meters
-                </label>
                 <input
                   type="text"
                   value={meterSearchQuery}
                   onChange={(e) => setMeterSearchQuery(e.target.value)}
-                  placeholder="Search by meter ID or location..."
+                  placeholder="Search available meters by ID or location..."
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Select Meter
-                </label>
-                <select
-                  value={selectedMeterId}
-                  onChange={(e) => setSelectedMeterId(e.target.value)}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  size={10}
-                >
-                  <option value="">-- Select a meter --</option>
-                  {filteredAvailableMeters.map(meter => (
-                    <option key={meter.id} value={meter.id}>
-                      {meter.meter_id} - {meter.location}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-sm text-slate-500 mt-2">
-                  {filteredAvailableMeters.length} available meters
-                </p>
-              </div>
+              {/* Dual Column Layout */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* Left Column - Available Meters */}
+                <div className="border border-slate-300 rounded-lg overflow-hidden">
+                  <div className="bg-slate-100 px-4 py-3 border-b border-slate-300 flex items-center justify-between">
+                    <h4 className="font-semibold text-slate-900">
+                      Available Meters <span className="text-xs font-normal text-slate-600">({filteredAvailableMeters.length})</span>
+                    </h4>
+                    <button
+                      onClick={handleSelectAll}
+                      disabled={filteredAvailableMeters.length === 0}
+                      className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Select All
+                    </button>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    {filteredAvailableMeters.length === 0 ? (
+                      <div className="p-8 text-center text-slate-500">
+                        <p className="text-sm">
+                          {meterSearchQuery ? 'No meters match your search' : 'No available meters'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-200">
+                        {filteredAvailableMeters.map(meter => (
+                          <label
+                            key={meter.id}
+                            className="flex items-center gap-3 px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={false}
+                              onChange={() => handleToggleMeter(meter.id)}
+                              className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-slate-900 truncate">
+                                <span className="font-medium">{meter.meter_id}</span>
+                                <span className="text-xs text-slate-600 ml-2">- {meter.location}</span>
+                              </p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Customer Count
-                </label>
-                <input
-                  type="number"
-                  value={newCustomerCount}
-                  onChange={(e) => setNewCustomerCount(parseInt(e.target.value) || 0)}
-                  min="0"
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter customer count"
-                />
+                {/* Right Column - Selected Meters */}
+                <div className="border border-slate-300 rounded-lg overflow-hidden">
+                  <div className="bg-green-100 px-4 py-3 border-b border-green-300 flex items-center justify-between">
+                    <h4 className="font-semibold text-slate-900">
+                      Selected Meters <span className="text-xs font-normal text-slate-600">({selectedMeterIds.size})</span>
+                    </h4>
+                    <button
+                      onClick={handleUnselectAll}
+                      disabled={selectedMeterIds.size === 0}
+                      className="px-3 py-1.5 text-xs font-medium bg-slate-600 text-white rounded hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Unselect All
+                    </button>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    {selectedMeterIds.size === 0 ? (
+                      <div className="p-8 text-center text-slate-500">
+                        <p className="text-sm">No meters selected</p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Click checkboxes on the left to select meters
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-200">
+                        {selectedMeters.map(meter => (
+                          <label
+                            key={meter.id}
+                            className="flex items-center gap-3 px-4 py-2 hover:bg-red-50 cursor-pointer transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={true}
+                              onChange={() => handleToggleMeter(meter.id)}
+                              className="w-4 h-4 text-red-600 border-slate-300 rounded focus:ring-red-500"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-slate-900 truncate">
+                                <span className="font-medium">{meter.meter_id}</span>
+                                <span className="text-xs text-slate-600 ml-2">- {meter.location}</span>
+                              </p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="flex-shrink-0 flex items-center justify-end gap-3 p-6 border-t border-slate-200 bg-slate-50">
-              <button
-                onClick={() => {
-                  setShowAddMeterModal(false);
-                  setSelectedMeterId('');
-                  setNewCustomerCount(0);
-                  setMeterSearchQuery('');
-                }}
-                className="px-4 py-2 text-slate-700 hover:bg-slate-200 rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddMeter}
-                disabled={!selectedMeterId || newCustomerCount < 0}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-              >
-                Add Meter
-              </button>
+            <div className="flex-shrink-0 flex items-center justify-between p-6 border-t border-slate-200 bg-slate-50">
+              <p className="text-sm text-slate-600">
+                {selectedMeterIds.size} meter{selectedMeterIds.size !== 1 ? 's' : ''} will be added with customer count = 0
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setShowAddMeterModal(false);
+                    setSelectedMeterIds(new Set());
+                    setMeterSearchQuery('');
+                  }}
+                  className="px-4 py-2 text-slate-700 hover:bg-slate-200 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddMeters}
+                  disabled={selectedMeterIds.size === 0 || isAddingMeters}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isAddingMeters ? (
+                    <>
+                      <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Adding...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      <span>Add Meter</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
