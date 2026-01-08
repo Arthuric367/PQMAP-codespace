@@ -79,7 +79,28 @@
      - Frontend: `MeterAvailabilityPage.tsx`
 
 ### 🎯 Planned (Q1 2026)
-1. **Advanced Export Options** (Week 4)
+1. **System Parameters Module** (Week 4)
+   - **Purpose:** Centralized configuration for system-wide settings
+   - **Status:** UI placeholder created, functionality to be implemented
+   - **Scope:**
+     - Notification thresholds and alert rules configuration
+     - Event detection parameters (sensitivity levels, detection algorithms)
+     - Data retention policies and archival settings
+     - System integration configurations (SCADA, ADMS)
+     - User preference defaults (date formats, units, themes)
+     - Global operational parameters
+   - **Technical Approach:**
+     - Create `system_parameters` table with key-value pairs
+     - Role-based access control (admin-only modifications)
+     - Audit trail for parameter changes
+     - Real-time parameter updates via Supabase subscriptions
+   - **Components:**
+     - Parameter categories (Notifications, Detection, Retention, Integration)
+     - Parameter editor with validation
+     - Change history viewer
+   - **Estimated Effort:** 2 weeks
+
+2. **Advanced Export Options** (Week 4)
    - Export filtered data to Excel with formatting
    - PDF reports with charts
    - Scheduled email reports
@@ -396,6 +417,7 @@
 | 2026-01-07 | All | Initial ROADMAP.md creation, consolidated from PHASE_2_ROADMAP.md | System |
 | 2026-01-07 | In Progress | Added Weighting Factors, PQ Benchmarking (completed) | System |
 | 2026-01-07 | Power BI | Consolidated QA document, added decision criteria | System |
+| 2026-01-08 | Q1 2026 Planned | Added System Parameters module with placeholder UI | System |
 
 ---
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Scale, Download, Upload, FileDown, Edit2, Trash2, Plus, Save, X } from 'lucide-react';
+import { Scale, Download, Upload, FileDown, Edit2, Trash2, Plus, Save, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { SARFIProfile, SARFIProfileWeight, PQMeter } from '../../types/database';
 import { 
@@ -21,6 +21,10 @@ export default function WeightingFactors() {
   const [isLoading, setIsLoading] = useState(false);
   const [editingWeightId, setEditingWeightId] = useState<string | null>(null);
   const [editingCustomerCount, setEditingCustomerCount] = useState<number>(0);
+  
+  // Sort states
+  const [sortField, setSortField] = useState<string>('meter_id');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
   // Import/Export states
   const [showImportDropdown, setShowImportDropdown] = useState(false);
@@ -354,8 +358,48 @@ export default function WeightingFactors() {
     }
   };
 
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
   const selectedProfile = profiles.find(p => p.id === selectedProfileId);
   const totalCustomers = weights.reduce((sum, w) => sum + (w.customer_count || 0), 0);
+
+  // Apply sorting to weights
+  const sortedWeights = [...weights].sort((a, b) => {
+    let aVal: any;
+    let bVal: any;
+
+    switch (sortField) {
+      case 'meter_id':
+        aVal = a.meter?.meter_id?.toLowerCase() || '';
+        bVal = b.meter?.meter_id?.toLowerCase() || '';
+        break;
+      case 'location':
+        aVal = a.meter?.location?.toLowerCase() || '';
+        bVal = b.meter?.location?.toLowerCase() || '';
+        break;
+      case 'customer_count':
+        aVal = a.customer_count || 0;
+        bVal = b.customer_count || 0;
+        break;
+      case 'weight_factor':
+        aVal = a.weight_factor || 0;
+        bVal = b.weight_factor || 0;
+        break;
+      default:
+        return 0;
+    }
+
+    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
 
   // Filter available meters (exclude already added ones and selected ones)
   const addedMeterIds = new Set(weights.map(w => w.meter_id));
@@ -522,17 +566,73 @@ export default function WeightingFactors() {
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Meter No.
+                  <th
+                    onClick={() => handleSort('meter_id')}
+                    className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:text-blue-600 transition-colors"
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Meter ID</span>
+                      {sortField === 'meter_id' ? (
+                        sortDirection === 'asc' ? (
+                          <ArrowUp className="w-3 h-3" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-50" />
+                      )}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Location
+                  <th
+                    onClick={() => handleSort('location')}
+                    className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:text-blue-600 transition-colors"
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Location</span>
+                      {sortField === 'location' ? (
+                        sortDirection === 'asc' ? (
+                          <ArrowUp className="w-3 h-3" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-50" />
+                      )}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Customer Count
+                  <th
+                    onClick={() => handleSort('customer_count')}
+                    className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:text-blue-600 transition-colors"
+                  >
+                    <div className="flex items-center justify-end gap-1">
+                      <span>Customer Count</span>
+                      {sortField === 'customer_count' ? (
+                        sortDirection === 'asc' ? (
+                          <ArrowUp className="w-3 h-3" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-50" />
+                      )}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Weight Factor (%)
+                  <th
+                    onClick={() => handleSort('weight_factor')}
+                    className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:text-blue-600 transition-colors"
+                  >
+                    <div className="flex items-center justify-end gap-1">
+                      <span>Weight Factor (%)</span>
+                      {sortField === 'weight_factor' ? (
+                        sortDirection === 'asc' ? (
+                          <ArrowUp className="w-3 h-3" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-50" />
+                      )}
+                    </div>
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Actions
@@ -540,7 +640,7 @@ export default function WeightingFactors() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {weights.map((weight) => (
+                {sortedWeights.map((weight) => (
                   <tr key={weight.id} className="hover:bg-slate-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                       {weight.meter?.meter_id || 'N/A'}
