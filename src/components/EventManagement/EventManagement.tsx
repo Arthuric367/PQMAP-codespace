@@ -88,8 +88,6 @@ export default function EventManagement() {
     timestamp: new Date().toISOString().slice(0, 16),
     substation_id: '',
     meter_id: '',
-    voltage_level: '',
-    circuit_id: '',
     duration_ms: 1000,
     remaining_voltage: 85,
     affected_phases: ['A', 'B', 'C'],
@@ -147,7 +145,7 @@ export default function EventManagement() {
       const [eventsRes, substationsRes, metersRes] = await Promise.all([
         supabase
           .from('pq_events')
-          .select('*')
+          .select('*, meter:pq_meters!meter_id(id, meter_id, site_id, voltage_level, circuit_id, region, oc)')
           .order('timestamp', { ascending: false }),
         supabase.from('substations').select('*'),
         supabase.from('pq_meters').select('*').order('meter_id', { ascending: true }),
@@ -544,8 +542,6 @@ export default function EventManagement() {
       'event_type',
       'timestamp',
       'substation_id',
-      'voltage_level',
-      'circuit_id',
       'meter_id',
       'duration_ms',
       'remaining_voltage',
@@ -565,8 +561,6 @@ export default function EventManagement() {
       'voltage_dip',
       '2024-01-15 10:30:00',
       'SUBSTATION_ID',
-      '132kV',
-      'CIRCUIT_001',
       'METER_001',
       '500',
       '85',
@@ -587,7 +581,7 @@ export default function EventManagement() {
       exampleRow.join(','),
       '# event_type: voltage_dip, voltage_swell, momentary_interruption, sustained_interruption, voltage_sag',
       '# timestamp: YYYY-MM-DD HH:MM:SS format',
-      '# voltage_level: 400kV, 132kV, 33kV, 11kV, 380V',
+      '# meter_id: Must reference existing meter ID (location data comes from meter)',
       '# affected_phases: Comma-separated (e.g., A,B,C)',
       '# severity: low, medium, high, critical',
       '# parent_event_id: Leave empty for standalone events, or provide existing event ID for child events'
@@ -623,7 +617,7 @@ export default function EventManagement() {
       let failedCount = 0;
 
       // Validate required columns
-      const requiredColumns = ['event_type', 'timestamp', 'substation_id', 'voltage_level'];
+      const requiredColumns = ['event_type', 'timestamp', 'substation_id', 'meter_id'];
       const missingColumns = requiredColumns.filter(col => !headers.includes(col));
       
       if (missingColumns.length > 0) {
@@ -655,8 +649,6 @@ export default function EventManagement() {
             event_type: row.event_type as any,
             timestamp: new Date(row.timestamp).toISOString(),
             substation_id: row.substation_id,
-            voltage_level: row.voltage_level,
-            circuit_id: row.circuit_id || null,
             meter_id: row.meter_id || null,
             duration_ms: row.duration_ms ? parseInt(row.duration_ms) : 1000,
             remaining_voltage: row.remaining_voltage ? parseFloat(row.remaining_voltage) : null,
@@ -758,15 +750,8 @@ export default function EventManagement() {
       }
     }
 
-    // Validate voltage_level
-    const validVoltageLevels = ['400kV', '132kV', '33kV', '11kV', '380V'];
-    if (!validVoltageLevels.includes(row.voltage_level)) {
-      errors.push({
-        row: rowNumber,
-        column: 'voltage_level',
-        message: `Invalid value. Must be one of: ${validVoltageLevels.join(', ')}`
-      });
-    }
+    // Note: voltage_level is now part of the meter, not the event
+    // Validation happens through meter_id reference
 
     // Validate duration_ms if provided
     if (row.duration_ms && (isNaN(parseInt(row.duration_ms)) || parseInt(row.duration_ms) < 0)) {
@@ -872,7 +857,7 @@ export default function EventManagement() {
       }
       
       // Voltage level filter
-      if (filters.voltageLevels.length > 0 && !filters.voltageLevels.includes(event.voltage_level)) {
+      if (filters.voltageLevels.length > 0 && event.meter?.voltage_level && !filters.voltageLevels.includes(event.meter.voltage_level)) {
         return false;
       }
       
@@ -895,7 +880,7 @@ export default function EventManagement() {
       }
       
       // Circuit ID filter
-      if (filters.circuitIds.length > 0 && !filters.circuitIds.includes(event.circuit_id)) {
+      if (filters.circuitIds.length > 0 && event.meter?.circuit_id && !filters.circuitIds.includes(event.meter.circuit_id)) {
         return false;
       }
       
@@ -945,8 +930,8 @@ export default function EventManagement() {
         return (a.meter_id || '').localeCompare(b.meter_id || '');
       case 'voltage_level':
         const voltageOrder = { '400kV': 1, '132kV': 2, '33kV': 3, '11kV': 4, '380V': 5 };
-        const aVolt = voltageOrder[a.voltage_level as keyof typeof voltageOrder] || 999;
-        const bVolt = voltageOrder[b.voltage_level as keyof typeof voltageOrder] || 999;
+        const aVolt = voltageOrder[a.meter?.voltage_level as keyof typeof voltageOrder] || 999;
+        const bVolt = voltageOrder[b.meter?.voltage_level as keyof typeof voltageOrder] || 999;
         return aVolt - bVolt;
       case 'duration':
         return (b.duration_ms || 0) - (a.duration_ms || 0);
@@ -1125,8 +1110,6 @@ export default function EventManagement() {
       timestamp: new Date().toISOString().slice(0, 16),
       substation_id: '',
       meter_id: '',
-      voltage_level: '',
-      circuit_id: '',
       duration_ms: 1000,
       remaining_voltage: 85,
       affected_phases: ['A', 'B', 'C'],
@@ -1151,8 +1134,6 @@ export default function EventManagement() {
       timestamp: new Date().toISOString().slice(0, 16),
       substation_id: '',
       meter_id: '',
-      voltage_level: '',
-      circuit_id: '',
       duration_ms: 1000,
       remaining_voltage: 85,
       affected_phases: ['A', 'B', 'C'],
@@ -1194,8 +1175,6 @@ export default function EventManagement() {
           timestamp: eventFormData.timestamp,
           substation_id: eventFormData.substation_id || null,
           meter_id: eventFormData.meter_id || null,
-          voltage_level: eventFormData.voltage_level || null,
-          circuit_id: eventFormData.circuit_id || null,
           duration_ms: eventFormData.duration_ms || null,
           remaining_voltage: eventFormData.remaining_voltage || null,
           affected_phases: eventFormData.affected_phases,
@@ -1224,18 +1203,28 @@ export default function EventManagement() {
       console.log('✅ Event created successfully:', newEvent.id);
 
       // Step 2: Auto-calculate customer impacts using customer_transformer_matching
-      if (newEvent && eventFormData.substation_id && eventFormData.circuit_id) {
+      if (newEvent && eventFormData.meter_id) {
         console.log('🔍 Searching for customer impacts...');
-        console.log('   Substation:', eventFormData.substation_id);
-        console.log('   Circuit:', eventFormData.circuit_id);
+        console.log('   Meter ID:', eventFormData.meter_id);
         
-        // Get matching customers for this substation and circuit
-        const { data: matchings, error: matchingError } = await supabase
-          .from('customer_transformer_matching')
-          .select('customer_id, customer:customers(*)')
-          .eq('substation_id', eventFormData.substation_id)
-          .eq('circuit_id', eventFormData.circuit_id)
-          .eq('active', true);
+        // First get the meter to find its circuit_id and substation_id
+        const { data: meter, error: meterError } = await supabase
+          .from('pq_meters')
+          .select('circuit_id, substation_id')
+          .eq('id', eventFormData.meter_id)
+          .single();
+
+        if (!meterError && meter && meter.substation_id && meter.circuit_id) {
+          console.log('   Substation:', meter.substation_id);
+          console.log('   Circuit:', meter.circuit_id);
+          
+          // Get matching customers for this substation and circuit
+          const { data: matchings, error: matchingError } = await supabase
+            .from('customer_transformer_matching')
+            .select('customer_id, customer:customers(*)')
+            .eq('substation_id', meter.substation_id)
+            .eq('circuit_id', meter.circuit_id)
+            .eq('active', true);
 
         console.log('📊 Found matchings:', matchings?.length || 0);
 
@@ -1281,6 +1270,7 @@ export default function EventManagement() {
             .from('pq_events')
             .update({ customer_count: matchings.length })
             .eq('id', newEvent.id);
+        }
         }
       }
 
@@ -2091,45 +2081,42 @@ export default function EventManagement() {
                   </div>
                   {/* Tree View Component would go here */}
                   <div className="space-y-1">
-                    {eventTree.map((node) => (
-                      <div key={node.id} className="border rounded-lg p-2">
-                        <div
-                          className={`p-1.5 rounded transition-all ${
-                            selectedEvent?.id === node.id
-                              ? 'bg-blue-50 border-blue-300'
-                              : 'bg-white hover:bg-slate-50'
-                          } ${
-                            node.event.isFlaggedAsFalse ? 'border-l-4 border-l-orange-500' : ''
-                          } ${
-                            selectedEventIds.has(node.id) ? 'bg-green-50 border-green-300' : ''
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            {/* Multi-select checkbox */}
-                            {isMultiSelectMode && !node.event.is_mother_event && !node.event.parent_event_id && (
-                              <input
-                                type="checkbox"
-                                checked={selectedEventIds.has(node.id)}
-                                onChange={(e) => {
-                                  e.stopPropagation();
-                                  toggleEventSelection(node.id);
-                                }}
-                                className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500"
-                              />
-                            )}
-                            
-                            {/* Mother event indicator */}
-                            {node.event.is_mother_event && (
-                              <GitBranch className="w-4 h-4 text-purple-600 flex-shrink-0" />
-                            )}
-                            
-                            <div
-                              onClick={() => handleEventSelect(node.event)}
-                              className="flex-1 cursor-pointer"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
+                    {eventTree.map((node) => {
+                      const meter = meters.find(m => m.id === node.event.meter_id);
+                      return (
+                        <div key={node.id} className="border rounded-lg p-2">
+                          <div
+                            className={`p-1.5 rounded transition-all ${
+                              selectedEvent?.id === node.id
+                                ? 'bg-blue-50 border-blue-300'
+                                : 'bg-white hover:bg-slate-50'
+                            } ${
+                              node.event.isFlaggedAsFalse ? 'border-l-4 border-l-orange-500' : ''
+                            } ${
+                              selectedEventIds.has(node.id) ? 'bg-green-50 border-green-300' : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              {/* Multi-select checkbox */}
+                              {isMultiSelectMode && !node.event.is_mother_event && !node.event.parent_event_id && (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedEventIds.has(node.id)}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    toggleEventSelection(node.id);
+                                  }}
+                                  className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500"
+                                />
+                              )}
+                              
+                              <div
+                                onClick={() => handleEventSelect(node.event)}
+                                className="flex-1 cursor-pointer"
+                              >
+                                {/* Row 1: Event Type, Icons, and Severity Badge */}
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
                                     {node.event.isFlaggedAsFalse && (
                                       <AlertTriangle className="w-3 h-3 text-orange-500 flex-shrink-0" />
                                     )}
@@ -2137,48 +2124,47 @@ export default function EventManagement() {
                                       {node.event.event_type.replace('_', ' ')}
                                     </p>
                                   </div>
-                                  <p className="text-xs text-slate-600 truncate">{node.event.circuit_id}</p>
-                                  <p className="text-xs text-slate-500">
-                                    {new Date(node.event.timestamp).toLocaleTimeString()}
-                                  </p>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    {/* Mother event indicator before severity badge */}
+                                    {node.event.is_mother_event && (
+                                      <GitBranch className="w-4 h-4 text-purple-600" />
+                                    )}
+                                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                                      node.event.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                                      node.event.severity === 'high' ? 'bg-orange-100 text-orange-700' :
+                                      node.event.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                                      'bg-green-100 text-green-700'
+                                    }`}>
+                                      {node.event.severity}
+                                    </span>
+                                  </div>
                                 </div>
-                                <span className={`px-2 py-0.5 rounded text-xs font-bold flex-shrink-0 ${
-                                  node.event.severity === 'critical' ? 'bg-red-100 text-red-700' :
-                                  node.event.severity === 'high' ? 'bg-orange-100 text-orange-700' :
-                                  node.event.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                                  'bg-green-100 text-green-700'
-                                }`}>
-                                  {node.event.severity}
-                                </span>
+                                
+                                {/* Row 2: Meter ID */}
+                                {meter?.meter_id && (
+                                  <p className="text-xs text-slate-600 truncate mt-0.5">{meter.meter_id}</p>
+                                )}
+                                
+                                {/* Row 3: Timestamp */}
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                  {new Date(node.event.timestamp).toLocaleDateString('en-CA').replace(/-/g, '/')}{' '}
+                                  {new Date(node.event.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                                </p>
                               </div>
                             </div>
                           </div>
-                        </div>
-                        
-                        {/* Child events */}
-                        {node.children.length > 0 && (
-                          <div className="ml-6 mt-1 space-y-1">
-                            {node.children.map((child) => (
-                              <div
-                                key={child.id}
-                                onClick={() => handleEventSelect(child.event)}
-                                className={`p-1.5 text-xs bg-slate-50 rounded cursor-pointer hover:bg-slate-100 ${
-                                  child.event.isFlaggedAsFalse ? 'border-l-2 border-l-orange-400' : ''
-                                }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  {child.event.isFlaggedAsFalse && (
-                                    <AlertTriangle className="w-3 h-3 text-orange-500" />
-                                  )}
-                                  <span className="capitalize">{child.event.event_type.replace('_', ' ')}</span>
-                                  <span className="text-slate-500 ml-2">{child.event.circuit_id}</span>
-                                </div>
+                          
+                          {/* Child events summary */}
+                          {node.children.length > 0 && (
+                            <div className="ml-6 mt-1">
+                              <div className="text-xs text-slate-500 py-1">
+                                → {node.children.length} PQ child event{node.children.length !== 1 ? 's' : ''}
                               </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ) : (
@@ -2231,7 +2217,7 @@ export default function EventManagement() {
                                     {event.false_event && (
                                       <AlertTriangle className="w-3 h-3 text-orange-500 flex-shrink-0" />
                                     )}
-                                    <p className="font-semibold text-sm text-slate-900 truncate">{substation?.name || event.circuit_id}</p>
+                                    <p className="font-semibold text-sm text-slate-900 truncate">{substation?.name || event.meter?.circuit_id || 'Unknown'}</p>
                                   </div>
                                   <div className="flex items-center justify-between gap-2 mt-0.5">
                                     <p className="text-sm text-slate-600 capitalize">{event.event_type.replace('_', ' ')}</p>
@@ -2611,21 +2597,6 @@ export default function EventManagement() {
                           </option>
                         ))}
                     </select>
-                  </div>
-
-                  {/* Circuit ID */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Circuit ID
-                    </label>
-                    <input
-                      type="text"
-                      value={eventFormData.circuit_id}
-                      onChange={(e) => handleCreateEventFormChange('circuit_id', e.target.value)}
-                      placeholder="e.g., H1, H2, H3"
-                      maxLength={50}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
                   </div>
 
                   {/* Duration */}

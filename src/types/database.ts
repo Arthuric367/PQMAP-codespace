@@ -142,15 +142,10 @@ export interface PQEvent {
   false_event: boolean;
   // Event timestamp
   timestamp: string;
-  // Event location (reference from PQmeter)
+  // Event location (reference to PQMeter via meter_id)
   event_type: EventType;
   meter_id: string | null;
-  site_id: string | null;
-  voltage_level: string | null;
   substation_id: string | null;
-  circuit_id: string;
-  region: string | null;
-  oc: string | null;
   // Event impact & measurements
   duration_ms: number | null;
     // Voltage Measurements (V1, V2, V3)

@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Clock, MapPin, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Upload, FileDown } from 'lucide-react';
-import { PQEvent, Substation, EventCustomerImpact, IDRRecord } from '../../types/database';
+import { Clock, MapPin, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Upload, FileDown, Wrench } from 'lucide-react';
+import { PQEvent, Substation, EventCustomerImpact, IDRRecord, PQServiceRecord, PQMeter } from '../../types/database';
 import { supabase } from '../../lib/supabase';
 import WaveformDisplay from './WaveformDisplay';
 import { MotherEventGroupingService } from '../../services/mother-event-grouping';
 import { ExportService } from '../../services/exportService';
 
-type TabType = 'overview' | 'technical' | 'impact' | 'children' | 'timeline' | 'idr';
+type TabType = 'overview' | 'technical' | 'impact' | 'services' | 'children' | 'timeline' | 'idr';
 
 interface EventDetailsProps {
   event: PQEvent;
@@ -22,6 +22,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
   const [currentEvent, setCurrentEvent] = useState<PQEvent>(initialEvent);
   const [currentSubstation, setCurrentSubstation] = useState<Substation | undefined>(initialSubstation);
   const [currentImpacts, setCurrentImpacts] = useState<EventCustomerImpact[]>(initialImpacts);
+  const [currentMeter, setCurrentMeter] = useState<PQMeter | null>(null);
   const [navigationStack, setNavigationStack] = useState<Array<{
     event: PQEvent;
     substation?: Substation;
@@ -97,6 +98,10 @@ export default function EventDetails({ event: initialEvent, substation: initialS
   });
   const [savingIDR, setSavingIDR] = useState(false);
 
+  // PQ Services state
+  const [services, setServices] = useState<PQServiceRecord[]>([]);
+  const [loadingServices, setLoadingServices] = useState(false);
+
   // Update state when props change
   useEffect(() => {
     console.log('🔍 [EventDetails] Props updated:', {
@@ -119,10 +124,59 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     setNavigationStack([]);
   }, [initialEvent, initialSubstation, initialImpacts]);
 
+  const loadServices = async (eventId: string) => {
+    try {
+      setLoadingServices(true);
+      const { data, error } = await supabase
+        .from('pq_service_records')
+        .select('*, customer:customers(*), engineer:profiles(*)')
+        .eq('event_id', eventId)
+        .order('service_date', { ascending: false });
+
+      if (error) throw error;
+      setServices(data || []);
+    } catch (error) {
+      console.error('❌ Error loading PQ services:', error);
+      setServices([]);
+    } finally {
+      setLoadingServices(false);
+    }
+  };
+
+  const loadMeter = async (meterId: string | null) => {
+    if (!meterId) {
+      setCurrentMeter(null);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('pq_meters')
+        .select('*')
+        .eq('id', meterId)
+        .single();
+
+      if (error) throw error;
+      setCurrentMeter(data);
+    } catch (error) {
+      console.error('❌ Error loading meter:', error);
+      setCurrentMeter(null);
+    }
+  };
+
   // Load IDR record for current event
   useEffect(() => {
     loadIDRRecord(currentEvent.id);
   }, [currentEvent.id]);
+
+  // Load PQ services for current event
+  useEffect(() => {
+    loadServices(currentEvent.id);
+  }, [currentEvent.id]);
+
+  // Load meter for current event
+  useEffect(() => {
+    loadMeter(currentEvent.meter_id);
+  }, [currentEvent.meter_id]);
 
   // Load child events for mother events
   useEffect(() => {
@@ -1062,6 +1116,19 @@ export default function EventDetails({ event: initialEvent, substation: initialS
           >
             Customer Impact
           </button>
+          <button
+            onClick={() => setActiveTab('services')}
+            className={`px-4 py-2 font-semibold text-sm whitespace-nowrap transition-all ${
+              activeTab === 'services'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Wrench className="w-4 h-4" />
+              PQ Services ({services.length})
+            </div>
+          </button>
           {currentEvent.is_mother_event && (
             <button
               onClick={() => setActiveTab('children')}
@@ -1105,107 +1172,97 @@ export default function EventDetails({ event: initialEvent, substation: initialS
         {/* OVERVIEW TAB */}
         {activeTab === 'overview' && (
           <div className="space-y-6 animate-fadeIn">
-            {/* Basic Info Cards */}
+            {/* Basic Info Cards - 2 Column Layout */}
             <div className="grid grid-cols-2 gap-4">
+              {/* Location Card */}
               <div className="p-4 bg-slate-50 rounded-lg">
                 <div className="flex items-center gap-2 text-slate-600 mb-2">
                   <MapPin className="w-4 h-4" />
                   <span className="text-sm font-semibold">Location</span>
                 </div>
-                <p className="text-slate-900 font-medium">{currentSubstation?.name}</p>
-                <p className="text-sm text-slate-600">{currentSubstation?.voltage_level}</p>
-                {currentEvent.voltage_level && (
-                  <p className="text-xs text-blue-600 mt-1">⚡ Event Level: {currentEvent.voltage_level}</p>
+                <p className="text-slate-900 font-medium">
+                  {currentSubstation?.code} • {currentSubstation?.name}
+                </p>
+                {currentMeter?.site_id && (
+                  <p className="text-xs text-slate-600 mt-1">Site ID: {currentMeter.site_id}</p>
                 )}
-                {currentEvent.site_id && (
-                  <p className="text-xs text-slate-600 mt-1">Site ID: {currentEvent.site_id}</p>
+                {currentMeter?.region && (
+                  <p className="text-xs text-slate-600 mt-1">Region: {currentMeter.region}</p>
                 )}
-                {currentEvent.region && (
-                  <p className="text-xs text-slate-600 mt-1">Region: {currentEvent.region}</p>
+                {currentMeter?.oc && (
+                  <p className="text-xs text-slate-600 mt-1">OC: {currentMeter.oc}</p>
                 )}
               </div>
 
+              {/* Timestamp Card */}
               <div className="p-4 bg-slate-50 rounded-lg">
                 <div className="flex items-center gap-2 text-slate-600 mb-2">
                   <Clock className="w-4 h-4" />
                   <span className="text-sm font-semibold">Timestamp</span>
                 </div>
                 <p className="text-slate-900 font-medium">
-                  {new Date(currentEvent.timestamp).toLocaleDateString()}
-                </p>
-                <p className="text-sm text-slate-600">
-                  {new Date(currentEvent.timestamp).toLocaleTimeString()}
+                  {new Date(currentEvent.timestamp).toLocaleDateString()} {new Date(currentEvent.timestamp).toLocaleTimeString()}
                 </p>
               </div>
 
+              {/* Asset Card */}
               <div className="p-4 bg-slate-50 rounded-lg">
                 <div className="flex items-center gap-2 text-slate-600 mb-2">
                   <Zap className="w-4 h-4" />
-                  <span className="text-sm font-semibold">Magnitude</span>
+                  <span className="text-sm font-semibold">Asset</span>
                 </div>
-                <p className="text-2xl font-bold text-slate-900">{currentEvent.magnitude?.toFixed(2)}%</p>
+                {currentMeter ? (
+                  <>
+                    <p className="text-xs text-slate-600 mt-1">Meter ID: <span className="font-semibold text-slate-900">{currentMeter.meter_id}</span></p>
+                    {currentMeter.circuit_id && (
+                      <p className="text-xs text-slate-600 mt-1">Circuit ID: <span className="font-semibold text-slate-900">{currentMeter.circuit_id}</span></p>
+                    )}
+                    {currentMeter.voltage_level && (
+                      <p className="text-xs text-slate-600 mt-1">Voltage Level: <span className="font-semibold text-slate-900">{currentMeter.voltage_level}</span></p>
+                    )}
+                    <p className="text-xs text-slate-400 mt-1">Ring Number: <span className="italic">TBD</span></p>
+                  </>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">No meter data</p>
+                )}
               </div>
 
-              <div className="p-4 bg-slate-50 rounded-lg">
+              {/* Event Information Card */}
+              <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg">
                 <div className="flex items-center gap-2 text-slate-600 mb-2">
-                  <Clock className="w-4 h-4" />
-                  <span className="text-sm font-semibold">Duration</span>
+                  <AlertTriangle className="w-4 h-4" />
+                  <span className="text-sm font-semibold">Event Information</span>
                 </div>
-                <p className="text-2xl font-bold text-slate-900">
-                  {currentEvent.duration_ms && currentEvent.duration_ms < 1000
-                    ? `${currentEvent.duration_ms}ms`
-                    : `${((currentEvent.duration_ms || 0) / 1000).toFixed(2)}s`
-                  }
-                </p>
-              </div>
-            </div>
-
-            {/* Event Information */}
-            <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg">
-              <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle className="w-5 h-5 text-slate-700" />
-                <span className="font-semibold text-slate-900">Event Information</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span className="text-slate-600">Type:</span>
-                  <span className="ml-2 font-semibold text-slate-900 capitalize">
-                    {currentEvent.event_type.replace('_', ' ')}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-600">Severity:</span>
-                  <span className={`ml-2 font-semibold capitalize ${
+                <div className="space-y-1 text-xs">
+                  <p className="text-slate-600">Event ID: <span className="font-mono text-slate-900">{currentEvent.id.slice(0, 8)}...</span></p>
+                  <p className="text-slate-600">Type: <span className="font-semibold text-slate-900 capitalize">{currentEvent.event_type.replace('_', ' ')}</span></p>
+                  <p className="text-slate-600">Severity: <span className={`font-semibold capitalize ${
                     currentEvent.severity === 'critical' ? 'text-red-700' :
                     currentEvent.severity === 'high' ? 'text-orange-700' :
                     currentEvent.severity === 'medium' ? 'text-yellow-700' :
                     'text-green-700'
-                  }`}>
-                    {currentEvent.severity}
-                  </span>
+                  }`}>{currentEvent.severity}</span></p>
+                  <p className="text-slate-600">Duration: <span className="font-semibold text-slate-900">
+                    {currentEvent.duration_ms && currentEvent.duration_ms < 1000
+                      ? `${currentEvent.duration_ms}ms`
+                      : `${((currentEvent.duration_ms || 0) / 1000).toFixed(2)}s`
+                    }
+                  </span></p>
+                  <p className="text-slate-600">Magnitude: <span className="font-semibold text-slate-900">{currentEvent.magnitude?.toFixed(2)}%</span></p>
+                  <p className="text-slate-600">V1: <span className="font-semibold text-slate-900">{currentEvent.v1 !== null ? `${currentEvent.v1.toFixed(2)}%` : 'N/A'}</span></p>
+                  <p className="text-slate-600">V2: <span className="font-semibold text-slate-900">{currentEvent.v2 !== null ? `${currentEvent.v2.toFixed(2)}%` : 'N/A'}</span></p>
+                  <p className="text-slate-600">V3: <span className="font-semibold text-slate-900">{currentEvent.v3 !== null ? `${currentEvent.v3.toFixed(2)}%` : 'N/A'}</span></p>
+                  <p className="text-slate-600">Affected Phases: <span className="font-semibold text-slate-900">{currentEvent.affected_phases.join(', ')}</span></p>
                 </div>
-                <div>
-                  <span className="text-slate-600">Affected Phases:</span>
-                  <span className="ml-2 font-semibold text-slate-900">
-                    {currentEvent.affected_phases.join(', ')}
-                  </span>
-                </div>
-                {currentEvent.circuit_id && (
-                  <div>
-                    <span className="text-slate-600">Circuit:</span>
-                    <span className="ml-2 font-semibold text-slate-900">
-                      {currentEvent.circuit_id}
-                    </span>
-                  </div>
-                )}
               </div>
-              {currentEvent.cause && (
-                <div className="mt-3 pt-3 border-t border-slate-200">
-                  <span className="text-slate-600 text-sm">Cause:</span>
-                  <p className="font-semibold text-slate-900 mt-1">{currentEvent.cause}</p>
-                </div>
-              )}
             </div>
+
+            {currentEvent.cause && (
+              <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg">
+                <span className="text-slate-600 text-sm font-semibold">Cause:</span>
+                <p className="text-slate-900 mt-1">{currentEvent.cause}</p>
+              </div>
+            )}
 
             {/* Status Management */}
             <div>
@@ -1269,18 +1326,6 @@ export default function EventDetails({ event: initialEvent, substation: initialS
             <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg">
               <h4 className="font-semibold text-slate-900 mb-4">Technical Specifications</h4>
               <dl className="grid grid-cols-2 gap-4">
-                <div>
-                  <dt className="text-sm text-slate-600">Voltage Level:</dt>
-                  <dd className="text-lg font-semibold text-slate-900 mt-1">
-                    {currentEvent.voltage_level || 'N/A'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-slate-600">Circuit ID:</dt>
-                  <dd className="text-lg font-semibold text-slate-900 mt-1">
-                    {currentEvent.circuit_id || 'N/A'}
-                  </dd>
-                </div>
                 <div className="col-span-2">
                   <dt className="text-sm text-slate-600 mb-2">Remaining Voltage:</dt>
                   <dd className="space-y-1">
@@ -1349,25 +1394,49 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                     )}
                   </dd>
                 </div>
-                {currentEvent.grouping_type && (
-                  <div className="col-span-2">
-                    <dt className="text-sm text-slate-600">Grouping Info:</dt>
-                    <dd className="flex items-center gap-2 mt-1">
-                      <span className={`px-2 py-1 rounded text-sm font-semibold ${
-                        currentEvent.grouping_type === 'automatic' 
-                          ? 'bg-purple-100 text-purple-700' 
-                          : 'bg-blue-100 text-blue-700'
-                      }`}>
-                        {currentEvent.grouping_type === 'automatic' ? '🤖 Automatic' : '👤 Manual'}
-                      </span>
-                      {currentEvent.grouped_at && (
-                        <span className="text-sm text-slate-600">
-                          on {new Date(currentEvent.grouped_at).toLocaleString()}
-                        </span>
-                      )}
-                    </dd>
-                  </div>
-                )}
+              </dl>
+            </div>
+
+            {/* SARFI Analysis */}
+            <div className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg">
+              <h4 className="font-semibold text-slate-900 mb-4">SARFI Analysis</h4>
+              <dl className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <dt className="text-slate-600">S10:</dt>
+                  <dd className="font-semibold text-slate-900">{currentEvent.sarfi_10 !== null ? currentEvent.sarfi_10.toFixed(5) : 'N/A'}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-600">S20:</dt>
+                  <dd className="font-semibold text-slate-900">{currentEvent.sarfi_20 !== null ? currentEvent.sarfi_20.toFixed(5) : 'N/A'}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-600">S30:</dt>
+                  <dd className="font-semibold text-slate-900">{currentEvent.sarfi_30 !== null ? currentEvent.sarfi_30.toFixed(5) : 'N/A'}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-600">S40:</dt>
+                  <dd className="font-semibold text-slate-900">{currentEvent.sarfi_40 !== null ? currentEvent.sarfi_40.toFixed(5) : 'N/A'}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-600">S50:</dt>
+                  <dd className="font-semibold text-slate-900">{currentEvent.sarfi_50 !== null ? currentEvent.sarfi_50.toFixed(5) : 'N/A'}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-600">S60:</dt>
+                  <dd className="font-semibold text-slate-900">{currentEvent.sarfi_60 !== null ? currentEvent.sarfi_60.toFixed(5) : 'N/A'}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-600">S70:</dt>
+                  <dd className="font-semibold text-slate-900">{currentEvent.sarfi_70 !== null ? currentEvent.sarfi_70.toFixed(5) : 'N/A'}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-600">S80:</dt>
+                  <dd className="font-semibold text-slate-900">{currentEvent.sarfi_80 !== null ? currentEvent.sarfi_80.toFixed(5) : 'N/A'}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-600">S90:</dt>
+                  <dd className="font-semibold text-slate-900">{currentEvent.sarfi_90 !== null ? currentEvent.sarfi_90.toFixed(5) : 'N/A'}</dd>
+                </div>
               </dl>
             </div>
 
@@ -1762,6 +1831,120 @@ export default function EventDetails({ event: initialEvent, substation: initialS
         )}
 
         {/* TIMELINE TAB */}
+        {activeTab === 'services' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Wrench className="w-5 h-5 text-blue-600" />
+                PQ Service Records
+              </h3>
+              <div className="text-sm text-slate-600">
+                {services.length} service{services.length !== 1 ? 's' : ''} logged for this event
+              </div>
+            </div>
+
+            {loadingServices ? (
+              <div className="py-12 text-center text-slate-500">
+                <div className="inline-block animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full" />
+                <p className="mt-3">Loading services...</p>
+              </div>
+            ) : services.length === 0 ? (
+              <div className="py-12 text-center text-slate-500 bg-slate-50 rounded-xl border border-slate-200">
+                <Wrench className="w-16 h-16 mx-auto mb-4 opacity-20" />
+                <p className="font-medium text-lg">No PQ services found</p>
+                <p className="text-sm mt-1">No service records have been logged for this event yet</p>
+              </div>
+            ) : (
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Service Date
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Service Type
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Customer
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Content
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Engineer
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {services.map((service) => {
+                      const serviceTypeLabels: Record<string, string> = {
+                        site_survey: 'Site Survey',
+                        harmonic_analysis: 'Harmonic Analysis',
+                        consultation: 'Consultation',
+                        on_site_study: 'On-site Study',
+                        power_quality_audit: 'Power Quality Audit',
+                        installation_support: 'Installation Support',
+                      };
+
+                      return (
+                        <tr key={service.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-900">
+                            {new Date(service.service_date).toLocaleDateString('en-GB')}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm">
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                              {serviceTypeLabels[service.service_type] || service.service_type}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-900">
+                            {service.customer ? (
+                              <div>
+                                <div className="font-medium">{service.customer.name}</div>
+                                <div className="text-xs text-slate-500">{service.customer.account_number}</div>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">N/A</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-700">
+                            {service.content ? (
+                              <div className="max-w-md truncate" title={service.content}>
+                                {service.content}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">No content</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-900">
+                            {service.engineer?.full_name || (
+                              <span className="text-slate-400">Not assigned</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {services.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">Read-Only View</p>
+                    <p className="text-xs text-blue-700 mt-1">
+                      This tab displays PQ service records linked to this event. To add, edit, or view full details, please use the PQ Services module.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'timeline' && (
           <div className="space-y-6 animate-fadeIn">
             <div className="p-6 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg">
