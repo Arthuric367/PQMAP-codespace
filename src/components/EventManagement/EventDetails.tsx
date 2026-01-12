@@ -1272,47 +1272,161 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                 </div>
                 <div className="p-4">
                   {currentEvent.harmonic_event && typeof currentEvent.harmonic_event === 'object' ? (
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                      {/* Left Column: THD & TEHD */}
-                      <div className="space-y-3">
-                        <div className="bg-purple-50 p-3 rounded-lg">
-                          <p className="text-xs font-semibold text-purple-700 mb-2">THD (Total Harmonic Distortion)</p>
-                          <div className="space-y-1.5">
-                            <p className="text-sm text-slate-600">I1 THD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I1_THD_10m !== null && currentEvent.harmonic_event.I1_THD_10m !== undefined ? currentEvent.harmonic_event.I1_THD_10m.toFixed(2) : 'N/A'}</span></p>
-                            <p className="text-sm text-slate-600">I2 THD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I2_THD_10m !== null && currentEvent.harmonic_event.I2_THD_10m !== undefined ? currentEvent.harmonic_event.I2_THD_10m.toFixed(2) : 'N/A'}</span></p>
-                            <p className="text-sm text-slate-600">I3 THD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I3_THD_10m !== null && currentEvent.harmonic_event.I3_THD_10m !== undefined ? currentEvent.harmonic_event.I3_THD_10m.toFixed(2) : 'N/A'}</span></p>
+                    <>
+                      {/* 380V Display - 30 new columns in 2-column grid with 9 groups */}
+                      {currentEvent.meter?.voltage_level === '380V' ? (
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                          {/* Left Column */}
+                          <div className="space-y-3">
+                            {/* Group 1: Voltage (V) */}
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">Voltage (V)</p>
+                              <div className="space-y-1.5">
+                                <p className="text-sm text-slate-600">Va: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.voltage_va !== null && currentEvent.harmonic_event.voltage_va !== undefined ? currentEvent.harmonic_event.voltage_va.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Vb: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.voltage_vb !== null && currentEvent.harmonic_event.voltage_vb !== undefined ? currentEvent.harmonic_event.voltage_vb.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Vc: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.voltage_vc !== null && currentEvent.harmonic_event.voltage_vc !== undefined ? currentEvent.harmonic_event.voltage_vc.toFixed(2) : 'N/A'}</span></p>
+                              </div>
+                            </div>
+                            
+                            {/* Group 2: Current (IL)(A) */}
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">Current (IL)(A)</p>
+                              <div className="space-y-1.5">
+                                <p className="text-sm text-slate-600">Ia: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.current_ia !== null && currentEvent.harmonic_event.current_ia !== undefined ? currentEvent.harmonic_event.current_ia.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Ib: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.current_ib !== null && currentEvent.harmonic_event.current_ib !== undefined ? currentEvent.harmonic_event.current_ib.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Ic: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.current_ic !== null && currentEvent.harmonic_event.current_ic !== undefined ? currentEvent.harmonic_event.current_ic.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">IL Max: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.il_max !== null && currentEvent.harmonic_event.il_max !== undefined ? currentEvent.harmonic_event.il_max.toFixed(2) : 'N/A'}</span></p>
+                              </div>
+                            </div>
+                            
+                            {/* Group 3: THD (Voltage)(%) */}
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">THD (Voltage)(%)</p>
+                              <div className="space-y-1.5">
+                                <p className="text-sm text-slate-600">Phase A: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.thd_voltage_a !== null && currentEvent.harmonic_event.thd_voltage_a !== undefined ? currentEvent.harmonic_event.thd_voltage_a.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Phase B: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.thd_voltage_b !== null && currentEvent.harmonic_event.thd_voltage_b !== undefined ? currentEvent.harmonic_event.thd_voltage_b.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Phase C: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.thd_voltage_c !== null && currentEvent.harmonic_event.thd_voltage_c !== undefined ? currentEvent.harmonic_event.thd_voltage_c.toFixed(2) : 'N/A'}</span></p>
+                              </div>
+                            </div>
+                            
+                            {/* Group 4: THD odd (Current) */}
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">THD odd (Current)</p>
+                              <div className="space-y-1.5">
+                                <p className="text-sm text-slate-600">Phase A: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.thd_odd_current_a !== null && currentEvent.harmonic_event.thd_odd_current_a !== undefined ? currentEvent.harmonic_event.thd_odd_current_a.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Phase B: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.thd_odd_current_b !== null && currentEvent.harmonic_event.thd_odd_current_b !== undefined ? currentEvent.harmonic_event.thd_odd_current_b.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Phase C: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.thd_odd_current_c !== null && currentEvent.harmonic_event.thd_odd_current_c !== undefined ? currentEvent.harmonic_event.thd_odd_current_c.toFixed(2) : 'N/A'}</span></p>
+                              </div>
+                            </div>
+                            
+                            {/* Group 5: THD even */}
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">THD even</p>
+                              <div className="space-y-1.5">
+                                <p className="text-sm text-slate-600">Phase A: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.thd_even_a !== null && currentEvent.harmonic_event.thd_even_a !== undefined ? currentEvent.harmonic_event.thd_even_a.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Phase B: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.thd_even_b !== null && currentEvent.harmonic_event.thd_even_b !== undefined ? currentEvent.harmonic_event.thd_even_b.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Phase C: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.thd_even_c !== null && currentEvent.harmonic_event.thd_even_c !== undefined ? currentEvent.harmonic_event.thd_even_c.toFixed(2) : 'N/A'}</span></p>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Right Column */}
+                          <div className="space-y-3">
+                            {/* Group 6: THD (Current)(%) */}
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">THD (Current)(%)</p>
+                              <div className="space-y-1.5">
+                                <p className="text-sm text-slate-600">Phase A: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.thd_current_a !== null && currentEvent.harmonic_event.thd_current_a !== undefined ? currentEvent.harmonic_event.thd_current_a.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Phase B: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.thd_current_b !== null && currentEvent.harmonic_event.thd_current_b !== undefined ? currentEvent.harmonic_event.thd_current_b.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Phase C: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.thd_current_c !== null && currentEvent.harmonic_event.thd_current_c !== undefined ? currentEvent.harmonic_event.thd_current_c.toFixed(2) : 'N/A'}</span></p>
+                              </div>
+                            </div>
+                            
+                            {/* Group 7: TDD Odd (Current) */}
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">TDD Odd (Current)</p>
+                              <div className="space-y-1.5">
+                                <p className="text-sm text-slate-600">Phase A: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.tdd_odd_current_a !== null && currentEvent.harmonic_event.tdd_odd_current_a !== undefined ? currentEvent.harmonic_event.tdd_odd_current_a.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Phase B: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.tdd_odd_current_b !== null && currentEvent.harmonic_event.tdd_odd_current_b !== undefined ? currentEvent.harmonic_event.tdd_odd_current_b.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Phase C: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.tdd_odd_current_c !== null && currentEvent.harmonic_event.tdd_odd_current_c !== undefined ? currentEvent.harmonic_event.tdd_odd_current_c.toFixed(2) : 'N/A'}</span></p>
+                              </div>
+                            </div>
+                            
+                            {/* Group 8: TDD even (Current) */}
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">TDD even (Current)</p>
+                              <div className="space-y-1.5">
+                                <p className="text-sm text-slate-600">Phase A: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.tdd_even_current_a !== null && currentEvent.harmonic_event.tdd_even_current_a !== undefined ? currentEvent.harmonic_event.tdd_even_current_a.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Phase B: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.tdd_even_current_b !== null && currentEvent.harmonic_event.tdd_even_current_b !== undefined ? currentEvent.harmonic_event.tdd_even_current_b.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Phase C: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.tdd_even_current_c !== null && currentEvent.harmonic_event.tdd_even_current_c !== undefined ? currentEvent.harmonic_event.tdd_even_current_c.toFixed(2) : 'N/A'}</span></p>
+                              </div>
+                            </div>
+                            
+                            {/* Group 9: TDD (Current)(%) */}
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">TDD (Current)(%)</p>
+                              <div className="space-y-1.5">
+                                <p className="text-sm text-slate-600">Phase A: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.tdd_current_a !== null && currentEvent.harmonic_event.tdd_current_a !== undefined ? currentEvent.harmonic_event.tdd_current_a.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Phase B: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.tdd_current_b !== null && currentEvent.harmonic_event.tdd_current_b !== undefined ? currentEvent.harmonic_event.tdd_current_b.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Phase C: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.tdd_current_c !== null && currentEvent.harmonic_event.tdd_current_c !== undefined ? currentEvent.harmonic_event.tdd_current_c.toFixed(2) : 'N/A'}</span></p>
+                              </div>
+                            </div>
+                            
+                            {/* Additional info: TDD Limit & Non-Compliance */}
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">Compliance</p>
+                              <div className="space-y-1.5">
+                                <p className="text-sm text-slate-600">TDD Limit: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.tdd_limit !== null && currentEvent.harmonic_event.tdd_limit !== undefined ? currentEvent.harmonic_event.tdd_limit.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">Non-Compliance: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.non_compliance !== null && currentEvent.harmonic_event.non_compliance !== undefined ? currentEvent.harmonic_event.non_compliance.toFixed(2) : 'N/A'}</span></p>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <div className="bg-purple-50 p-3 rounded-lg">
-                          <p className="text-xs font-semibold text-purple-700 mb-2">TEHD (Total Even Harmonic Distortion)</p>
-                          <div className="space-y-1.5">
-                            <p className="text-sm text-slate-600">I1 TEHD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I1_TEHD_10m !== null && currentEvent.harmonic_event.I1_TEHD_10m !== undefined ? currentEvent.harmonic_event.I1_TEHD_10m.toFixed(2) : 'N/A'}</span></p>
-                            <p className="text-sm text-slate-600">I2 TEHD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I2_TEHD_10m !== null && currentEvent.harmonic_event.I2_TEHD_10m !== undefined ? currentEvent.harmonic_event.I2_TEHD_10m.toFixed(2) : 'N/A'}</span></p>
-                            <p className="text-sm text-slate-600">I3 TEHD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I3_TEHD_10m !== null && currentEvent.harmonic_event.I3_TEHD_10m !== undefined ? currentEvent.harmonic_event.I3_TEHD_10m.toFixed(2) : 'N/A'}</span></p>
+                      ) : (
+                        /* 400kV/132kV/11kV Display - Original I1/I2/I3 columns */
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                          {/* Left Column: THD & TEHD */}
+                          <div className="space-y-3">
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">THD (Total Harmonic Distortion)</p>
+                              <div className="space-y-1.5">
+                                <p className="text-sm text-slate-600">I1 THD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I1_THD_10m !== null && currentEvent.harmonic_event.I1_THD_10m !== undefined ? currentEvent.harmonic_event.I1_THD_10m.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">I2 THD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I2_THD_10m !== null && currentEvent.harmonic_event.I2_THD_10m !== undefined ? currentEvent.harmonic_event.I2_THD_10m.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">I3 THD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I3_THD_10m !== null && currentEvent.harmonic_event.I3_THD_10m !== undefined ? currentEvent.harmonic_event.I3_THD_10m.toFixed(2) : 'N/A'}</span></p>
+                              </div>
+                            </div>
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">TEHD (Total Even Harmonic Distortion)</p>
+                              <div className="space-y-1.5">
+                                <p className="text-sm text-slate-600">I1 TEHD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I1_TEHD_10m !== null && currentEvent.harmonic_event.I1_TEHD_10m !== undefined ? currentEvent.harmonic_event.I1_TEHD_10m.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">I2 TEHD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I2_TEHD_10m !== null && currentEvent.harmonic_event.I2_TEHD_10m !== undefined ? currentEvent.harmonic_event.I2_TEHD_10m.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">I3 TEHD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I3_TEHD_10m !== null && currentEvent.harmonic_event.I3_TEHD_10m !== undefined ? currentEvent.harmonic_event.I3_TEHD_10m.toFixed(2) : 'N/A'}</span></p>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Right Column: TOHD & TDD */}
+                          <div className="space-y-3">
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">TOHD (Total Odd Harmonic Distortion)</p>
+                              <div className="space-y-1.5">
+                                <p className="text-sm text-slate-600">I1 TOHD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I1_TOHD_10m !== null && currentEvent.harmonic_event.I1_TOHD_10m !== undefined ? currentEvent.harmonic_event.I1_TOHD_10m.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">I2 TOHD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I2_TOHD_10m !== null && currentEvent.harmonic_event.I2_TOHD_10m !== undefined ? currentEvent.harmonic_event.I2_TOHD_10m.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">I3 TOHD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I3_TOHD_10m !== null && currentEvent.harmonic_event.I3_TOHD_10m !== undefined ? currentEvent.harmonic_event.I3_TOHD_10m.toFixed(2) : 'N/A'}</span></p>
+                              </div>
+                            </div>
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">TDD (Total Demand Distortion)</p>
+                              <div className="space-y-1.5">
+                                <p className="text-sm text-slate-600">I1 TDD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I1_TDD_10m !== null && currentEvent.harmonic_event.I1_TDD_10m !== undefined ? currentEvent.harmonic_event.I1_TDD_10m.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">I2 TDD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I2_TDD_10m !== null && currentEvent.harmonic_event.I2_TDD_10m !== undefined ? currentEvent.harmonic_event.I2_TDD_10m.toFixed(2) : 'N/A'}</span></p>
+                                <p className="text-sm text-slate-600">I3 TDD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I3_TDD_10m !== null && currentEvent.harmonic_event.I3_TDD_10m !== undefined ? currentEvent.harmonic_event.I3_TDD_10m.toFixed(2) : 'N/A'}</span></p>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      
-                      {/* Right Column: TOHD & TDD */}
-                      <div className="space-y-3">
-                        <div className="bg-purple-50 p-3 rounded-lg">
-                          <p className="text-xs font-semibold text-purple-700 mb-2">TOHD (Total Odd Harmonic Distortion)</p>
-                          <div className="space-y-1.5">
-                            <p className="text-sm text-slate-600">I1 TOHD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I1_TOHD_10m !== null && currentEvent.harmonic_event.I1_TOHD_10m !== undefined ? currentEvent.harmonic_event.I1_TOHD_10m.toFixed(2) : 'N/A'}</span></p>
-                            <p className="text-sm text-slate-600">I2 TOHD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I2_TOHD_10m !== null && currentEvent.harmonic_event.I2_TOHD_10m !== undefined ? currentEvent.harmonic_event.I2_TOHD_10m.toFixed(2) : 'N/A'}</span></p>
-                            <p className="text-sm text-slate-600">I3 TOHD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I3_TOHD_10m !== null && currentEvent.harmonic_event.I3_TOHD_10m !== undefined ? currentEvent.harmonic_event.I3_TOHD_10m.toFixed(2) : 'N/A'}</span></p>
-                          </div>
-                        </div>
-                        <div className="bg-purple-50 p-3 rounded-lg">
-                          <p className="text-xs font-semibold text-purple-700 mb-2">TDD (Total Demand Distortion)</p>
-                          <div className="space-y-1.5">
-                            <p className="text-sm text-slate-600">I1 TDD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I1_TDD_10m !== null && currentEvent.harmonic_event.I1_TDD_10m !== undefined ? currentEvent.harmonic_event.I1_TDD_10m.toFixed(2) : 'N/A'}</span></p>
-                            <p className="text-sm text-slate-600">I2 TDD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I2_TDD_10m !== null && currentEvent.harmonic_event.I2_TDD_10m !== undefined ? currentEvent.harmonic_event.I2_TDD_10m.toFixed(2) : 'N/A'}</span></p>
-                            <p className="text-sm text-slate-600">I3 TDD 10m: <span className="font-semibold text-slate-900">{currentEvent.harmonic_event.I3_TDD_10m !== null && currentEvent.harmonic_event.I3_TDD_10m !== undefined ? currentEvent.harmonic_event.I3_TDD_10m.toFixed(2) : 'N/A'}</span></p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                      )}
+                    </>
                   ) : (
                     <div className="text-center py-6 text-slate-500">
                       <p className="text-sm">No harmonic data available for this event.</p>

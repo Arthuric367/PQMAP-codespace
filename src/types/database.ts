@@ -219,21 +219,64 @@ export interface EventCustomerImpact {
 export interface HarmonicEvent {
   id: string;
   pqevent_id: string;
-  // Phase 1 (Current I1) Measurements
+  // Phase 1 (Current I1) Measurements - For 400kV/132kV/11kV meters
   I1_THD_10m: number | null;
   I1_TEHD_10m: number | null;
   I1_TOHD_10m: number | null;
   I1_TDD_10m: number | null;
-  // Phase 2 (Current I2) Measurements
+  // Phase 2 (Current I2) Measurements - For 400kV/132kV/11kV meters
   I2_THD_10m: number | null;
   I2_TEHD_10m: number | null;
   I2_TOHD_10m: number | null;
   I2_TDD_10m: number | null;
-  // Phase 3 (Current I3) Measurements
+  // Phase 3 (Current I3) Measurements - For 400kV/132kV/11kV meters
   I3_THD_10m: number | null;
   I3_TEHD_10m: number | null;
   I3_TOHD_10m: number | null;
   I3_TDD_10m: number | null;
+  
+  // 380V-specific measurements (30 columns) - Only for 380V meters
+  description: string | null;
+  tdd_limit: number | null;
+  non_compliance: number | null;
+  // Voltage measurements (Va, Vb, Vc)
+  voltage_va: number | null;
+  voltage_vb: number | null;
+  voltage_vc: number | null;
+  // Current measurements (Ia, Ib, Ic)
+  current_ia: number | null;
+  current_ib: number | null;
+  current_ic: number | null;
+  // THD Voltage (phases A, B, C)
+  thd_voltage_a: number | null;
+  thd_voltage_b: number | null;
+  thd_voltage_c: number | null;
+  // THD Odd Current (phases A, B, C)
+  thd_odd_current_a: number | null;
+  thd_odd_current_b: number | null;
+  thd_odd_current_c: number | null;
+  // THD Even (phases A, B, C)
+  thd_even_a: number | null;
+  thd_even_b: number | null;
+  thd_even_c: number | null;
+  // THD Current (phases A, B, C)
+  thd_current_a: number | null;
+  thd_current_b: number | null;
+  thd_current_c: number | null;
+  // Maximum load current
+  il_max: number | null;
+  // TDD Odd Current (phases A, B, C)
+  tdd_odd_current_a: number | null;
+  tdd_odd_current_b: number | null;
+  tdd_odd_current_c: number | null;
+  // TDD Even Current (phases A, B, C)
+  tdd_even_current_a: number | null;
+  tdd_even_current_b: number | null;
+  tdd_even_current_c: number | null;
+  // TDD Current (phases A, B, C)
+  tdd_current_a: number | null;
+  tdd_current_b: number | null;
+  tdd_current_c: number | null;
 }
 
 export interface IDRRecord {

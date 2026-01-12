@@ -228,6 +228,75 @@ src/
   - Extracts area from meter_id for missing values
   - Updates transformer codes based on voltage level
   - Creates backup table: `pq_meters_backup_hierarchy_20260109`
+
+#### Harmonic Events - 380V Meter Support (Jan 12, 2026)
+**Issue:** Harmonic events table only supported 400kV/132kV/11kV meters with I1/I2/I3 current measurements. 380V meters require different measurement columns.
+
+**Solution:** Extended `harmonic_events` table with voltage-level-specific columns
+
+**Database Schema Extension:**
+- Migration: `supabase/migrations/20260112000000_add_380v_harmonic_columns.sql`
+- Added 30 new columns for 380V meters:
+  - `description` (TEXT): Event description
+  - `tdd_limit` (NUMERIC): TDD compliance limit
+  - `non_compliance` (NUMERIC): Non-compliance percentage
+  - Voltage: `voltage_va`, `voltage_vb`, `voltage_vc`
+  - Current: `current_ia`, `current_ib`, `current_ic`, `il_max`
+  - THD Voltage: `thd_voltage_a/b/c`
+  - THD Odd Current: `thd_odd_current_a/b/c`
+  - THD Even: `thd_even_a/b/c`
+  - THD Current: `thd_current_a/b/c`
+  - TDD Odd Current: `tdd_odd_current_a/b/c`
+  - TDD Even Current: `tdd_even_current_a/b/c`
+  - TDD Current: `tdd_current_a/b/c`
+
+**Data Validation Constraint:**
+- Trigger function: `validate_harmonic_columns()`
+- Enforces voltage-level-specific column usage:
+  - 380V meters: ONLY new 30 columns (not I1/I2/I3)
+  - 400kV/132kV/11kV meters: ONLY I1/I2/I3 columns (not 380V fields)
+- Queries `pq_meters.voltage_level` via `pq_events` join
+- Raises exception if wrong columns populated
+
+**TypeScript Interface:**
+- File: `src/types/database.ts`
+- Extended `HarmonicEvent` interface with 30 optional fields
+- All new fields are nullable (`number | null` or `string | null`)
+
+**Backfill Script Updates:**
+- File: `scripts/backfill-harmonic-events.sql`
+- Now handles both voltage level types:
+  1. 400kV/132kV/11kV: INSERT with I1/I2/I3 columns
+  2. 380V: INSERT with 30 new columns
+- Generates realistic sample data:
+  - 380V voltage: 380V ± 10V
+  - Current: 100-300A typical range
+  - THD values: 1-10% based on event magnitude
+  - TDD limits: 8-10%
+
+**UI Changes:**
+- File: `src/components/EventManagement/EventDetails.tsx`
+- Harmonic Information card now conditionally renders:
+  - If `meter.voltage_level === '380V'`: Show 30 fields in 2-column grid with 9 groups
+  - Else: Show original I1/I2/I3 display (4 groups)
+- 380V Display Groups:
+  1. Voltage (V) - Va, Vb, Vc
+  2. Current (IL)(A) - Ia, Ib, Ic, IL Max
+  3. THD (Voltage)(%) - Phase A/B/C
+  4. THD odd (Current) - Phase A/B/C
+  5. THD even - Phase A/B/C
+  6. THD (Current)(%) - Phase A/B/C
+  7. TDD Odd (Current) - Phase A/B/C
+  8. TDD even (Current) - Phase A/B/C
+  9. TDD (Current)(%) - Phase A/B/C
+  10. Compliance - TDD Limit, Non-Compliance
+
+**Data Flow:**
+1. User views harmonic event in EventDetails
+2. Query fetches `pq_events` → `pq_meters` (voltage_level) → `harmonic_events`
+3. UI checks `currentEvent.meter.voltage_level`
+4. Conditionally renders 380V fields OR I1/I2/I3 fields
+5. All fields have null checks before calling `.toFixed()`
   - Verification queries included
 
 - Script: `scripts/check-meter-hierarchy.sql`
