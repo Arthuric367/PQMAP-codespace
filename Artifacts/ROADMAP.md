@@ -45,6 +45,7 @@
    - IEC/SEMI/ITIC international standards
    - 14 voltage thresholds per standard
    - CSV import/export for compliance tables
+   - RLS policies for role-based access (Jan 12)
 
 3. **Harmonic Events Table** (Jan 9) - `harmonic_events`
    - Separate table for harmonic-specific measurements
@@ -57,7 +58,7 @@
    - Auto customer impact via PostgreSQL trigger
    - H1/H2/H3 transformer code support
 
-4. **Root Cause Analysis Restoration** (Dec 2025)
+5. **Root Cause Analysis Restoration** (Dec 2025)
    - `cause` + `cause_detail` fields (replaced `root_cause`)
    - 7 major categories, 27 subcategories
    - Backfill script for existing events

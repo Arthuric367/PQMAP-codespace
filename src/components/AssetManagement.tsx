@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { PQMeter, Substation, PQEvent, EventType, EventStatus, PQServiceRecord, RealtimePQData } from '../types/database';
-import { Database, Activity, X, Check, Info, Filter, Download, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BarChart3, Clock, Calendar, Settings2, Zap, AlertCircle, Wrench, Radio, Network } from 'lucide-react';
+import { Database, Activity, X, Check, Info, Filter, Download, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BarChart3, Clock, Zap, AlertCircle, Wrench, Radio, Network } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import TreeViewModal from './MeterHierarchy/TreeViewModal';
 
@@ -152,7 +152,15 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
       // So we match with meter.id, not meter.meter_id
       let query = supabase
         .from('pq_events')
-        .select('*')
+        .select(`
+          *,
+          meter:meter_id (
+            id,
+            meter_id,
+            circuit_id,
+            voltage_level
+          )
+        `)
         .eq('meter_id', meter.id)  // ✅ Use meter.id (UUID) instead of meter.meter_id (TEXT)
         .order('timestamp', { ascending: false });
 
@@ -1922,7 +1930,7 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
                                         </span>
                                       </td>
                                       <td className="py-2 px-3 text-slate-900">
-                                        {event.circuit_id || '-'}
+                                        {event.meter?.circuit_id || '-'}
                                       </td>
                                       <td className="py-2 px-3 text-slate-600">
                                         {event.cause || event.remarks || '-'}

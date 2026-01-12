@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Save, X, Weight } from 'lucide-react';
-import { SARFIProfile, SARFIProfileWeight, PQMeter } from '../../types/database';
+import { SARFIProfile, SARFIProfileWeight } from '../../types/database';
 
 export default function SARFIProfileManagement() {
   const [profiles, setProfiles] = useState<SARFIProfile[]>([]);
-  const [meters, setMeters] = useState<PQMeter[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<SARFIProfile | null>(null);
   const [weights, setWeights] = useState<SARFIProfileWeight[]>([]);
   const [isCreating, setIsCreating] = useState(false);
@@ -71,23 +70,6 @@ export default function SARFIProfileManagement() {
       setEditingWeight(null);
     } catch (error) {
       console.error('Error updating weight:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAddWeight = async (meterId: string) => {
-    if (!selectedProfile) return;
-    setLoading(true);
-    try {
-      // TODO: API call to add weight
-      // await supabase.from('sarfi_profile_weights').insert({
-      //   profile_id: selectedProfile.id,
-      //   meter_id: meterId,
-      //   weight_factor: 1.0
-      // });
-    } catch (error) {
-      console.error('Error adding weight:', error);
     } finally {
       setLoading(false);
     }

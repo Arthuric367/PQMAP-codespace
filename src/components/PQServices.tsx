@@ -8,14 +8,11 @@ import {
   Users,
   Calendar,
   BarChart3,
-  AlertCircle,
   Eye,
   ChevronDown,
   FileDown,
   Building2,
   MapPin,
-  Phone,
-  Mail,
   AlertTriangle,
   X,
 } from 'lucide-react';
@@ -49,7 +46,6 @@ export default function PQServices() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedService, setSelectedService] = useState<PQServiceRecord | null>(null);
   const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedEventData, setSelectedEventData] = useState<{
     event: any;
     substation: any;
@@ -268,7 +264,6 @@ export default function PQServices() {
         substation: substationData,
         impacts: impactsData || []
       });
-      setSelectedEventId(eventId);
       setShowEventDetailsModal(true);
 
       console.log('✅ [PQServices] Event details modal opened');
@@ -769,7 +764,9 @@ export default function PQServices() {
                                     <button 
                                       onClick={() => {
                                         console.log('🖱️ [PQServices] Event ID clicked in table:', service.event_id);
-                                        handleViewEvent(service.event_id);
+                                        if (service.event_id) {
+                                          handleViewEvent(service.event_id);
+                                        }
                                       }}
                                       className="text-blue-600 hover:text-blue-700 font-medium underline"
                                     >
@@ -888,7 +885,6 @@ export default function PQServices() {
                   console.log('❌ [PQServices] Closing event details modal');
                   setShowEventDetailsModal(false);
                   setSelectedEventData(null);
-                  setSelectedEventId(null);
                 }}
                 className="p-2 hover:bg-white/20 rounded-lg transition-colors"
               >

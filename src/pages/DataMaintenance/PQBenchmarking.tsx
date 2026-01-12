@@ -87,16 +87,24 @@ export default function PQBenchmarking() {
 
   const loadStandards = async () => {
     try {
+      console.log('🔍 [PQBenchmarking] Loading standards...');
       const data = await fetchBenchmarkStandards();
+      console.log('✅ [PQBenchmarking] Standards loaded:', {
+        count: data.length,
+        standards: data.map(s => ({ id: s.id, name: s.name }))
+      });
       setStandards(data);
       
       // Auto-select first standard if available
       if (data.length > 0 && !selectedStandardId) {
+        console.log('📌 [PQBenchmarking] Auto-selecting first standard:', data[0].name);
         setSelectedStandardId(data[0].id);
+      } else if (data.length === 0) {
+        console.warn('⚠️ [PQBenchmarking] No standards found in database!');
       }
     } catch (error) {
       console.error('❌ Error loading standards:', error);
-      alert('Failed to load PQ benchmarking standards');
+      alert('Failed to load PQ benchmarking standards. Check console for details.');
     }
   };
 

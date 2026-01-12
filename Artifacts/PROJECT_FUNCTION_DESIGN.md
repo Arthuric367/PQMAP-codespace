@@ -1,7 +1,7 @@
 # PQMAP - Project Function Design Document
 
-**Document Version:** 1.5  
-**Last Updated:** January 9, 2026  
+**Document Version:** 1.6  
+**Last Updated:** January 12, 2026  
 **Purpose:** Comprehensive functional design reference for continuous development
 
 ---
@@ -228,6 +228,31 @@ src/
   - Extracts area from meter_id for missing values
   - Updates transformer codes based on voltage level
   - Creates backup table: `pq_meters_backup_hierarchy_20260109`
+
+#### PQ Benchmarking RLS Policies (Jan 12, 2026)
+**Issue:** PQ Benchmarking Standards page showing "count: 0" despite data existing in Supabase. Root cause: Row Level Security enabled but no policies defined for `pq_benchmark_standards` and `pq_benchmark_thresholds` tables.
+
+**Solution:** Created comprehensive RLS policies for role-based access control
+
+**Database Changes:**
+- Migration: `supabase/migrations/20260112000002_add_pq_benchmark_rls_policies.sql`
+- Policies Created:
+  - **SELECT**: All authenticated users can view standards/thresholds
+  - **INSERT/UPDATE**: Admins and operators can modify records
+  - **DELETE**: Admin-only privilege
+- User Roles: `admin`, `operator`, `viewer` (verified from database enum)
+- Tables Affected: `pq_benchmark_standards`, `pq_benchmark_thresholds`
+
+**TypeScript Fixes:**
+- Fixed 11 compilation errors across 10 files due to schema changes
+- Updated property access patterns: `event.circuit_id` → `event.meter?.circuit_id`
+- Added meter joins to queries in EventDetails, EventTreeView, AssetManagement
+- Cleaned up unused imports across PQServices, exportService, LoginPage
+
+**Verification:**
+- Console logging added to benchmarkingService.ts and PQBenchmarking.tsx
+- Confirmed 3 standards visible: IEC 61000-4-34, SEMI F47, ITIC
+- All CRUD operations working correctly with proper role-based permissions
 
 #### Harmonic Events - 380V Meter Support (Jan 12, 2026)
 **Issue:** Harmonic events table only supported 400kV/132kV/11kV meters with I1/I2/I3 current measurements. 380V meters require different measurement columns.
@@ -2970,7 +2995,7 @@ docs(artifacts): create comprehensive project function design document
 - **THD**: Total Harmonic Distortion
 - **UAM**: User Access Management
 - **VFD**: Variable Frequency Drive
-- **WIS**: Workforce Information System
+- **WIS**: Weather Information System
 
 ### B. Contact Information
 

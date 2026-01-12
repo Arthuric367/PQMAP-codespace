@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { TrendingUp, BarChart3, PieChart, Activity, AlertTriangle, CheckCircle, Target, Brain } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { PieChart, Activity, AlertTriangle, CheckCircle, Target, Brain } from 'lucide-react';
 
 interface FalseEventAnalytics {
   totalEventsAnalyzed: number;
@@ -197,8 +197,8 @@ export default function FalseEventAnalyticsDashboard({
   const renderMetricCard = (
     title: string,
     value: string | number,
-    change?: number,
     icon: React.ReactNode,
+    change?: number,
     color: string = 'primary'
   ) => (
     <div className="bg-white rounded-lg border border-slate-200 p-6">
@@ -434,28 +434,27 @@ export default function FalseEventAnalyticsDashboard({
         {renderMetricCard(
           'Events Analyzed',
           analytics.totalEventsAnalyzed.toLocaleString(),
-          undefined,
           <Activity className="w-6 h-6 text-blue-600" />
         )}
         {renderMetricCard(
           'False Positives Detected',
           analytics.falsePositivesDetected.toLocaleString(),
-          undefined,
           <AlertTriangle className="w-6 h-6 text-yellow-600" />,
+          undefined,
           'yellow'
         )}
         {renderMetricCard(
           'False Positive Rate',
           analytics.falsePositiveRate,
-          Math.random() * 4 - 2, // Simulated change
           <PieChart className="w-6 h-6 text-red-600" />,
+          Math.random() * 4 - 2, // Simulated change
           'red'
         )}
         {renderMetricCard(
           'Detection Accuracy',
           analytics.accuracyRate,
-          Math.random() * 6 + 1, // Simulated positive change
           <Target className="w-6 h-6 text-green-600" />,
+          Math.random() * 6 + 1, // Simulated positive change
           'green'
         )}
       </div>

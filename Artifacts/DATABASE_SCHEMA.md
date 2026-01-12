@@ -1154,6 +1154,7 @@ sarfi_profiles
 
 | Date | File | Tables Affected | Purpose | Status |
 |------|------|-----------------|---------|--------|
+| 2026-01-12 | `20260112000002_add_pq_benchmark_rls_policies.sql` | pq_benchmark_standards, pq_benchmark_thresholds | RLS policies for benchmarking tables | ✅ Applied |
 | 2026-01-07 | `20260107000001_create_pq_benchmarking_tables.sql` | pq_benchmark_standards, pq_benchmark_thresholds | PQ compliance standards (IEC/SEMI/ITIC) | ✅ Applied |
 | 2026-01-07 | `20260107000000_add_customer_count_to_weights.sql` | sarfi_profile_weights | Add customer_count for weight calculations | ✅ Applied |
 | 2026-01-06 | `20260106000000_rename_active_to_enable.sql` | pq_meters | Rename active→enable column, add ip_address | ✅ Applied |

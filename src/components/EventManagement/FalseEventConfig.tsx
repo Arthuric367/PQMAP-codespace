@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, Shield, Brain, TrendingUp, AlertTriangle, CheckCircle, XCircle, Plus, Edit2, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Settings, Shield, Brain, TrendingUp, XCircle, Plus, Edit2, Trash2 } from 'lucide-react';
 
 interface FalseEventRule {
   id: string;

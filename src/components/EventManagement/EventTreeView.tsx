@@ -30,7 +30,7 @@ export default function EventTreeView({
     setExpandedNodes(newExpanded);
   };
 
-  const toggleEventSelection = (eventId: string, event: React.MouseEvent) => {
+  const toggleEventSelection = (eventId: string, event: React.ChangeEvent<HTMLInputElement> | React.MouseEvent) => {
     event.stopPropagation();
     const newSelected = new Set(selectedEvents);
     if (newSelected.has(eventId)) {
@@ -147,7 +147,9 @@ export default function EventTreeView({
             {/* Status */}
             <div className="flex items-center gap-2">
               {!node.event.validated_by_adms && (
-                <AlertTriangle className="w-4 h-4 text-yellow-500" title="Not validated by ADMS" />
+                <div title="Not validated by ADMS">
+                  <AlertTriangle className="w-4 h-4 text-yellow-500" />
+                </div>
               )}
               <span className={`px-2 py-1 text-xs rounded ${
                 node.event.status === 'resolved' ? 'bg-green-100 text-green-800' :

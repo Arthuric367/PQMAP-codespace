@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Lock, UserPlus, Database } from 'lucide-react';
+import { Lock, UserPlus } from 'lucide-react';
 import { createDemoUser } from '../utils/createDemoUser';
-import { seedDatabase } from '../utils/seedDatabase';
+
 
 export default function LoginPage() {
   const [email, setEmail] = useState('admin@clp.com');

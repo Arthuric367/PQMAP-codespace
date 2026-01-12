@@ -297,6 +297,11 @@ export default function EventDetails({ event: initialEvent, substation: initialS
             id,
             name,
             voltage_level
+          ),
+          meter:meter_id (
+            id,
+            circuit_id,
+            voltage_level
           )
         `)
         .eq('parent_event_id', motherEventId)
@@ -699,8 +704,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
           await ExportService.exportToPDF(
             eventsToExport,
             substationsMap,
-            `Event_${currentEvent.id.substring(0, 8)}_Export_${Date.now()}.pdf`,
-            true
+            `Event_${currentEvent.id.substring(0, 8)}_Export_${Date.now()}.pdf`
           );
           break;
       }
@@ -1971,10 +1975,10 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                             </span>
                           </td>
                           <td className="px-4 py-3 text-sm text-slate-900">
-                            {childEvent.circuit_id || 'N/A'}
+                            {childEvent.meter?.circuit_id || 'N/A'}
                           </td>
                           <td className="px-4 py-3 text-sm text-slate-900">
-                            {childEvent.voltage_level || 'N/A'}
+                            {childEvent.meter?.voltage_level || 'N/A'}
                           </td>
                           <td className="px-4 py-3 text-sm font-semibold text-slate-900">
                             {childEvent.remaining_voltage ? `${childEvent.remaining_voltage.toFixed(1)}%` : 'N/A'}

@@ -5,15 +5,22 @@ import { PQBenchmarkStandard, PQBenchmarkThreshold } from '../types/database';
  * Fetch all PQ benchmark standards
  */
 export async function fetchBenchmarkStandards(): Promise<PQBenchmarkStandard[]> {
+  console.log('🔍 [benchmarkingService] Fetching benchmark standards...');
+  
   const { data, error } = await supabase
     .from('pq_benchmark_standards')
     .select('*')
     .order('name');
 
   if (error) {
-    console.error('❌ Error fetching benchmark standards:', error);
+    console.error('❌ [benchmarkingService] Error fetching benchmark standards:', error);
     throw error;
   }
+
+  console.log('✅ [benchmarkingService] Fetched standards:', {
+    count: data?.length || 0,
+    standards: data?.map(s => s.name) || []
+  });
 
   return data || [];
 }

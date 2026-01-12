@@ -85,8 +85,7 @@ export interface ExportRow {
  */
 export function eventToExportRow(
   event: PQEvent,
-  substation?: Substation,
-  isChild: boolean = false
+  substation?: Substation
 ): ExportRow {
   // Extract V1, V2, V3 from waveform data (Option A: Average voltage)
   let v1 = 'N/A', v2 = 'N/A', v3 = 'N/A';
@@ -125,12 +124,12 @@ export function eventToExportRow(
     falseEvent: event.false_event ? 'Yes' : 'No',
     timestamp: timestamp,
     siteId: event.meter_id || 'N/A',
-    name: substation?.name || event.circuit_id || 'N/A',
-    voltLevel: event.voltage_level || 'N/A',
+    name: substation?.name || (event as any).meter?.circuit_id || 'N/A',
+    voltLevel: (event as any).meter?.voltage_level || substation?.voltage_level || 'N/A',
     ss: substation?.code || 'N/A',
-    circuit: event.circuit_id || 'N/A',
+    circuit: (event as any).meter?.circuit_id || 'N/A',
     region: substation?.region || 'N/A',
-    oc: event.oc || 'N/A',
+    oc: substation?.region || 'N/A', // Use region as fallback for OC (Operating Center)
     
     // Duration & Voltage
     duration: `${durationSec}s`,
@@ -184,7 +183,7 @@ export function eventToExportRow(
     outageType: event.outage_type || 'N/A',
     weather: event.weather || 'N/A',
     totalCmi: event.total_cmi?.toFixed(2) || '0.00',
-    description: event.description || event.root_cause || 'N/A',
+    description: event.description || event.cause || 'N/A',
     auto: event.grouping_type === 'automatic' ? 'Yes' : 'No'
   };
 }
@@ -346,8 +345,7 @@ export async function captureWaveformImage(elementId: string): Promise<string | 
 export async function exportToPDF(
   events: PQEvent[],
   substations: Map<string, Substation>,
-  filename?: string,
-  includeWaveform: boolean = false
+  filename?: string
 ): Promise<void> {
   const doc = new jsPDF('landscape', 'mm', 'a4');
   

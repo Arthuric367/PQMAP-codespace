@@ -555,7 +555,7 @@ export function buildMeterHierarchyTree(meters: PQMeter[]): MeterTreeNode[] {
   });
   
   // Add SS132 groups (132kV as root with 11kV and 380V children)
-  ss132Map.forEach((groupMeters, ss132Code) => {
+  ss132Map.forEach((groupMeters) => {
     groupMeters.forEach(meter => {
       trees.push(buildNode(meter, 'ss132'));
     });

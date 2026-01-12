@@ -1077,6 +1077,7 @@ REFRESH MATERIALIZED VIEW sarfi_daily_summary;
 
 | Date | Section | Change | Author |
 |------|---------|--------|--------|
+| 2026-01-12 | Database | Added RLS policies for pq_benchmark tables | System |
 | 2026-01-07 | All | Initial ARCHITECTURE.md creation | System |
 | 2026-01-07 | Component | Added benchmarkingService.ts (332 lines) | System |
 | 2026-01-07 | Database | Updated migration strategy, added RLS examples | System |
