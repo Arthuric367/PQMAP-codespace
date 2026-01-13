@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, ChevronRight, GitBranch, Clock, MapPin, AlertTriangle } from 'lucide-react';
+import { ChevronDown, ChevronRight, GitBranch, Clock, MapPin } from 'lucide-react';
 import { EventTreeNode } from '../../types/eventTypes';
 
 interface EventTreeViewProps {
@@ -146,11 +146,6 @@ export default function EventTreeView({
 
             {/* Status */}
             <div className="flex items-center gap-2">
-              {!node.event.validated_by_adms && (
-                <div title="Not validated by ADMS">
-                  <AlertTriangle className="w-4 h-4 text-yellow-500" />
-                </div>
-              )}
               <span className={`px-2 py-1 text-xs rounded ${
                 node.event.status === 'resolved' ? 'bg-green-100 text-green-800' :
                 node.event.status === 'investigating' ? 'bg-blue-100 text-blue-800' :

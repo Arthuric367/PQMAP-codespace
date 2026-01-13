@@ -589,7 +589,6 @@ export default function EventDetails({ event: initialEvent, substation: initialS
       const timestamp = new Date().toISOString().split('T')[0];
       const updateData: any = {
         false_event: true,
-        validated_by_adms: true, // Required by database constraint
         parent_event_id: null,
         is_child_event: false,
       };
@@ -652,6 +651,69 @@ export default function EventDetails({ event: initialEvent, substation: initialS
       setSelectedFalseChildIds([]);
     } else {
       setSelectedFalseChildIds(nonFalseChildren.map(child => child.id));
+    }
+  };
+
+  // Mark mother event and all its children as false events
+  const handleMarkMotherAndChildrenAsFalse = async () => {
+    const confirmMessage = `Are you sure you want to mark this mother event and ALL its ${childEvents.length} child event(s) as false events? This action will keep them grouped but mark them all as false detections.`;
+    
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    setMarkingFalse(true);
+    try {
+      const timestamp = new Date().toISOString().split('T')[0];
+      const remarkAddition = `\n[Marked as false event (entire group) on ${timestamp}]`;
+
+      // Update mother event
+      const { error: motherError } = await supabase
+        .from('pq_events')
+        .update({
+          false_event: true,
+          remarks: (currentEvent.remarks || '') + remarkAddition
+        })
+        .eq('id', currentEvent.id);
+
+      if (motherError) {
+        throw motherError;
+      }
+
+      // Update all child events
+      for (const childEvent of childEvents) {
+        const { error: childError } = await supabase
+          .from('pq_events')
+          .update({
+            false_event: true,
+            remarks: (childEvent.remarks || '') + remarkAddition
+          })
+          .eq('id', childEvent.id);
+
+        if (childError) {
+          throw childError;
+        }
+      }
+
+      console.log(`✅ Successfully marked mother event and ${childEvents.length} child event(s) as false events`);
+      
+      // Reload current event and children
+      await loadChildEvents(currentEvent.id);
+      
+      // Update current event state
+      setCurrentEvent(prev => ({ ...prev, false_event: true }));
+      
+      // Notify parent component
+      if (onEventUpdated) {
+        onEventUpdated();
+      }
+
+      alert(`Successfully marked mother event and ${childEvents.length} child event(s) as false events.`);
+    } catch (error) {
+      console.error('❌ Error marking mother and children as false events:', error);
+      alert('Failed to mark events as false. Please try again.');
+    } finally {
+      setMarkingFalse(false);
     }
   };
 
@@ -1022,6 +1084,16 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                 Mother
               </span>
             )}
+            {currentEvent.false_event && (
+              <span className="px-2 py-1 bg-red-100 text-red-700 text-sm font-semibold rounded">
+                False Event
+              </span>
+            )}
+            {currentEvent.is_late_event && (
+              <span className="px-2 py-1 bg-orange-100 text-orange-700 text-sm font-semibold rounded">
+                Late Event
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {/* Export Button */}
@@ -1066,14 +1138,24 @@ export default function EventDetails({ event: initialEvent, substation: initialS
             </div>
             
             {currentEvent.is_mother_event && (
-              <button
-                onClick={handleUngroupEvents}
-                disabled={ungrouping}
-                className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-all disabled:opacity-50"
-                title="Ungroup Events"
-              >
-                <Ungroup className="w-5 h-5" />
-              </button>
+              <>
+                <button
+                  onClick={handleUngroupEvents}
+                  disabled={ungrouping}
+                  className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-all disabled:opacity-50"
+                  title="Ungroup Events"
+                >
+                  <Ungroup className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={handleMarkMotherAndChildrenAsFalse}
+                  disabled={markingFalse || childEvents.length === 0}
+                  className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-all disabled:opacity-50"
+                  title="Mark Mother and All Children as False"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </>
             )}
             <button
               onClick={() => setShowDeleteConfirm(true)}
@@ -1531,22 +1613,6 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                           style={{ width: `${currentEvent.remaining_voltage}%` }}
                         />
                       </div>
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-slate-600">ADMS Validated:</dt>
-                  <dd className="flex items-center gap-2 mt-1">
-                    {currentEvent.validated_by_adms ? (
-                      <>
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                        <span className="font-semibold text-green-700">Yes</span>
-                      </>
-                    ) : (
-                      <>
-                        <XCircle className="w-5 h-5 text-slate-400" />
-                        <span className="font-semibold text-slate-600">No</span>
-                      </>
                     )}
                   </dd>
                 </div>

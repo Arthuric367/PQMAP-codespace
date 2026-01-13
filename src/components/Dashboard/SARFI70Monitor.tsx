@@ -127,9 +127,9 @@ export default function SARFI70Monitor({ events, substations }: SARFI70MonitorPr
       return {
         sequence: index + 1,
         substationCode: substation?.code || 'N/A',
-        voltageLevel: event.voltage_level || 'N/A',
+        voltageLevel: event.meter?.voltage_level || 'N/A',
         timestamp: event.timestamp,
-        oc: event.oc || 'N/A',
+        oc: event.meter?.oc || 'N/A',
         sarfi70: event.sarfi_70 || 0,
         eventId: event.id
       };

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { TrendingUp, Settings2, Download, FileSpreadsheet, FileText, FileImage } from 'lucide-react';
+import { TrendingUp, Settings2, Download, FileSpreadsheet, FileText } from 'lucide-react';
 import { SARFIMetrics, SARFIFilters, SARFIProfile, SARFIDataPoint } from '../../types/database';
 import SARFIConfigModal from './SARFIConfigModal';
 import SARFIDataTable from './SARFIDataTable';

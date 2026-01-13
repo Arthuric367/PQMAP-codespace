@@ -140,8 +140,6 @@ export default function Dashboard({ onNavigateToMeter }: DashboardProps) {
   };
 
   const renderWidget = (widgetId: WidgetId) => {
-    const props = { events, substations, sarfiMetrics };
-    
     switch (widgetId) {
       case 'stats-cards':
         return <StatsCards events={events} substations={substations} />;

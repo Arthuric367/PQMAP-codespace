@@ -39,7 +39,7 @@ export default function StatsCards({ events, substations }: StatsCardsProps) {
     },
     {
       label: 'Avg. Event Duration',
-      value: `${Math.round(events.reduce((acc, e) => acc + e.duration_ms, 0) / events.length / 1000)}s`,
+      value: `${Math.round(events.reduce((acc, e) => acc + (e.duration_ms || 0), 0) / events.length / 1000)}s`,
       icon: Zap,
       color: 'from-amber-500 to-amber-600',
       bgColor: 'bg-amber-50',

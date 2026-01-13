@@ -140,6 +140,7 @@ export interface PQEvent {
   parent_event_id: string | null;
   is_special_event: boolean;
   false_event: boolean;
+  is_late_event: boolean;
   // Event timestamp
   timestamp: string;
   // Event location (reference to PQMeter via meter_id)
@@ -168,7 +169,6 @@ export interface PQEvent {
   affected_phases: string[];
   severity: SeverityLevel;
   waveform_data: WaveformData | null;
-  validated_by_adms: boolean;
   status: EventStatus;
   // Mother Event Grouping properties
   grouping_type: 'automatic' | 'manual' | null;

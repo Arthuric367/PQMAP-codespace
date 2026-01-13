@@ -1,4 +1,4 @@
-import { Filter, Search, AlertCircle } from 'lucide-react';
+import { Search, AlertCircle } from 'lucide-react';
 import { useState } from 'react';
 import { PQEvent, Substation } from '../../types/database';
 
@@ -18,7 +18,7 @@ export default function EventList({ events, substations }: EventListProps) {
   }, {} as Record<string, Substation>);
 
   const filteredEvents = events.filter(event => {
-    const substation = substationMap[event.substation_id];
+    const substation = event.substation_id ? substationMap[event.substation_id] : null;
     const matchesSearch = !searchTerm ||
       substation?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       event.event_type.toLowerCase().includes(searchTerm.toLowerCase());
@@ -104,7 +104,7 @@ export default function EventList({ events, substations }: EventListProps) {
           </thead>
           <tbody>
             {filteredEvents.slice(0, 20).map((event) => {
-              const substation = substationMap[event.substation_id];
+              const substation = event.substation_id ? substationMap[event.substation_id] : null;
               return (
                 <tr
                   key={event.id}
@@ -125,13 +125,18 @@ export default function EventList({ events, substations }: EventListProps) {
                     </span>
                   </td>
                   <td className="py-3 px-4 text-sm text-slate-700">
-                    {event.duration_ms < 1000
-                      ? `${event.duration_ms}ms`
-                      : `${(event.duration_ms / 1000).toFixed(2)}s`
+                    {event.duration_ms !== null && event.duration_ms !== undefined
+                      ? (event.duration_ms < 1000
+                        ? `${event.duration_ms}ms`
+                        : `${(event.duration_ms / 1000).toFixed(2)}s`)
+                      : 'N/A'
                     }
                   </td>
                   <td className="py-3 px-4 text-sm text-slate-700">
-                    {event.magnitude.toFixed(2)}%
+                    {event.magnitude !== null && event.magnitude !== undefined
+                      ? `${event.magnitude.toFixed(2)}%`
+                      : 'N/A'
+                    }
                   </td>
                   <td className="py-3 px-4">
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${getStatusColor(event.status)}`}>

@@ -38,6 +38,8 @@ export interface EventFilter {
   showOnlyUnvalidated: boolean;
   showOnlyStandaloneEvents: boolean;
   showFalseEventsOnly: boolean;
+  showMotherEventsWithoutChildren: boolean;
+  showLateEventsOnly: boolean;
   filter_rules?: {
     duration_min_ms?: number;
     duration_max_ms?: number;

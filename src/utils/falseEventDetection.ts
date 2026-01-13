@@ -447,7 +447,6 @@ export class FalseEventDetector {
       event.magnitude || 0,
       new Date(event.timestamp).getHours(),
       new Date(event.timestamp).getDay(),
-      event.validated_by_adms ? 1 : 0,
       event.affected_phases.length,
       event.customer_count || 0
     ];
@@ -490,9 +489,6 @@ export class FalseEventDetector {
     // Magnitude checks  
     if (conditions.minMagnitude && event.magnitude < conditions.minMagnitude) return false;
     if (conditions.maxMagnitude && event.magnitude > conditions.maxMagnitude) return false;
-
-    // ADMS validation check
-    if (conditions.requiresADMSValidation && !event.validated_by_adms) return false;
 
     // Event type restrictions
     if (conditions.allowedEventTypes && !conditions.allowedEventTypes.includes(event.event_type)) return false;

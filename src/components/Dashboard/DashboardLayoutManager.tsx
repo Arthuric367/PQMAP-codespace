@@ -67,7 +67,6 @@ export default function DashboardLayoutManager({
     console.log('[DashboardLayoutManager] Insert index:', insertIndex);
 
     const sourceWidget = layout.widgets.find(w => w.id === draggedWidget);
-    const widgetConfig = WIDGET_CATALOG[draggedWidget];
     
     if (!sourceWidget || !sourceWidget.visible) {
       // Adding new widget from sidebar beside existing widget
@@ -501,7 +500,7 @@ export default function DashboardLayoutManager({
                     <div className="flex-1" style={{ maxWidth: widget.width === 12 ? '100%' : '50%' }}>
                       <div
                         draggable
-                        onDragStart={(e) => {
+                        onDragStart={() => {
                           console.log('[DashboardLayoutManager] Widget drag start:', widget.id, 'index:', index);
                           handleDragStart(widget.id, 'dashboard');
                         }}
@@ -597,7 +596,7 @@ export default function DashboardLayoutManager({
                         <div className="flex-1" style={{ maxWidth: '50%' }}>
                           <div
                             draggable
-                            onDragStart={(e) => {
+                            onDragStart={() => {
                               console.log('[DashboardLayoutManager] Widget drag start:', nextWidget.id, 'index:', index + 1);
                               handleDragStart(nextWidget.id, 'dashboard');
                             }}

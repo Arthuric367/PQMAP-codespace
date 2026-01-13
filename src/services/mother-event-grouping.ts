@@ -155,17 +155,34 @@ export class MotherEventGroupingService {
 
       const motherEventId = firstChild.parent_event_id;
 
-      // Update the selected child events to become standalone
-      const { error: childError } = await supabase
+      // Get event types of children being ungrouped
+      const { data: childrenData, error: childFetchError } = await supabase
         .from('pq_events')
-        .update({ 
-          parent_event_id: null,
-          is_child_event: false
-        })
+        .select('id, event_type')
         .in('id', childEventIds);
 
-      if (childError) {
-        throw childError;
+      if (childFetchError) {
+        throw childFetchError;
+      }
+
+      // Update the selected child events
+      // voltage_dip and voltage_swell become mother events when ungrouped
+      // Other event types remain as standalone (non-mother, non-child)
+      for (const child of childrenData || []) {
+        const isVoltageDipOrSwell = child.event_type === 'voltage_dip' || child.event_type === 'voltage_swell';
+        
+        const { error: updateError } = await supabase
+          .from('pq_events')
+          .update({ 
+            parent_event_id: null,
+            is_child_event: false,
+            is_mother_event: isVoltageDipOrSwell
+          })
+          .eq('id', child.id);
+
+        if (updateError) {
+          throw updateError;
+        }
       }
 
       // Check if there are any remaining children

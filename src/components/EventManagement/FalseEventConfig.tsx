@@ -247,9 +247,6 @@ export default function FalseEventConfig({ events, onRulesChange, onApplyRules }
     if (conditions.allowedEventTypes && !conditions.allowedEventTypes.includes(event.event_type)) return false;
     if (conditions.excludedEventTypes && conditions.excludedEventTypes.includes(event.event_type)) return false;
     
-    // Validation checks
-    if (conditions.requiresADMSValidation && !event.validated_by_adms) return false;
-    
     return true;
   };
 

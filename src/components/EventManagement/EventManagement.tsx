@@ -8,7 +8,7 @@ import FalseEventAnalytics from './FalseEventAnalytics';
 import { falseEventDetector } from '../../utils/falseEventDetection';
 import { MotherEventGroupingService } from '../../services/mother-event-grouping';
 import { ExportService } from '../../services/exportService';
-import { Activity, Plus, GitBranch, Filter, Search, Calendar, Users, AlertTriangle, Shield, BarChart3, Group, Check, X, Save, Edit2, Trash2, RotateCcw, ChevronDown, Download, Upload, FileDown, ArrowUpDown } from 'lucide-react';
+import { Activity, Plus, GitBranch, Filter, Search, Calendar, Users, AlertTriangle, Shield, BarChart3, Group, Check, X, Save, Edit2, Trash2, RotateCcw, ChevronDown, Download, Upload, FileDown, ArrowUpDown, Clock } from 'lucide-react';
 
 export default function EventManagement() {
   const [events, setEvents] = useState<PQEvent[]>([]);
@@ -45,7 +45,9 @@ export default function EventManagement() {
     circuitIds: [],
     showOnlyUnvalidated: false,
     showOnlyStandaloneEvents: false,
-    showFalseEventsOnly: false
+    showMotherEventsWithoutChildren: false,
+    showFalseEventsOnly: false,
+    showLateEventsOnly: false
   });
 
   // Meter and Profile states
@@ -496,7 +498,9 @@ export default function EventManagement() {
       circuitIds: [],
       showOnlyUnvalidated: false,
       showOnlyStandaloneEvents: false,
-      showFalseEventsOnly: false
+      showMotherEventsWithoutChildren: false,
+      showFalseEventsOnly: false,
+      showLateEventsOnly: false
     });
     setSelectedProfileId(null);
   };
@@ -663,9 +667,9 @@ export default function EventManagement() {
             remarks: row.remarks || null,
             parent_event_id: row.parent_event_id || null,
             is_child_event: !!row.parent_event_id,
-            status: 'open' as const,
-            validated_by_adms: false,
-            false_event: false
+            status: 'new' as const,
+            false_event: false,
+            is_late_event: false
           };
 
           const { error } = await supabase
@@ -884,21 +888,22 @@ export default function EventManagement() {
         return false;
       }
       
-      // Validation filter
-      if (filters.showOnlyUnvalidated && event.validated_by_adms) {
-        return false;
-      }
-      
-      // Standalone event filter (show only events that are not mother and not child)
-      if (filters.showOnlyStandaloneEvents) {
-        // An event is standalone if:
-        // 1. It's NOT a mother event (is_mother_event !== true)
-        // 2. It's NOT a child event (is_child_event !== true AND parent_event_id is null/empty)
-        const isStandalone = !event.is_mother_event && !event.is_child_event && !event.parent_event_id;
-        
-        if (!isStandalone) {
+      // Mother events without children filter
+      if (filters.showMotherEventsWithoutChildren) {
+        // Show only mother events that have no children
+        if (!event.is_mother_event) {
           return false;
         }
+        // Check if this mother event has any children
+        const hasChildren = events.some(e => e.parent_event_id === event.id);
+        if (hasChildren) {
+          return false;
+        }
+      }
+      
+      // Late event filter
+      if (filters.showLateEventsOnly && !event.is_late_event) {
+        return false;
       }
 
       // Meter ID filter
@@ -1191,7 +1196,7 @@ export default function EventManagement() {
           is_child_event: eventFormData.is_child_event,
           parent_event_id: eventFormData.is_child_event ? eventFormData.parent_event_id : null,
           false_event: false,
-          validated_by_adms: false,
+          is_late_event: false,
           is_special_event: false,
           manual_create_idr: true
         })
@@ -1915,20 +1920,11 @@ export default function EventManagement() {
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
-                    checked={filters.showOnlyUnvalidated}
-                    onChange={(e) => setFilters((prev: any) => ({ ...prev, showOnlyUnvalidated: e.target.checked }))}
+                    checked={filters.showMotherEventsWithoutChildren}
+                    onChange={(e) => setFilters((prev: any) => ({ ...prev, showMotherEventsWithoutChildren: e.target.checked }))}
                     className="rounded"
                   />
-                  <span className="text-sm">Only unvalidated events</span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={filters.showOnlyStandaloneEvents}
-                    onChange={(e) => setFilters((prev: any) => ({ ...prev, showOnlyStandaloneEvents: e.target.checked }))}
-                    className="rounded"
-                  />
-                  <span className="text-sm">Show only standalone events</span>
+                  <span className="text-sm">Show only mother events without child</span>
                 </label>
                 
                 <label className="flex items-center gap-2">
@@ -1939,6 +1935,16 @@ export default function EventManagement() {
                     className="rounded"
                   />
                   <span className="text-sm">Show false events only</span>
+                </label>
+                
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={filters.showLateEventsOnly}
+                    onChange={(e) => setFilters((prev: any) => ({ ...prev, showLateEventsOnly: e.target.checked }))}
+                    className="rounded"
+                  />
+                  <span className="text-sm">Show only late events</span>
                 </label>
               </div>
             </div>
@@ -2211,11 +2217,11 @@ export default function EventManagement() {
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1">
-                                    {!event.validated_by_adms && (
-                                      <AlertTriangle className="w-3 h-3 text-yellow-500 flex-shrink-0" />
-                                    )}
                                     {event.false_event && (
                                       <AlertTriangle className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                                    )}
+                                    {event.is_late_event && (
+                                      <Clock className="w-3 h-3 text-orange-500 flex-shrink-0" />
                                     )}
                                     <p className="font-semibold text-sm text-slate-900 truncate">{substation?.name || event.meter?.circuit_id || 'Unknown'}</p>
                                   </div>

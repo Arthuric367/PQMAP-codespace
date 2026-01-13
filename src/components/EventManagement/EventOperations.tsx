@@ -10,7 +10,6 @@ interface Event {
   duration_ms: number;
   magnitude?: number;
   status: string;
-  validated_by_adms: boolean;
   is_mother_event: boolean;
   parent_event_id?: string;
   customer_count?: number;
@@ -76,7 +75,6 @@ export default function EventOperations({
       severity: 'medium',
       status: 'new',
       voltage_level: '33kV',
-      validated_by_adms: false,
       is_mother_event: false,
       duration_ms: 1000,
       ...formData
@@ -331,16 +329,6 @@ export default function EventOperations({
 
             {/* Checkboxes */}
             <div className="flex gap-6">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={formData.validated_by_adms || false}
-                  onChange={(e) => updateFormData('validated_by_adms', e.target.checked)}
-                  className="rounded"
-                />
-                <span className="text-sm text-gray-700">Validated by ADMS</span>
-              </label>
-
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
