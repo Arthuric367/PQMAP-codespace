@@ -145,21 +145,9 @@ export default function Notifications() {
                           <span key={index} className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-lg">
                             {condition.field} {condition.operator} {condition.value}
                           </span>
-                        mother_event_only && (
-                    <div className="mt-3 flex items-center gap-2 text-sm text-purple-700 bg-purple-50 px-3 py-2 rounded-lg inline-block">
-                      <span className="font-semibold">Mother Event Only</span>
-                    </div>
-                  )}
-
-                  {rule.typhoon_mode_enabled && (
-                    <div className="mt-3 flex items-center gap-2 text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-lg inline-block">
-                      <span className="font-semibold">Typhoon Mode: Enabled</span>
-                    </div>
-                  )}
-
-                  {rule.include_waveform && (
-                    <div className="mt-3 flex items-center gap-2 text-sm text-blue-700 bg-blue-50 px-3 py-2 rounded-lg inline-block">
-                      <span className="font-semibold">Include Waveformons (matches all events)</span>
+                        ))
+                      ) : (
+                        <span className="text-slate-500 text-xs">No conditions (matches all events)</span>
                       )}
                     </div>
                   </div>
@@ -177,9 +165,21 @@ export default function Notifications() {
                     </div>
                   )}
 
+                  {rule.mother_event_only && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-purple-700 bg-purple-50 px-3 py-2 rounded-lg inline-block">
+                      <span className="font-semibold">Mother Event Only</span>
+                    </div>
+                  )}
+
                   {rule.typhoon_mode_enabled && (
-                    <div className="mt-3 flex items-center gap-2 text-sm text-amber-700">
+                    <div className="mt-3 flex items-center gap-2 text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-lg inline-block">
                       <span className="font-semibold">Typhoon Mode: Enabled</span>
+                    </div>
+                  )}
+
+                  {rule.include_waveform && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-blue-700 bg-blue-50 px-3 py-2 rounded-lg inline-block">
+                      <span className="font-semibold">Include Waveform</span>
                     </div>
                   )}
                 </div>
