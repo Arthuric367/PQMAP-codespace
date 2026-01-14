@@ -14,7 +14,10 @@ export default function Notifications() {
   const loadRules = async () => {
     const { data } = await supabase
       .from('notification_rules')
-      .select('*')
+      .select(`
+        *,
+        template:notification_templates(name, code)
+      `)
       .order('created_at', { ascending: false });
 
     if (data) setRules(data);
@@ -82,9 +85,9 @@ export default function Notifications() {
         <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-600 mb-2">Total Recipients</p>
+              <p className="text-sm font-medium text-slate-600 mb-2">Total Groups</p>
               <p className="text-3xl font-bold text-blue-600">
-                {new Set(rules.flatMap(r => r.recipients)).size}
+                {new Set(rules.flatMap(r => r.notification_groups || [])).size}
               </p>
             </div>
             <div className="bg-blue-50 p-3 rounded-xl">
@@ -115,32 +118,64 @@ export default function Notifications() {
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div>
-                      <span className="text-slate-600">Event Type:</span>
-                      <p className="font-semibold text-slate-900 capitalize">
-                        {rule.event_type.replace('_', ' ')}
+                      <span className="text-slate-600">Template:</span>
+                      <p className="font-semibold text-slate-900">
+                        {(rule as any).template?.name || 'No template'}
                       </p>
                     </div>
                     <div>
-                      <span className="text-slate-600">Severity:</span>
-                      <p className="font-semibold text-slate-900 capitalize">{rule.severity_threshold}</p>
+                      <span className="text-slate-600">Channels:</span>
+                      <p className="font-semibold text-slate-900">{rule.channels?.length || 0}</p>
                     </div>
                     <div>
-                      <span className="text-slate-600">Recipients:</span>
-                      <p className="font-semibold text-slate-900">{rule.recipients.length}</p>
+                      <span className="text-slate-600">Groups:</span>
+                      <p className="font-semibold text-slate-900">{rule.notification_groups?.length || 0}</p>
                     </div>
                     <div>
-                      <span className="text-slate-600">Include Waveform:</span>
-                      <p className="font-semibold text-slate-900">{rule.include_waveform ? 'Yes' : 'No'}</p>
+                      <span className="text-slate-600">Priority:</span>
+                      <p className="font-semibold text-slate-900">{rule.priority}</p>
                     </div>
                   </div>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {rule.recipients.map((email, index) => (
-                      <span key={index} className="px-2 py-1 bg-slate-100 text-slate-700 text-xs rounded-lg">
-                        {email}
-                      </span>
-                    ))}
+                  <div className="mt-3">
+                    <span className="text-slate-600 text-sm">Conditions:</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {rule.conditions && rule.conditions.length > 0 ? (
+                        rule.conditions.map((condition: any, index: number) => (
+                          <span key={index} className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-lg">
+                            {condition.field} {condition.operator} {condition.value}
+                          </span>
+                        mother_event_only && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-purple-700 bg-purple-50 px-3 py-2 rounded-lg inline-block">
+                      <span className="font-semibold">Mother Event Only</span>
+                    </div>
+                  )}
+
+                  {rule.typhoon_mode_enabled && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-lg inline-block">
+                      <span className="font-semibold">Typhoon Mode: Enabled</span>
+                    </div>
+                  )}
+
+                  {rule.include_waveform && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-blue-700 bg-blue-50 px-3 py-2 rounded-lg inline-block">
+                      <span className="font-semibold">Include Waveformons (matches all events)</span>
+                      )}
+                    </div>
                   </div>
+
+                  {rule.channels && rule.channels.length > 0 && (
+                    <div className="mt-3">
+                      <span className="text-slate-600 text-sm">Channels:</span>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {rule.channels.map((channel: string, index: number) => (
+                          <span key={index} className="px-2 py-1 bg-slate-100 text-slate-700 text-xs rounded-lg capitalize">
+                            {channel}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {rule.typhoon_mode_enabled && (
                     <div className="mt-3 flex items-center gap-2 text-sm text-amber-700">
