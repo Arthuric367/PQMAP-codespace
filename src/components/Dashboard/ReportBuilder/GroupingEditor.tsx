@@ -310,7 +310,7 @@ export default function GroupingEditor({ fields, availableFields, onSave, onClos
                               type="text"
                               value={range.label}
                               onChange={(e) => {
-                                const newRanges = [...editingField.grouping.ranges];
+                                const newRanges = [...(editingField.grouping as NumericGrouping).ranges];
                                 newRanges[idx].label = e.target.value;
                                 setEditingField({
                                   ...editingField,
@@ -324,7 +324,7 @@ export default function GroupingEditor({ fields, availableFields, onSave, onClos
                               type="number"
                               value={range.min}
                               onChange={(e) => {
-                                const newRanges = [...editingField.grouping.ranges];
+                                const newRanges = [...(editingField.grouping as NumericGrouping).ranges];
                                 newRanges[idx].min = parseFloat(e.target.value);
                                 setEditingField({
                                   ...editingField,
@@ -338,7 +338,7 @@ export default function GroupingEditor({ fields, availableFields, onSave, onClos
                               type="number"
                               value={range.max === Infinity ? '' : range.max}
                               onChange={(e) => {
-                                const newRanges = [...editingField.grouping.ranges];
+                                const newRanges = [...(editingField.grouping as NumericGrouping).ranges];
                                 newRanges[idx].max = e.target.value ? parseFloat(e.target.value) : Infinity;
                                 setEditingField({
                                   ...editingField,

@@ -1,3 +1,9 @@
+// Type declarations for external libraries without TypeScript definitions
+declare module 'react-pivottable/PivotTableUI';
+declare module 'react-pivottable/TableRenderers';
+declare module 'react-plotly.js';
+declare module 'react-pivottable/PlotlyRenderers';
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   FileSpreadsheet, 
@@ -5,7 +11,6 @@ import {
   Save, 
   RefreshCw,
   Share2,
-  Plus,
   Filter,
   Calculator,
   X,
@@ -19,7 +24,6 @@ import {
   DateFilterPreset, 
   CalculatedField,
   SavedReport,
-  ReportFilter,
   GroupedField
 } from '../../../types/report';
 import PivotTableUI from 'react-pivottable/PivotTableUI';
@@ -32,7 +36,6 @@ import { useAuth } from '../../../contexts/AuthContext';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import DateFilterPanel from './DateFilterPanel';
 import CalculatedFieldEditor from './CalculatedFieldEditor';
 import GroupingEditor from './GroupingEditor';
 import ShareReportModal from './ShareReportModal';
@@ -1011,7 +1014,7 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
                 <option value="">Select a report...</option>
                 {savedReports.map(report => (
                   <option key={report.id} value={report.id}>
-                    {report.name} {report.created_by !== user?.id && '(Shared)'} - {new Date(report.updated_at).toLocaleDateString()}
+                    {report.name} {report.user_id !== user?.id && '(Shared)'} - {new Date(report.updated_at).toLocaleDateString()}
                   </option>
                 ))}
               </select>
