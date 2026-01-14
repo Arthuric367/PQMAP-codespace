@@ -350,7 +350,8 @@ export default function GroupingEditor({ fields, availableFields, onSave, onClos
                             />
                             <button
                               onClick={() => {
-                                const newRanges = editingField.grouping.ranges.filter((_, i) => i !== idx);
+                                if (editingField.grouping.type !== 'numeric') return;
+                                const newRanges = editingField.grouping.ranges.filter((_: any, i: number) => i !== idx);
                                 setEditingField({
                                   ...editingField,
                                   grouping: { ...editingField.grouping, ranges: newRanges } as NumericGrouping,
@@ -365,8 +366,9 @@ export default function GroupingEditor({ fields, availableFields, onSave, onClos
                       </div>
                       <button
                         onClick={() => {
+                          if (editingField.grouping.type !== 'numeric') return;
                           const newRanges = [
-                            ...editingField.grouping.ranges,
+                            ...(editingField.grouping as NumericGrouping).ranges,
                             { label: 'New Range', min: 0, max: 100 },
                           ];
                           setEditingField({
@@ -393,7 +395,8 @@ export default function GroupingEditor({ fields, availableFields, onSave, onClos
                                 type="text"
                                 value={group.label}
                                 onChange={(e) => {
-                                  const newGroups = [...editingField.grouping.groups];
+                                  if (editingField.grouping.type !== 'categorical') return;
+                                  const newGroups = [...(editingField.grouping as CategoricalGrouping).groups];
                                   newGroups[idx].label = e.target.value;
                                   setEditingField({
                                     ...editingField,
@@ -405,7 +408,8 @@ export default function GroupingEditor({ fields, availableFields, onSave, onClos
                               />
                               <button
                                 onClick={() => {
-                                  const newGroups = editingField.grouping.groups.filter((_, i) => i !== idx);
+                                  if (editingField.grouping.type !== 'categorical') return;
+                                  const newGroups = (editingField.grouping as CategoricalGrouping).groups.filter((_: any, i: number) => i !== idx);
                                   setEditingField({
                                     ...editingField,
                                     grouping: { ...editingField.grouping, groups: newGroups } as CategoricalGrouping,
@@ -419,7 +423,8 @@ export default function GroupingEditor({ fields, availableFields, onSave, onClos
                             <textarea
                               value={group.values.join(', ')}
                               onChange={(e) => {
-                                const newGroups = [...editingField.grouping.groups];
+                                if (editingField.grouping.type !== 'categorical') return;
+                                const newGroups = [...(editingField.grouping as CategoricalGrouping).groups];
                                 newGroups[idx].values = e.target.value.split(',').map(v => v.trim()).filter(Boolean);
                                 setEditingField({
                                   ...editingField,
@@ -435,8 +440,9 @@ export default function GroupingEditor({ fields, availableFields, onSave, onClos
                       </div>
                       <button
                         onClick={() => {
+                          if (editingField.grouping.type !== 'categorical') return;
                           const newGroups = [
-                            ...editingField.grouping.groups,
+                            ...(editingField.grouping as CategoricalGrouping).groups,
                             { label: 'New Group', values: [] },
                           ];
                           setEditingField({

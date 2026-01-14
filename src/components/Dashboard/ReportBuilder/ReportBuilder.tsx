@@ -1,9 +1,3 @@
-// Type declarations for external libraries without TypeScript definitions
-declare module 'react-pivottable/PivotTableUI';
-declare module 'react-pivottable/TableRenderers';
-declare module 'react-plotly.js';
-declare module 'react-pivottable/PlotlyRenderers';
-
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   FileSpreadsheet, 
@@ -176,7 +170,7 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
 
     // False events filter
     if (!includeFalseEvents) {
-      filtered = filtered.filter(e => e.is_valid !== false);
+      filtered = filtered.filter(e => e.false_event !== true);
     }
 
     // Event type filter
@@ -191,52 +185,6 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
 
     return filtered;
   }, [events, dateFilter, customDateStart, customDateEnd, includeFalseEvents, eventTypeFilter, severityFilter]);
-
-  // Prepare data with calculated fields
-  const pivotData = useMemo(() => {
-    return filteredEvents.map(event => {
-      const substation = substations.find(s => s.id === event.substation_id);
-      const baseData: any = {
-        'Event ID': event.id,
-        'Timestamp': new Date(event.timestamp).toLocaleString(),
-        'Date': new Date(event.timestamp).toLocaleDateString(),
-        'Time': new Date(event.timestamp).toLocaleTimeString(),
-        'Year': new Date(event.timestamp).getFullYear(),
-        'Month': new Date(event.timestamp).toLocaleString('default', { month: 'long' }),
-        'Day': new Date(event.timestamp).getDate(),
-        'Weekday': new Date(event.timestamp).toLocaleString('default', { weekday: 'long' }),
-        'Hour': new Date(event.timestamp).getHours(),
-        'Quarter': `Q${Math.floor(new Date(event.timestamp).getMonth() / 3) + 1}`,
-        'Substation': substation?.name || 'Unknown',
-        'Region': substation?.region || 'Unknown',
-        'Feeder': event.feeder_id || 'N/A',
-        'Event Type': event.event_type,
-        'Severity': event.severity,
-        'Duration (ms)': event.duration_ms || 0,
-        'Duration (s)': (event.duration_ms || 0) / 1000,
-        'Voltage Dip (%)': event.voltage_dip_percent || 0,
-        'Affected Customers': event.affected_customers || 0,
-        'Root Cause': event.root_cause || 'Unknown',
-        'Status': event.status,
-        'Weather': event.weather_condition || 'Unknown',
-        'Is Valid': event.is_valid ? 'Yes' : 'No',
-      };
-
-      // Add calculated fields
-      calculatedFields.forEach(field => {
-        try {
-          // Simple expression evaluation (you can enhance this with a proper parser)
-          const value = evaluateExpression(field.expression, baseData);
-          baseData[field.name] = value;
-        } catch (error) {
-          console.error(`Error calculating field ${field.name}:`, error);
-          baseData[field.name] = null;
-        }
-      });
-
-      return baseData;
-    });
-  }, [filteredEvents, substations, calculatedFields]);
 
   const evaluateExpression = (expression: string, data: any): any => {
     try {
@@ -492,17 +440,17 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
         'Quarter': `Q${Math.floor(new Date(event.timestamp).getMonth() / 3) + 1}`,
         'Substation': substation?.name || 'Unknown',
         'Region': substation?.region || 'Unknown',
-        'Feeder': event.feeder_id || 'N/A',
+        'Meter ID': event.meter_id || 'N/A',
         'Event Type': event.event_type,
         'Severity': event.severity,
         'Duration (ms)': event.duration_ms || 0,
         'Duration (s)': (event.duration_ms || 0) / 1000,
-        'Voltage Dip (%)': event.voltage_dip_percent || 0,
-        'Affected Customers': event.affected_customers || 0,
-        'Root Cause': event.root_cause || 'Unknown',
+        'Remaining Voltage (%)': event.remaining_voltage || 0,
+        'Affected Customers': event.customer_count || 0,
+        'Root Cause': event.cause || event.cause_group || 'Unknown',
         'Status': event.status,
         'Weather': event.weather_condition || 'Unknown',
-        'Is Valid': event.is_valid ? 'Yes' : 'No',
+        'Is Valid': !event.false_event ? 'Yes' : 'No',
       };
 
       // Add calculated fields
@@ -1051,7 +999,7 @@ export default function ReportBuilder({ events, substations }: ReportBuilderProp
         <PivotTableUI
           key={`pivot-${displayData.length}-${lastRefresh.getTime()}`}
           data={displayData}
-          onChange={s => setPivotState(s)}
+          onChange={(s: any) => setPivotState(s)}
           renderers={Object.assign({}, TableRenderers, PlotlyRenderers)}
           {...pivotState}
         />
