@@ -86,7 +86,36 @@
      - Frontend: `MeterAvailabilityPage.tsx`
 
 ### 🎯 Planned (Q1 2026)
-1. **System Parameters Module** (Week 4)
+1. **Enterprise Notification System Migration** ⭐ **PRIORITY** (Week 3-4, Jan 14-21)
+   - **Purpose:** Transform basic notifications into enterprise-grade notification center
+   - **Status:** Migration plan created, ready for implementation
+   - **Scope:**
+     - 7 new database tables (templates, channels, groups, rules, logs)
+     - Template engine with variable substitution (all event/meter/customer data)
+     - Multi-channel delivery (Email, SMS, Microsoft Teams webhook demo)
+     - Complex rule builder with multi-condition logic (AND conditions)
+     - Notification groups (independent from UAM roles)
+     - Draft → Approved workflow for templates (operators create, admins approve)
+     - Integration with existing PQ-specific features (typhoon mode, mother event)
+   - **Database Changes:**
+     - Remove: `notifications`, `notification_rules` (old tables)
+     - Add: `notification_channels`, `notification_templates`, `notification_groups`, 
+            `notification_group_members`, `notification_rules` (new), `notification_logs`, 
+            `notification_system_config`
+   - **Migration Phases:**
+     - Day 1: Database migration + backend services
+     - Day 2: TypeScript types + notification service
+     - Day 3: Template management UI
+     - Day 4: Channel & group management UI
+     - Day 5: Rule builder UI + integration testing
+   - **Template Approval Permission:**
+     - Add `notification_template_approval` permission to User Management
+     - System admin & system owner can approve templates
+     - Operators can create draft templates
+   - **Estimated Effort:** 5 days (testable after each day)
+   - **Related Document:** [NOTIFICATION_SYSTEM_MIGRATION_PLAN.md](NOTIFICATION_SYSTEM_MIGRATION_PLAN.md)
+
+2. **System Parameters Module** (Week 4)
    - **Purpose:** Centralized configuration for system-wide settings
    - **Status:** UI placeholder created, functionality to be implemented
    - **Scope:**
@@ -107,7 +136,7 @@
      - Change history viewer
    - **Estimated Effort:** 2 weeks
 
-2. **Advanced Export Options** (Week 4)
+3. **Advanced Export Options** (Week 4)
    - Export filtered data to Excel with formatting
    - PDF reports with charts
    - Scheduled email reports
@@ -125,25 +154,171 @@
 - **Dependencies:** Filter Profiles (for cross-device sync)
 - **Estimated Effort:** 3 weeks
 
-### 2. Real-time Notifications
-- **Purpose:** Alert users of critical PQ events
+### 2. User Notification Preferences ⭐ **NEW**
+- **Purpose:** Users inherit notification settings from UAM roles with override capability
 - **Key Features:**
-  - Push notifications for critical events
-  - Email alerts with configurable thresholds
-  - SMS alerts for outages
-  - Notification history log
-- **Technical Approach:** Supabase Realtime + Edge Functions
-- **Estimated Effort:** 2 weeks
+  - User-level notification preferences (channel selection, quiet hours)
+  - Role-based default preferences (auto-inherit from UAM role)
+  - Event type subscription (subscribe to specific event types only)
+  - Severity threshold (only notify for medium+ severity)
+  - Quiet hours configuration (no notifications during specified times)
+- **Database Schema:**
+  ```sql
+  CREATE TABLE user_notification_preferences (
+    user_id uuid PRIMARY KEY REFERENCES profiles(id),
+    inherit_from_role boolean DEFAULT true,
+    preferred_channels text[] DEFAULT ARRAY['email'],
+    quiet_hours jsonb DEFAULT '{"enabled": false, "start": "22:00", "end": "08:00"}',
+    event_types text[] DEFAULT ARRAY[]::text[],
+    severity_threshold text DEFAULT 'medium'
+  );
+  ```
+- **UI Components:**
+  - User profile page → Notification Preferences section
+  - Preference editor with channel checkboxes
+  - Quiet hours time picker
+  - Event type multi-select
+- **Business Logic:** Check user preferences before sending notification
+- **Dependencies:** Enterprise Notification System (Q1 2026)
+- **Estimated Effort:** 1 week
 
 ### 3. Bulk Data Operations
 - **Purpose:** Efficiently manage large datasets
 - **Key Features:**
   - Bulk event classification (assign cause to multiple events)
   - Bulk meter updates (load type, region assignments)
-  - Batch export (select multiple date ranges)
-- **Dependencies:** None
+  - BatDynamic Notification Groups ⭐ **NEW**
+- **Purpose:** Auto-populate notification groups based on criteria
+- **Key Features:**
+  - Dynamic group membership (auto-update based on rules)
+  - Criteria builder (filter users by region, role, department)
+  - Example: "All operators in Hong Kong region"
+  - Scheduled refresh (daily cron job to update membership)
+  - Mixed groups (static members + dynamic criteria)
+- **Database Schema:**
+  - Add `group_rules` field to `notification_groups`:
+    ```jsonb
+    {
+    5 "criteria": [
+        {"field": "profile.region", "operator": "equals", "value": "HK"},
+        {"field": "profile.role", "operator": "in", "value": ["operator", "admin"]}
+      ]
+    }
+    ```
+- **UI Components:**
+  - Group builder with criteria editor
+  - Preview membership before saving
+  - Manual override (add/remove specific users)
+- **Dependencies:** Enterprise Notification System (Q1 2026)
 - **Estimated Effort:** 2 weeks
 
+### 2. Notification Analytics Dashboard ⭐ **NEW**
+- **6urpose:** Comprehensive analytics for notification system performance
+- **Key Features:**
+  - Send rate trends (notifications per day/week/month)
+  - Delivery success rate by channel (Email/SMS/Teams)
+  - Top triggered rules (most active rules)
+  - Most common failure reasons
+  - User engagement metrics (if email tracking added)
+  - Group statistics (members per group, notification volume)
+- **Visualizations:**
+  - Line chart: Notification volume over time
+  - 7ie chart: Notifications by channel
+  - Bar chart: Success vs Failed by channel
+  - Table: Top 10 most triggered rules
+- **Dependencies:** Enterprise Notification System (Q1 2026)
+- **Estimated Effort:** 1 week
+
+### 3. Advanced Template Features ⭐ **NEW**
+- **Purpose:** Enhance template system with versioning and conditional logic
+- **Key Features:**
+  - **Template Versioning:** Track version history, rollback to previous versions
+  - **A/B Testing:** Test two template versions, measure engagement
+  - **Conditional Content:** Show/hide sections based on variables
+    ```html
+    {{#if customer_count > 50}}
+    8 <p style="color: red;">⚠️ High customer impact!</p>
+    {{/if}}
+    
+    {{#each customers}}
+      <li>{{name}} - {{impact_level}}</li>
+    {{/each}}
+    ```
+  - **Template Library:** Import templates from shared library/marketplace
+  - **Rich Text Editor:** WYSIWYG editor for email body (replace plain textarea)
+  - **Template Preview:** Live preview with sample data
+- **Dependencies:** Enterprise Notification System (Q1 2026)
+- **Estimated Effort:** 3 weeks
+
+### 4. ch export (select multiple date ranges)
+- **Dependencies:** None
+- **Estimated Effort:** 2 weeks
+Real Notification Integrations ⭐ **NEW**
+- **Purpose:** Replace demo mode with actual email/SMS/Teams sending
+- **Key Features:**
+  - **Email Integration:** SendGrid or AWS SES
+    - SMTP configuration with API key
+    - Email tracking (open rate, click rate)
+    - Bounce handling
+    - Unsubscribe management
+  - **SMS Integration:** Twilio or AWS SNS
+    - Phone number validation
+    - Delivery receipts
+    - Cost tracking per message
+  - **Microsoft Teams Integration:** Microsoft Graph API
+    - Authenticated Teams app
+    5 Send direct messages to users
+    - Post to Team channels
+    - Actionable message cards (buttons, forms)
+- **Requirements:**
+  - SendGrid API key (or AWS SES credentials)
+  - Twilio account (or AWS SNS)
+  - Microsoft Teams app registration (Azure AD)
+  - Budget for SMS costs (~$0.01-0.05 per message)
+- **Dependencies:** Enterprise Notification System (Q1 2026)
+- **Estimated Effort:** 2 weeks
+
+### 2. Notification Scheduling ⭐ **NEW**
+- **Purpose:** Schedule notifications for future delivery
+- **6ey Features:**
+  - Schedule notifications for specific date/time
+  - Recurring schedules (daily, weekly, monthly reports)
+  - Calendar view of scheduled notifications
+  - Edit/cancel scheduled notifications
+  - Timezone support
+- **Database Schema:**
+  ```sql
+  CREATE TABLE scheduled_notifications (
+    id uuid PRIMARY KEY,
+    rule_id uuid REFERENCES notification_rules(id),
+    scheduled_for timestamptz NOT NULL,
+    recurrence_pattern jsonb,  -- {"type": "daily", "interval": 1}
+    recipient_groups uuid[],
+    status text DEFAULT 'pending',
+    created_at timestamptz DEFAULT now()
+  );
+  ```
+- **Technical Approach:** Supabase pg_cron or Edge Function with scheduled trigger
+- **Dependencies:** Enterprise Notification System (Q1 2026)
+- **Estimated Effort:** 1 week
+
+### 3. Notification Rate Limiting & Digest ⭐ **NEW**
+- **Purpose:** Prevent notification spam and batch notifications
+- **Key Features:**
+  - **Rate Limiting:** Max X notifications per user per hour
+  - **Cooldown Period:** Min time between same notification types
+  - **Digest Mode:** Batch multiple notifications into single email
+    - Example: "Daily Digest - 20 Events: 15 voltage dips, 3 interruptions, 2 harmonic"
+  - **Smart Batching:** Group related events automatically
+  - **Configurable per Group:** Different limits for different groups
+- **Implementation:**
+  - Check `notification_logs` for recent sends to same recipient
+  - If rate limit exceeded, suppress with reason
+  - Cron job to send daily/hourly digests
+- **Dependencies:** Enterprise Notification System (Q1 2026)
+- **Estimated Effort:** 2 weeks
+
+### 4. 
 ### 4. Enhanced Dashboard Widgets
 - **Purpose:** Customizable dashboard for at-a-glance insights
 - **Key Features:**
@@ -291,6 +466,10 @@
    - Get embed URL from portal
 
 4. **Test Iframe Embedding** (30 min)
+| 2026-01-14 | Q1 2026 Planned | **Added Enterprise Notification System Migration (5-day plan)** | System |
+| 2026-01-14 | Q2 2026 | **Added User Notification Preferences feature** | System |
+| 2026-01-14 | Q3-Q4 2026 | **Added Dynamic Groups, Notification Analytics, Advanced Templates** | System |
+| 2026-01-14 | 2027+ | **Added Real Integrations, Scheduling, Rate Limiting, Digest features** | System |
    ```typescript
    // Quick test in Dashboard.tsx
    case 'powerbi-test':

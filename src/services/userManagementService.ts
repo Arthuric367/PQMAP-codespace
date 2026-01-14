@@ -297,3 +297,38 @@ export function getRoleInfo(role: SystemRole): { name: string; description: stri
 export function getModuleById(moduleId: string): SystemModule | undefined {
   return systemModules.find(m => m.id === moduleId);
 }
+
+/**
+ * Check if a user has permission to approve notification templates
+ * Only admin roles (system_admin, system_owner) can approve templates
+ * 
+ * @param userRole - The user's system role
+ * @returns true if user can approve templates, false otherwise
+ */
+export function canApproveNotificationTemplates(userRole: SystemRole): boolean {
+  return userRole === 'system_admin' || userRole === 'system_owner';
+}
+
+/**
+ * Check if a user has specific permission for a module
+ * 
+ * @param role - The user's system role
+ * @param moduleId - The module ID to check
+ * @param action - The permission action (create, read, update, delete)
+ * @returns true if user has the permission, false otherwise
+ */
+export async function hasPermission(
+  role: SystemRole,
+  moduleId: string,
+  action: PermissionAction
+): Promise<boolean> {
+  const permissions = await fetchRolePermissions(role);
+  const modulePermission = permissions.find(p => p.module === moduleId);
+  
+  if (!modulePermission) {
+    return false;
+  }
+  
+  return modulePermission.permissions.includes(action);
+}
+

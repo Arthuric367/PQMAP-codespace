@@ -60,6 +60,14 @@ We have consolidated the documentation into **5 core documents** for easier navi
   - Deployment & DevOps (CI/CD pipeline)
   - Performance optimization
 
+### New Documentation (January 2026)
+
+**Notification System Migration (January 14, 2026):**
+- ✅ **[NOTIFICATION_SYSTEM_MIGRATION_PLAN.md](NOTIFICATION_SYSTEM_MIGRATION_PLAN.md)** - 51-page comprehensive 5-day implementation plan for enterprise notification center
+- ✅ **[ROLE_SYSTEM_CLARIFICATION.md](ROLE_SYSTEM_CLARIFICATION.md)** - Critical guide explaining database roles vs UAM TypeScript roles to prevent SQL errors
+- ✅ **[ROLE_ERROR_RESOLUTION.md](ROLE_ERROR_RESOLUTION.md)** - Detailed resolution of role enum error in notification migration (10 fixes)
+- ✅ **[QUICK_FIX_SUMMARY.md](QUICK_FIX_SUMMARY.md)** - Quick reference card for role error fixes and re-run instructions
+
 ### Archived Documents
 
 The following documents have been moved to **Archive/** folder as their content has been consolidated:
@@ -94,7 +102,8 @@ The following documents have been moved to **Archive/** folder as their content 
 - IMPLEMENTATION_PLAN.md
 
 **Total Archived:** 24 documents  
-**Total Active (Core):** 5 documents
+**Total Active (Core):** 5 documents  
+**Total Active (Supporting):** 5 documents (Notification System Migration + Day 2 + Role Guides)
 
 ---
 
@@ -109,7 +118,9 @@ The following documents have been moved to **Archive/** folder as their content 
 - Which migrations have been applied → [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) (Migration History)
 - What features are planned → [ROADMAP.md](ROADMAP.md)
 - Technical architecture → [ARCHITECTURE.md](ARCHITECTURE.md)
-- How to contribute code → [ARCHITECTURE.md](ARCHITECTURE.md) (Development Workflow)
+- How to contribute code → [ARCHITECTURE.md](ARCHITECTURE
+- **Notification system implementation** → [NOTIFICATION_SYSTEM_MIGRATION_PLAN.md](NOTIFICATION_SYSTEM_MIGRATION_PLAN.md)
+- **Database role errors (CRITICAL)** → [ROLE_SYSTEM_CLARIFICATION.md](ROLE_SYSTEM_CLARIFICATION.md).md) (Development Workflow)
 - UI design patterns → [STYLES_GUIDE.md](STYLES_GUIDE.md)
 
 ### For Product Managers
@@ -125,6 +136,8 @@ The following documents have been moved to **Archive/** folder as their content 
 
 **Want to know...?** → **Read...**
 - All table schemas → [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)
+- **Valid enum values for user roles** → [ROLE_SYSTEM_CLARIFICATION.md](ROLE_SYSTEM_CLARIFICATION.md)
+- **Fix role enum errors** → [ROLE_ERROR_RESOLUTION.md](ROLE_ERROR_RESOLUTION.md)
 - Migration history → [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) (Migration History)
 - Indexes and constraints → [ARCHITECTURE.md](ARCHITECTURE.md) (Database Architecture)
 - RLS policies → [ARCHITECTURE.md](ARCHITECTURE.md) (Database Architecture)
@@ -220,12 +233,22 @@ If you have links to old documents:
 - Number of documentation-related Slack questions (Target: 50% reduction)
 - Documentation update compliance (Target: 100% for new features)
 
----
-
-## Related Files
-
+**Core Documentation (5 files):**
 - [PROJECT_FUNCTION_DESIGN.md](PROJECT_FUNCTION_DESIGN.md) - 2716 lines
 - [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) - 1400+ lines
+- [ROADMAP.md](ROADMAP.md) - 370+ lines (new)
+- [ARCHITECTURE.md](ARCHITECTURE.md) - 400+ lines (new)
+- [STYLES_GUIDE.md](STYLES_GUIDE.md) - Existing
+
+**Supporting Documentation (5 files):**
+- [NOTIFICATION_SYSTEM_MIGRATION_PLAN.md](NOTIFICATION_SYSTEM_MIGRATION_PLAN.md) - 51 pages (Jan 2026)
+- [DAY2_COMPLETION_GUIDE.md](DAY2_COMPLETION_GUIDE.md) - TypeScript types & services implementation (Jan 2026)
+- [ROLE_SYSTEM_CLARIFICATION.md](ROLE_SYSTEM_CLARIFICATION.md) - Critical role guide (Jan 2026)
+- [ROLE_ERROR_RESOLUTION.md](ROLE_ERROR_RESOLUTION.md) - Error fix details (Jan 2026)
+- [QUICK_FIX_SUMMARY.md](QUICK_FIX_SUMMARY.md) - Quick reference (Jan 2026)
+
+**Archive:**
+- [Archive/](Archive/) - 24BASE_SCHEMA.md) - 1400+ lines
 - [ROADMAP.md](ROADMAP.md) - 370+ lines (new)
 - [ARCHITECTURE.md](ARCHITECTURE.md) - 400+ lines (new)
 - [STYLES_GUIDE.md](STYLES_GUIDE.md) - Existing

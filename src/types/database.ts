@@ -621,3 +621,139 @@ export interface PaginatedResponse<T> extends ApiResponse<T[]> {
   totalCount: number;
   totalPages: number;
 }
+
+// Notification System Types
+export interface NotificationChannel {
+  id: string;
+  name: string;
+  type: 'email' | 'sms' | 'teams';
+  status: 'enabled' | 'disabled' | 'maintenance';
+  priority: number;
+  config: {
+    demo_mode?: boolean;
+    smtp_server?: string;
+    sms_gateway?: string;
+    teams_webhook?: string;
+    [key: string]: any;
+  };
+  monitoring_metrics: {
+    last_success?: string;
+    success_rate?: number;
+    avg_latency_ms?: number;
+    [key: string]: any;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationTemplate {
+  id: string;
+  name: string;
+  code: string;
+  description: string | null;
+  email_subject: string | null;
+  email_body: string | null;
+  sms_body: string | null;
+  teams_body: string | null;
+  variables: Array<{
+    name: string;
+    description: string;
+    required: boolean;
+    default_value?: string;
+  }>;
+  status: 'draft' | 'approved' | 'archived';
+  version: number;
+  applicable_channels: string[];
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+}
+
+export interface NotificationGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  group_type: 'custom' | 'dynamic';
+  status: 'active' | 'inactive';
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+}
+
+export interface NotificationGroupMember {
+  id: string;
+  group_id: string;
+  user_id: string;
+  email: string | null;
+  phone: string | null;
+  preferred_channels: string[];
+  added_at: string;
+  added_by: string | null;
+}
+
+export interface NotificationRule {
+  id: string;
+  name: string;
+  description: string | null;
+  conditions: Array<{
+    field: string;
+    operator: 'equals' | 'not_equals' | 'greater_than' | 'less_than' | 'in' | 'contains';
+    value: any;
+  }>;
+  template_id: string | null;
+  channels: string[];
+  notification_groups: string[];
+  additional_recipients: Array<{
+    email?: string;
+    phone?: string;
+  }>;
+  typhoon_mode_enabled: boolean;
+  mother_event_only: boolean;
+  include_waveform: boolean;
+  priority: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+}
+
+export interface NotificationLog {
+  id: string;
+  rule_id: string | null;
+  event_id: string | null;
+  template_id: string | null;
+  recipient_type: 'user' | 'group' | 'adhoc';
+  recipient_id: string | null;
+  recipient_email: string | null;
+  recipient_phone: string | null;
+  channel: string;
+  subject: string | null;
+  message: string | null;
+  status: 'pending' | 'sent' | 'failed' | 'suppressed';
+  sent_at: string | null;
+  failed_reason: string | null;
+  triggered_by: {
+    user_id?: string;
+    system?: boolean;
+    [key: string]: any;
+  };
+  suppression_reason: string | null;
+  created_at: string;
+}
+
+export interface NotificationSystemConfig {
+  id: string;
+  typhoon_mode: boolean;
+  maintenance_mode: boolean;
+  typhoon_mode_until: string | null;
+  maintenance_mode_until: string | null;
+  default_channels: string[];
+  max_notifications_per_event: number;
+  notification_cooldown_minutes: number;
+  updated_at: string;
+  updated_by: string | null;
+}
+
