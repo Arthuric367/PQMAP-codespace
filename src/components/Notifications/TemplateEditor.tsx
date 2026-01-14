@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { X, Save, Eye, Plus, Trash2, Code } from 'lucide-react';
 import { createTemplate, updateTemplate, getTemplate } from '../../services/notificationService';
 import { substituteVariables } from '../../services/notificationService';
-import type { NotificationTemplate } from '../../types/database';
 
 interface TemplateEditorProps {
   templateId?: string;

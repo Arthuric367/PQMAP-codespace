@@ -1,20 +1,29 @@
 import { useEffect, useState } from 'react';
 import { Users, Plus, Edit2, Trash2, UserCheck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import toast from 'react-hot-toast';
 import type { NotificationGroup } from '../../types/database';
 
 interface GroupListProps {
   onEdit: (group: NotificationGroup) => void;
   onNew: () => void;
+  refreshKey?: number;
 }
 
-export default function GroupList({ onEdit, onNew }: GroupListProps) {
+export default function GroupList({ onEdit, onNew, refreshKey }: GroupListProps) {
   const [groups, setGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadGroups();
   }, []);
+
+  // Reload groups when refreshKey changes
+  useEffect(() => {
+    if (refreshKey !== undefined && refreshKey > 0) {
+      loadGroups();
+    }
+  }, [refreshKey]);
 
   const loadGroups = async () => {
     setLoading(true);
@@ -44,34 +53,51 @@ export default function GroupList({ onEdit, onNew }: GroupListProps) {
     setLoading(false);
   };
 
-  const handleDelete = async (groupId: string) => {
+  const handleDelete = async (groupId: string, groupName: string) => {
     if (!confirm('Are you sure you want to delete this group? This action cannot be undone.')) {
       return;
     }
 
-    // Delete group members first
-    await supabase
-      .from('notification_group_members')
-      .delete()
-      .eq('group_id', groupId);
+    try {
+      // Delete group members first
+      await supabase
+        .from('notification_group_members')
+        .delete()
+        .eq('group_id', groupId);
 
-    // Delete group
-    await supabase
-      .from('notification_groups')
-      .delete()
-      .eq('id', groupId);
+      // Delete group
+      const { error } = await supabase
+        .from('notification_groups')
+        .delete()
+        .eq('id', groupId);
 
-    loadGroups();
+      if (error) throw error;
+
+      toast.success(`Group "${groupName}" deleted successfully!`);
+      loadGroups();
+    } catch (error) {
+      console.error('Error deleting group:', error);
+      toast.error('Failed to delete group. Please try again.');
+    }
   };
 
-  const toggleStatus = async (groupId: string, currentStatus: string) => {
+  const toggleStatus = async (groupId: string, currentStatus: string, groupName: string) => {
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
-    await supabase
-      .from('notification_groups')
-      .update({ status: newStatus })
-      .eq('id', groupId);
+    
+    try {
+      const { error } = await supabase
+        .from('notification_groups')
+        .update({ status: newStatus })
+        .eq('id', groupId);
 
-    loadGroups();
+      if (error) throw error;
+
+      toast.success(`Group "${groupName}" ${newStatus === 'active' ? 'activated' : 'deactivated'}!`);
+      loadGroups();
+    } catch (error) {
+      console.error('Error updating group status:', error);
+      toast.error('Failed to update group status. Please try again.');
+    }
   };
 
   if (loading) {
@@ -158,7 +184,7 @@ export default function GroupList({ onEdit, onNew }: GroupListProps) {
 
                 <div className="flex items-center gap-2 ml-4">
                   <button
-                    onClick={() => toggleStatus(group.id, group.status)}
+                    onClick={() => toggleStatus(group.id, group.status, group.name)}
                     className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
                       group.status === 'active'
                         ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
@@ -174,7 +200,7 @@ export default function GroupList({ onEdit, onNew }: GroupListProps) {
                     <Edit2 className="w-5 h-5 text-slate-600" />
                   </button>
                   <button
-                    onClick={() => handleDelete(group.id)}
+                    onClick={() => handleDelete(group.id, group.name)}
                     className="p-2 hover:bg-red-50 rounded-lg transition-all"
                   >
                     <Trash2 className="w-5 h-5 text-red-600" />

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { NotificationRule } from '../types/database';
-import { Bell, Plus, Edit2, Trash2, FileText, Radio, Users, ScrollText, LayoutDashboard } from 'lucide-react';
+import { Bell, Plus, Edit2, Trash2, FileText, Radio, Users, ScrollText, LayoutDashboard, Settings, X } from 'lucide-react';
 import TemplateManagement from './Notifications/TemplateManagement';
 import ChannelManagement from './Notifications/ChannelManagement';
 import GroupManagement from './Notifications/GroupManagement';
 import RuleManagement from './Notifications/RuleManagement';
+import NotificationLogs from './Notifications/NotificationLogs';
+import SystemConfig from './Notifications/SystemConfig';
 
 type TabType = 'dashboard' | 'rules' | 'templates' | 'channels' | 'groups' | 'logs';
 
@@ -13,6 +15,7 @@ export default function Notifications() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [rules, setRules] = useState<NotificationRule[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showSystemConfig, setShowSystemConfig] = useState(false);
 
   useEffect(() => {
     loadRules();
@@ -155,8 +158,12 @@ export default function Notifications() {
                       During typhoons, non-critical alerts can be suppressed to reduce notification overload.
                       Rules with typhoon mode enabled will pause notifications during severe weather events.
                     </p>
-                    <button className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-all font-semibold text-sm">
-                      Configure Typhoon Mode
+                    <button 
+                      onClick={() => setShowSystemConfig(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-all font-semibold text-sm"
+                    >
+                      <Settings className="w-4 h-4" />
+                      Configure System Settings
                     </button>
                   </div>
                 </div>
@@ -172,15 +179,32 @@ export default function Notifications() {
 
           {activeTab === 'groups' && <GroupManagement />}
 
-          {activeTab === 'logs' && (
-            <div className="text-center py-12">
-              <ScrollText className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-slate-600 mb-2">Notification Logs</h3>
-              <p className="text-slate-500">Coming soon - View notification history and delivery status</p>
-            </div>
-          )}
+          {activeTab === 'logs' && <NotificationLogs />}
         </div>
       </div>
+
+      {/* System Config Modal */}
+      {showSystemConfig && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-slate-200">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900">System Configuration</h2>
+                <p className="text-slate-600 mt-1">Manage notification system settings</p>
+              </div>
+              <button
+                onClick={() => setShowSystemConfig(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-all"
+              >
+                <X className="w-6 h-6 text-slate-600" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <SystemConfig />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { X, Save, UserPlus, Trash2, Mail, MessageSquare, Radio as RadioIcon } from 'lucide-react';
+import { X, Save, UserPlus, Trash2, Search } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import toast from 'react-hot-toast';
 
 interface GroupEditorProps {
   groupId?: string;
@@ -11,7 +12,6 @@ interface GroupEditorProps {
 interface Member {
   id: string;
   user_id: string;
-  channels: string[];
   profiles: {
     full_name: string;
     email: string;
@@ -23,6 +23,8 @@ function GroupEditor({ groupId, onClose, onSaved }: GroupEditorProps) {
   const [description, setDescription] = useState('');
   const [members, setMembers] = useState<Member[]>([]);
   const [availableUsers, setAvailableUsers] = useState<any[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -30,6 +32,19 @@ function GroupEditor({ groupId, onClose, onSaved }: GroupEditorProps) {
   useEffect(() => {
     loadData();
   }, [groupId]);
+
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setFilteredUsers(availableUsers);
+    } else {
+      const query = searchQuery.toLowerCase();
+      const filtered = availableUsers.filter(user => 
+        user.full_name.toLowerCase().includes(query) || 
+        user.email.toLowerCase().includes(query)
+      );
+      setFilteredUsers(filtered);
+    }
+  }, [searchQuery, availableUsers]);
 
   const loadData = async () => {
     setLoading(true);
@@ -53,7 +68,6 @@ function GroupEditor({ groupId, onClose, onSaved }: GroupEditorProps) {
         .select(`
           id,
           user_id,
-          channels,
           profiles:user_id (
             full_name,
             email
@@ -81,7 +95,7 @@ function GroupEditor({ groupId, onClose, onSaved }: GroupEditorProps) {
 
   const handleSave = async () => {
     if (!name.trim()) {
-      alert('Please enter a group name');
+      toast.error('Please enter a group name');
       return;
     }
 
@@ -90,7 +104,7 @@ function GroupEditor({ groupId, onClose, onSaved }: GroupEditorProps) {
     try {
       if (groupId) {
         // Update existing group
-        await supabase
+        const { error: updateError } = await supabase
           .from('notification_groups')
           .update({
             name: name.trim(),
@@ -98,6 +112,8 @@ function GroupEditor({ groupId, onClose, onSaved }: GroupEditorProps) {
             updated_at: new Date().toISOString()
           })
           .eq('id', groupId);
+
+        if (updateError) throw updateError;
       } else {
         // Create new group
         const { data: newGroup, error } = await supabase
@@ -116,15 +132,17 @@ function GroupEditor({ groupId, onClose, onSaved }: GroupEditorProps) {
         if (newGroup && members.length > 0) {
           const memberInserts = members.map(member => ({
             group_id: newGroup.id,
-            user_id: member.user_id,
-            channels: member.channels
+            user_id: member.user_id
           }));
 
-          await supabase
+          const { error: memberError } = await supabase
             .from('notification_group_members')
             .insert(memberInserts);
+
+          if (memberError) throw memberError;
         }
 
+        toast.success(`Group "${name.trim()}" created successfully!`);
         onSaved();
         return;
       }
@@ -154,30 +172,22 @@ function GroupEditor({ groupId, onClose, onSaved }: GroupEditorProps) {
         if (toAdd.length > 0) {
           const memberInserts = toAdd.map(member => ({
             group_id: groupId,
-            user_id: member.user_id,
-            channels: member.channels
+            user_id: member.user_id
           }));
 
-          await supabase
+          const { error: addError } = await supabase
             .from('notification_group_members')
             .insert(memberInserts);
-        }
 
-        // Update existing members' channels
-        const toUpdate = members.filter(m => currentMemberIds.has(m.user_id));
-        for (const member of toUpdate) {
-          await supabase
-            .from('notification_group_members')
-            .update({ channels: member.channels })
-            .eq('group_id', groupId)
-            .eq('user_id', member.user_id);
+          if (addError) throw addError;
         }
       }
 
+      toast.success(`Group "${name.trim()}" updated successfully!`);
       onSaved();
     } catch (error) {
       console.error('Error saving group:', error);
-      alert('Failed to save group. Please try again.');
+      toast.error('Failed to save group. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -191,14 +201,13 @@ function GroupEditor({ groupId, onClose, onSaved }: GroupEditorProps) {
 
     // Check if already added
     if (members.some(m => m.user_id === selectedUserId)) {
-      alert('This user is already a member of the group');
+      toast.error('This user is already a member of the group');
       return;
     }
 
     const newMember: Member = {
       id: crypto.randomUUID(),
       user_id: selectedUserId,
-      channels: ['email'], // Default to email
       profiles: {
         full_name: user.full_name,
         email: user.email
@@ -207,22 +216,16 @@ function GroupEditor({ groupId, onClose, onSaved }: GroupEditorProps) {
 
     setMembers([...members, newMember]);
     setSelectedUserId('');
+    setSearchQuery('');
+    toast.success(`${user.full_name} added to group`);
   };
 
   const handleRemoveMember = (memberId: string) => {
+    const member = members.find(m => m.id === memberId);
     setMembers(members.filter(m => m.id !== memberId));
-  };
-
-  const toggleMemberChannel = (memberId: string, channel: string) => {
-    setMembers(members.map(member => {
-      if (member.id === memberId) {
-        const channels = member.channels.includes(channel)
-          ? member.channels.filter(c => c !== channel)
-          : [...member.channels, channel];
-        return { ...member, channels };
-      }
-      return member;
-    }));
+    if (member) {
+      toast.success(`${member.profiles.full_name} removed from group`);
+    }
   };
 
   if (loading) {
@@ -292,29 +295,41 @@ function GroupEditor({ groupId, onClose, onSaved }: GroupEditorProps) {
             <h3 className="font-semibold text-slate-900">Members</h3>
 
             {/* Add Member */}
-            <div className="flex gap-2">
-              <select
-                value={selectedUserId}
-                onChange={(e) => setSelectedUserId(e.target.value)}
-                className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Select a user to add...</option>
-                {availableUsers
-                  .filter(user => !members.some(m => m.user_id === user.id))
-                  .map(user => (
-                    <option key={user.id} value={user.id}>
-                      {user.full_name} ({user.email}) - {user.role}
-                    </option>
-                  ))}
-              </select>
-              <button
-                onClick={handleAddMember}
-                disabled={!selectedUserId}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <UserPlus className="w-5 h-5" />
-                Add
-              </button>
+            <div className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by name or email..."
+                  className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div className="flex gap-2">
+                <select
+                  value={selectedUserId}
+                  onChange={(e) => setSelectedUserId(e.target.value)}
+                  className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select a user to add...</option>
+                  {filteredUsers
+                    .filter(user => !members.some(m => m.user_id === user.id))
+                    .map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.full_name} ({user.email}) - {user.role}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  onClick={handleAddMember}
+                  disabled={!selectedUserId}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <UserPlus className="w-5 h-5" />
+                  Add
+                </button>
+              </div>
             </div>
 
             {/* Member List */}
@@ -334,51 +349,13 @@ function GroupEditor({ groupId, onClose, onSaved }: GroupEditorProps) {
                       <p className="text-sm text-slate-600">{member.profiles.email}</p>
                     </div>
 
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-slate-600">Channels:</span>
-                        <button
-                          onClick={() => toggleMemberChannel(member.id, 'email')}
-                          className={`p-2 rounded-lg transition-all ${
-                            member.channels.includes('email')
-                              ? 'bg-blue-100 text-blue-600'
-                              : 'bg-slate-200 text-slate-400'
-                          }`}
-                          title="Email"
-                        >
-                          <Mail className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => toggleMemberChannel(member.id, 'sms')}
-                          className={`p-2 rounded-lg transition-all ${
-                            member.channels.includes('sms')
-                              ? 'bg-green-100 text-green-600'
-                              : 'bg-slate-200 text-slate-400'
-                          }`}
-                          title="SMS"
-                        >
-                          <MessageSquare className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => toggleMemberChannel(member.id, 'teams')}
-                          className={`p-2 rounded-lg transition-all ${
-                            member.channels.includes('teams')
-                              ? 'bg-purple-100 text-purple-600'
-                              : 'bg-slate-200 text-slate-400'
-                          }`}
-                          title="Microsoft Teams"
-                        >
-                          <RadioIcon className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      <button
-                        onClick={() => handleRemoveMember(member.id)}
-                        className="p-2 hover:bg-red-50 rounded-lg transition-all"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-600" />
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => handleRemoveMember(member.id)}
+                      className="p-2 hover:bg-red-50 rounded-lg transition-all group"
+                      title="Remove member"
+                    >
+                      <Trash2 className="w-5 h-5 text-red-600 group-hover:text-red-700" />
+                    </button>
                   </div>
                 ))}
               </div>

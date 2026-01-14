@@ -26,11 +26,12 @@ BEGIN
   SELECT COUNT(*) INTO v_total_events FROM pq_events;
   RAISE NOTICE 'Total events in database: %', v_total_events;
   
-  -- Count events with substation and circuit
+  -- Count events with substation and circuit (via meter)
   SELECT COUNT(*) INTO v_events_with_circuit 
-  FROM pq_events 
-  WHERE substation_id IS NOT NULL 
-  AND circuit_id IS NOT NULL;
+  FROM pq_events pe
+  JOIN pq_meters m ON m.id = pe.meter_id
+  WHERE pe.substation_id IS NOT NULL 
+  AND m.circuit_id IS NOT NULL;
   RAISE NOTICE 'Events with substation + circuit: %', v_events_with_circuit;
   RAISE NOTICE '';
   
@@ -50,13 +51,14 @@ BEGIN
   -- Initialize counter
   v_total_impacts := 0;
   
-  -- Loop through all events with substation and circuit
+  -- Loop through all events with substation and circuit (via meter)
   FOR v_event IN 
-    SELECT id, substation_id, circuit_id, timestamp
-    FROM pq_events 
-    WHERE substation_id IS NOT NULL 
-    AND circuit_id IS NOT NULL
-    ORDER BY timestamp ASC
+    SELECT pe.id, pe.substation_id, m.circuit_id, pe.timestamp
+    FROM pq_events pe
+    JOIN pq_meters m ON m.id = pe.meter_id
+    WHERE pe.substation_id IS NOT NULL 
+    AND m.circuit_id IS NOT NULL
+    ORDER BY pe.timestamp ASC
   LOOP
     -- Generate impacts for this event
     v_impacts := generate_customer_impacts_for_event(v_event.id);

@@ -5,15 +5,23 @@ import { supabase } from '../../lib/supabase';
 interface RuleListProps {
   onEdit: (ruleId: string) => void;
   onNew: () => void;
+  refreshKey?: number;
 }
 
-export default function RuleList({ onEdit, onNew }: RuleListProps) {
+export default function RuleList({ onEdit, onNew, refreshKey }: RuleListProps) {
   const [rules, setRules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadRules();
   }, []);
+
+  // Reload rules when refreshKey changes
+  useEffect(() => {
+    if (refreshKey !== undefined && refreshKey > 0) {
+      loadRules();
+    }
+  }, [refreshKey]);
 
   const loadRules = async () => {
     setLoading(true);

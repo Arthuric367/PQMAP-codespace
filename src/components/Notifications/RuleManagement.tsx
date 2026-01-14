@@ -5,6 +5,7 @@ import RuleBuilder from './RuleBuilder.tsx';
 export default function RuleManagement() {
   const [builderOpen, setBuilderOpen] = useState(false);
   const [selectedRuleId, setSelectedRuleId] = useState<string | undefined>();
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const handleEdit = (ruleId: string) => {
     setSelectedRuleId(ruleId);
@@ -24,11 +25,12 @@ export default function RuleManagement() {
   const handleBuilderSaved = () => {
     setBuilderOpen(false);
     setSelectedRuleId(undefined);
+    setRefreshKey(prev => prev + 1); // Trigger RuleList refresh
   };
 
   return (
     <div>
-      <RuleList onEdit={handleEdit} onNew={handleNew} />
+      <RuleList onEdit={handleEdit} onNew={handleNew} refreshKey={refreshKey} />
       
       {builderOpen && (
         <RuleBuilder

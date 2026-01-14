@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Clock, MapPin, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Upload, FileDown, Wrench } from 'lucide-react';
-import { PQEvent, Substation, EventCustomerImpact, IDRRecord, PQServiceRecord, PQMeter } from '../../types/database';
+import { PQEvent, Substation, EventCustomerImpact, IDRRecord, PQServiceRecord, PQMeter, Customer } from '../../types/database';
 import { supabase } from '../../lib/supabase';
 import WaveformDisplay from './WaveformDisplay';
 import { MotherEventGroupingService } from '../../services/mother-event-grouping';
 import { ExportService } from '../../services/exportService';
+import CustomerEventHistoryPanel from './CustomerEventHistoryPanel';
 
 type TabType = 'overview' | 'technical' | 'impact' | 'services' | 'children' | 'timeline' | 'idr';
 
@@ -101,6 +102,10 @@ export default function EventDetails({ event: initialEvent, substation: initialS
   // PQ Services state
   const [services, setServices] = useState<PQServiceRecord[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
+
+  // Customer event history panel state
+  const [showCustomerHistory, setShowCustomerHistory] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
   // Update state when props change
   useEffect(() => {
@@ -1755,9 +1760,29 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                       <div key={impact.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                         <div className="flex items-start justify-between">
                           <div>
-                            <p className="font-semibold text-slate-900">
+                            <button
+                              onClick={() => {
+                                console.log('👆 [EventDetails] Customer clicked:', {
+                                  customer_id: impact.customer_id,
+                                  hasCustomerObject: !!impact.customer,
+                                  customer: impact.customer ? {
+                                    id: impact.customer.id,
+                                    name: impact.customer.name,
+                                    account_number: impact.customer.account_number,
+                                    address: impact.customer.address
+                                  } : 'No customer object'
+                                });
+                                if (impact.customer) {
+                                  setSelectedCustomer(impact.customer);
+                                  setShowCustomerHistory(true);
+                                }
+                              }}
+                              disabled={!impact.customer}
+                              className="font-semibold text-blue-600 hover:text-blue-700 hover:underline text-left disabled:text-slate-900 disabled:cursor-default disabled:hover:no-underline"
+                              title={impact.customer ? 'Click to view event history' : 'Customer data not available'}
+                            >
                               {impact.customer?.name || `[Customer ID: ${impact.customer_id}]`}
-                            </p>
+                            </button>
                             <p className="text-sm text-slate-600">
                               {impact.customer?.address || '[No address]'}
                             </p>
@@ -2999,6 +3024,17 @@ export default function EventDetails({ event: initialEvent, substation: initialS
             </div>
           </div>
         </div>
+      )}
+
+      {/* Customer Event History Panel */}
+      {showCustomerHistory && selectedCustomer && (
+        <CustomerEventHistoryPanel
+          customer={selectedCustomer}
+          onClose={() => {
+            setShowCustomerHistory(false);
+            setSelectedCustomer(null);
+          }}
+        />
       )}
 
       {/* IDR Import Results Modal */}

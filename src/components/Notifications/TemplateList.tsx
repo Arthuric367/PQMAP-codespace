@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FileText, Plus, Edit2, Archive, CheckCircle, Clock, XCircle, Eye } from 'lucide-react';
+import { FileText, Plus, Edit2, Archive, CheckCircle, Clock, XCircle } from 'lucide-react';
 import { getTemplates, archiveTemplate } from '../../services/notificationService';
 import type { NotificationTemplate } from '../../types/database';
 import TemplateApprovalModal from './TemplateApprovalModal';

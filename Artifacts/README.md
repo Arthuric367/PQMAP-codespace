@@ -1,208 +1,217 @@
 # Artifacts Folder - Document Index
 
-**Last Updated:** January 5, 2026
+**Last Updated:** January 14, 2026
 
 ---
 
-## 📚 Active Documentation (16 Documents)
+## 📚 Core Documentation (5 Documents)
 
-### Core Reference Documents
+### Active Reference Documents ⭐
 
-1. **DATABASE_SCHEMA.md** ⭐
-   - Complete database schema reference
-   - Migration history and status
-   - Table definitions with all columns
-   - Status: Regularly updated
+1. **[PROJECT_FUNCTION_DESIGN.md](PROJECT_FUNCTION_DESIGN.md)** - Complete functional specifications
+   - All modules and features documented
+   - Change history with dates
+   - Architecture and workflows
+   - **Version: 1.6 (Updated Jan 14, 2026)**
+   - **Latest: Notification System Module**
 
-2. **PROJECT_FUNCTION_DESIGN.md** ⭐
-   - Comprehensive functional design document
-   - Architecture and tech stack
-   - Module descriptions and workflows
-   - **Version: 1.5 (Updated Jan 5, 2026)**
-   - **NEW: SCADA Substation Management Module**
-   - **NEW: User Management Module**
+2. **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** - Complete database reference
+   - All table schemas with columns
+   - Migration history log (32+ migrations)
+   - Indexes and constraints
+   - **Latest: Notification System (7 new tables)**
 
-3. **SETUP_GUIDE.md**
-   - Installation and setup instructions
-   - Environment configuration
-   - Development workflow
+3. **[ROADMAP.md](ROADMAP.md)** - Feature roadmap and planning
+   - In Progress features (Q1 2026)
+   - Short/Medium/Long-term plans
+   - Power BI integration options
+   - Deferred features tracking
 
-4. **STYLES_GUIDE.md** ⭐
-   - UI patterns and design standards
-   - Component styling guidelines
-   - **NEW: Adding New Features checklist (Section 11)**
+4. **[ARCHITECTURE.md](ARCHITECTURE.md)** - Technical architecture
+   - System overview and tech stack
+   - Component architecture
+   - Integration points (PQMS, SCADA, Power BI)
+   - Security and development workflow
 
-### Requirements & Planning
-
-5. **REQUIREMENTS_GAP_ANALYSIS_2025.md**
-   - Requirements analysis
-   - Gap identification
-   - Priority tracking
-
-6. **REQUIREMENTS_TRACEABILITY.md**
-   - Requirements mapping to features
-   - Implementation tracking
-   - Validation status
-
-7. **IMPLEMENTATION_PLAN.md**
-   - Development roadmap
-   - Feature priorities
-   - Timeline estimates
-
-### Feature-Specific Documentation
-
-8. **IDR_TAB_IMPLEMENTATION.md**
-   - Incident Data Record tab implementation guide
-   - Field mapping reference
-   - Usage instructions
-
-9. **CUSTOMER_TRANSFORMER_MATCHING_IMPLEMENTATION.md**
-   - Customer-Transformer matching module
-   - CSV import/export workflows
-   - Validation rules
-
-10. **METER_MAP_IMPLEMENTATION.md**
-    - Meter geographic visualization
-    - Map integration details
-    - Performance optimization
-
-11. **SUBSTATION_MAP_IMPLEMENTATION.md**
-    - Substation geographic bubble chart
-    - Hong Kong map integration
-    - Interactive features
-
-12. **REPORT_BUILDER_IMPLEMENTATION.md**
-    - Interactive pivot table reports
-    - Calculated fields and filtering
-    - Save/share functionality
-
-13. **SARFI_ARCHITECTURE.md**
-    - SARFI calculation methodology
-    - Data aggregation patterns
-    - KPI monitoring design
-
-14. **ASSET_MANAGEMENT_EVENT_HISTORY.md**
-    - Event history tracking
-    - Timeline visualization
-    - Asset-event relationships
-
-### Integration Documentation
-
-15. **POWER_BI_INTEGRATION_QA.md**
-    - Power BI integration Q&A
-    - Data export formats
-    - Embedding guidelines
-
-16. **GITHUB_REQUIREMENTS_MANAGEMENT.md**
-    - Requirements tracking workflow
-    - Jira automation setup
-    - Traceability matrix
+5. **[STYLES_GUIDE.md](STYLES_GUIDE.md)** - UI/UX design guidelines
+   - Component patterns and best practices
+   - Color schemes and typography
+   - **Version: 1.6 (RefreshKey Pattern added)**
 
 ---
 
-## 📦 Phase 2 Documents (Legacy - For Reference)
+## 📋 Supporting Documentation (3 Documents)
 
-**Status:** 🗄️ Historical reference from Power BI integration planning phase
+### Database & Security Guides
 
-These documents are kept for historical context but may not reflect current implementation:
+6. **[ROLE_SYSTEM_CLARIFICATION.md](ROLE_SYSTEM_CLARIFICATION.md)** ⚠️ CRITICAL
+   - Database roles vs UAM TypeScript roles
+   - Prevents SQL enum errors
+   - Required reading for database work
 
-- **PHASE_2_README.md** - Phase 2 overview (legacy)
-- **PHASE_2_QUICK_START.md** - Quick start guide (legacy)
-- **PHASE_2_ROADMAP.md** - Development roadmap (legacy)
-- **PHASE_2_POWER_BI_STEP_BY_STEP.md** - Power BI setup guide (legacy)
+7. **[ROLE_ERROR_RESOLUTION.md](Archive/ROLE_ERROR_RESOLUTION.md)**
+   - Detailed role error fixes (10 fixes documented)
+   - Migration troubleshooting
 
-**Note:** Most Phase 2 functionality has been integrated into the main application. Refer to POWER_BI_INTEGRATION_QA.md for current integration details.
-
----
-
-## 🗄️ Archive Folder
-
-Contains historical documentation and deprecated guides. Organized by date/topic:
-
-- **Dec2025/** - December 2025 fixes and updates
-  - Schema fixes
-  - Profile error resolutions
-  - Meter transformer code updates
-  - Event grouping guides
-
-**Retention Policy:** Archive documents are kept for 12 months, then reviewed for deletion
+8. **[QUICK_FIX_SUMMARY.md](Archive/QUICK_FIX_SUMMARY.md)**
+   - Quick reference card for role errors
+   - Fast re-run instructions
 
 ---
 
-## � Recent Updates
+## ✅ Recently Completed (January 2026)
 
-### January 5, 2026 - Major Documentation Refresh ✨
+### Notification System Migration - COMPLETED ✅
+**Completion Date:** January 14, 2026  
+**Duration:** 5 days (as planned)  
+**Summary:** [Archive/NOTIFICATION_SYSTEM_COMPLETION_SUMMARY.md](Archive/NOTIFICATION_SYSTEM_COMPLETION_SUMMARY.md)
+
+**Deliverables:**
+- ✅ 7 new database tables (channels, templates, groups, rules, logs, config)
+- ✅ Backend service (notificationService.ts, 800+ lines)
+- ✅ 14 UI components (Template/Channel/Group/Rule/Logs management)
+- ✅ Multi-channel support (Email, SMS, Microsoft Teams)
+- ✅ Template engine with variable substitution
+- ✅ Complex rule builder with multi-condition logic
+- ✅ Approval workflow (Draft → Approved)
+- ✅ RefreshKey pattern implementation
+- ✅ Comprehensive logging system
+
+**Archived Documents:**
+- [Archive/NOTIFICATION_SYSTEM_MIGRATION_PLAN.md](Archive/NOTIFICATION_SYSTEM_MIGRATION_PLAN.md) - Original 51-page plan
+- [Archive/DAY2_COMPLETION_GUIDE.md](Archive/DAY2_COMPLETION_GUIDE.md) - Backend implementation
+- [Archive/DAY3_COMPLETION_SUMMARY.md](Archive/DAY3_COMPLETION_SUMMARY.md) - Template UI implementation
+
+---
+
+## 📦 Archive Folder (27 Documents)
+
+Complete implementation plans, guides, and historical documentation are archived to keep the main Artifacts folder clean and focused on active reference documents.
+
+**Categories:**
+- ✅ Completed feature implementations (SARFI, Report Builder, Customer Transformer, etc.)
+- ✅ Migration guides and setup instructions
+- ✅ Historical roadmaps and planning documents (Phase 2)
+- ✅ Integration documentation (Power BI, GitHub)
+- ✅ Database update summaries
+- ✅ Notification System implementation (completed Jan 14, 2026)
+
+**View Full List:** [Archive/](Archive/)
+
+**Key Documents:**
+- [NOTIFICATION_SYSTEM_MIGRATION_PLAN.md](Archive/NOTIFICATION_SYSTEM_MIGRATION_PLAN.md) - Completed Jan 14, 2026
+- [NOTIFICATION_SYSTEM_COMPLETION_SUMMARY.md](Archive/NOTIFICATION_SYSTEM_COMPLETION_SUMMARY.md) - Full summary
+- [ROOT_CAUSE_RESTORATION.md](Archive/ROOT_CAUSE_RESTORATION.md)
+- [SARFI_ARCHITECTURE.md](Archive/SARFI_ARCHITECTURE.md)
+- [REPORT_BUILDER_IMPLEMENTATION.md](Archive/REPORT_BUILDER_IMPLEMENTATION.md)
+- [CUSTOMER_TRANSFORMER_MATCHING_IMPLEMENTATION.md](Archive/CUSTOMER_TRANSFORMER_MATCHING_IMPLEMENTATION.md)
+- [IDR_TAB_IMPLEMENTATION.md](Archive/IDR_TAB_IMPLEMENTATION.md)
+- [METER_MAP_IMPLEMENTATION.md](Archive/METER_MAP_IMPLEMENTATION.md)
+- [SUBSTATION_MAP_IMPLEMENTATION.md](Archive/SUBSTATION_MAP_IMPLEMENTATION.md)
+- [ASSET_MANAGEMENT_EVENT_HISTORY.md](Archive/ASSET_MANAGEMENT_EVENT_HISTORY.md)
+- [POWER_BI_INTEGRATION_QA.md](Archive/POWER_BI_INTEGRATION_QA.md)
+- [GITHUB_REQUIREMENTS_MANAGEMENT.md](Archive/GITHUB_REQUIREMENTS_MANAGEMENT.md)
+- [PHASE_2_ROADMAP.md](Archive/PHASE_2_ROADMAP.md)
+- [Dec2025/](Archive/Dec2025/) - December 2025 fixes
+
+**Retention Policy:** Archive documents kept for 12 months, then reviewed for deletion
+
+---
+
+## 📊 Recent Updates
+
+### January 14, 2026 - Notification System Completed ✅
+**Milestone:** Enterprise Notification Center fully implemented and integrated
+
+**Summary:**
+- ✅ 5-day implementation plan completed on schedule
+- ✅ 7 new database tables with RLS policies
+- ✅ 14 UI components created (Template/Channel/Group/Rule/Logs management)
+- ✅ Backend service with template engine and rule evaluation
+- ✅ Multi-channel support (Email, SMS, Microsoft Teams)
+- ✅ RefreshKey pattern documented in STYLES_GUIDE.md (v1.6)
+
+**Documentation Updates:**
+- Created [Archive/NOTIFICATION_SYSTEM_COMPLETION_SUMMARY.md](Archive/NOTIFICATION_SYSTEM_COMPLETION_SUMMARY.md)
+- Moved migration plan to Archive (completed)
+- Updated [DOCUMENTATION_RESTRUCTURING.md](DOCUMENTATION_RESTRUCTURING.md)
+- Updated this README with new document counts
+
+**See:** [Archive/NOTIFICATION_SYSTEM_COMPLETION_SUMMARY.md](Archive/NOTIFICATION_SYSTEM_COMPLETION_SUMMARY.md) for full details
+
+### January 5, 2026 - Major Documentation Refresh
 - ✅ Added **User Management Module** documentation (Section 9)
 - ✅ Added **SCADA Substation Management Module** documentation (Section 10)
 - ✅ Updated PROJECT_FUNCTION_DESIGN.md to v1.5
-- ✅ Created [SCRIPTS_INDEX.md](../scripts/SCRIPTS_INDEX.md) for scripts reference
+- ✅ Created [SCRIPTS_INDEX.md](../scripts/SCRIPTS_INDEX.md)
 - ✅ Organized Phase 2 documents as legacy reference
-- ✅ Enhanced navigation and maintenance guidelines
-
-**See:** [DOCUMENTATION_UPDATE_JAN2026.md](DOCUMENTATION_UPDATE_JAN2026.md) for full details
 
 ---
 
-## �📊 Documentation Statistics
+## 📊 Documentation Statistics
 
-- **Active Core Documents:** 4
-- **Requirements/Planning:** 3
-- **Feature-Specific:** 9
-- **Integration Guides:** 2
-- **Legacy/Reference:** 4
-- **Total Active:** 18 documents
-- **Last Major Update:** January 5, 2026 (SCADA + User Management modules)
+- **Active Core Documents:** 5
+- **Supporting Guides:** 3 (Database/Security)
+- **Archived Documents:** 27
+- **Total Active:** 8 documents (13 archived, 27 total)
+- **Last Major Update:** January 14, 2026 (Notification System completion)
 
 ---
 
 ## 🔍 Finding Information
 
-### By Topic
+### Quick Reference Guide
 
-**Getting Started:**
-- SETUP_GUIDE.md
-- README.md (this file)
+**Need to know...?** → **Check...**
+- How a feature works → [PROJECT_FUNCTION_DESIGN.md](PROJECT_FUNCTION_DESIGN.md)
+- Database table structure → [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)
+- What features are planned → [ROADMAP.md](ROADMAP.md)
+- Technical architecture → [ARCHITECTURE.md](ARCHITECTURE.md)
+- UI design patterns → [STYLES_GUIDE.md](STYLES_GUIDE.md)
+- Database role errors → [ROLE_SYSTEM_CLARIFICATION.md](ROLE_SYSTEM_CLARIFICATION.md)
+- When features were added → [PROJECT_FUNCTION_DESIGN.md](PROJECT_FUNCTION_DESIGN.md) (Change History)
+- Migration history → [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) (Migration Log)
+- Completed implementations → [Archive/](Archive/) folder
 
-**Development:**
-- PROJECT_FUNCTION_DESIGN.md (comprehensive reference)
-- STYLES_GUIDE.md (UI patterns)
-- DATABASE_SCHEMA.md (data structures)
+### By Role
 
-**Features:**
-- Search by feature name in document titles
-- Check feature-specific implementation guides
-- Refer to PROJECT_FUNCTION_DESIGN.md for module details
+**Developers:**
+1. Start with [ARCHITECTURE.md](ARCHITECTURE.md)
+2. Review [PROJECT_FUNCTION_DESIGN.md](PROJECT_FUNCTION_DESIGN.md)
+3. Check [STYLES_GUIDE.md](STYLES_GUIDE.md) for UI patterns
 
-**Troubleshooting:**
-- Archive/Dec2025/ folder for recent fixes
-- MIGRATION_FIX_GUIDE.md (in /scripts)
-- Database diagnostic scripts (in /scripts)
+**Product Managers:**
+1. Review [PROJECT_FUNCTION_DESIGN.md](PROJECT_FUNCTION_DESIGN.md)
+2. Check [ROADMAP.md](ROADMAP.md) for planning
+3. Review feature history in Change History section
+
+**DBAs:**
+1. Start with [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)
+2. **CRITICAL:** Read [ROLE_SYSTEM_CLARIFICATION.md](ROLE_SYSTEM_CLARIFICATION.md)
+3. Review Migration History Log
+
+**QA Testers:**
+1. Check [PROJECT_FUNCTION_DESIGN.md](PROJECT_FUNCTION_DESIGN.md) for acceptance criteria
+2. Review [STYLES_GUIDE.md](STYLES_GUIDE.md) for UI behavior
 
 ---
 
 ## ✅ Documentation Maintenance
 
 ### Update Schedule
+- **Per Sprint (2 weeks):** Update Change History when features completed
+- **After Migration:** Update DATABASE_SCHEMA.md migration log
+- **Monthly:** Update ROADMAP.md feature statuses
+- **Quarterly:** Review ARCHITECTURE.md for tech stack changes
+- **Annual:** Full documentation review and cleanup
 
-- **Weekly:** Feature implementation docs (as features are built)
-- **Monthly:** PROJECT_FUNCTION_DESIGN.md, DATABASE_SCHEMA.md
-- **Quarterly:** Full documentation review and cleanup
-- **Per Release:** REQUIREMENTS_TRACEABILITY.md, version updates
-
-### Contributing
-
-When adding new documentation:
-1. Use clear, descriptive filenames
-2. Add creation date and version
-3. Update this README.md index
-4. Link related documents
-5. Follow existing formatting patterns
-
-When updating existing docs:
-1. Update "Last Updated" date
-2. Add version number if major change
-3. Document breaking changes clearly
-4. Archive superseded versions if needed
+### Contributing Guidelines
+When adding new features:
+1. Implement code + database migration
+2. Update [PROJECT_FUNCTION_DESIGN.md](PROJECT_FUNCTION_DESIGN.md) (module + change history)
+3. Update [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) (migration log)
+4. Update [ROADMAP.md](ROADMAP.md) (move to completed)
+5. Archive implementation guides after 3 months
 
 ---
 
@@ -212,147 +221,17 @@ When updating existing docs:
 - **Database Client:** [/src/lib/supabase.ts](../src/lib/supabase.ts)
 - **Type Definitions:** [/src/types/database.ts](../src/types/database.ts)
 - **Services:** [/src/services/](../src/services/)
+- **Notification Components:** [/src/components/Notifications/](../src/components/Notifications/)
 - **Scripts:** [/scripts/](../scripts/)
 
 ---
 
-**Last Reviewed:** January 5, 2026  
+**Last Reviewed:** January 14, 2026  
 **Next Review:** April 2026  
 **Maintained By:** PQMAP Development Team
-   - Created: December 12, 2025
 
-8. **EVENT_DETAILS_ENHANCEMENT_BRAINSTORM.md**
-   - IDR tab design brainstorming
-   - Feature requirements
-   - UI/UX considerations
-
-9. **EVENT_DETAILS_UI_MOCKUPS.md**
-   - UI design mockups
-   - Component layouts
-   - User interaction flows
-
-10. **FILTER_PROFILES_MIGRATION.md**
-    - Filter profile system documentation
-    - Migration instructions
-    - Multi-device sync implementation
-
-### Architecture & Design
-
-11. **SARFI_ARCHITECTURE.md**
-    - SARFI calculation detailed design
-    - Weight factor system
-    - Profile management
-
-12. **ROOT_CAUSE_RESTORATION.md**
-    - Root cause chart implementation
-    - Data aggregation logic
-    - Export functionality
-
-13. **SUBSTATION_MAP_IMPLEMENTATION.md**
-    - Geographic visualization guide
-    - Bubble chart implementation
-    - Hong Kong map projection
-
-14. **STYLES_GUIDE.md**
-    - UI component patterns
-    - Tailwind CSS conventions
-    - Design system guidelines
-
----
-
-## 📦 Archived Documentation
-
-### Archive/Dec2025/ (5 Documents)
-
-**Archive Date:** December 15, 2025  
-**Reason:** Completed tasks and resolved issues
-
-1. **CLEANUP_ORPHANED_EVENTS_GUIDE.md**
-   - Status: ✅ Completed - 0 orphans found
-   
-2. **METER_SCHEMA_CONFLICT_ANALYSIS.md**
-   - Status: ✅ Migration applied successfully
-   
-3. **SMOKE_TEST_RESULTS.md**
-   - Status: ✅ All tests passed
-   
-4. **SCHEMA_CONSOLIDATION_REPORT.md**
-   - Status: ✅ Schema issues resolved
-   
-5. **PROFILE_ERROR_FIX.md**
-   - Status: ✅ Bug fixed in code
-
-**See:** `Archive/Dec2025/README.md` for detailed archive information
-
-### Archive/ (Historical Documents)
-
-Earlier archived documents from previous development cycles:
-- DEMO_GUIDE.md
-- DEV_STATUS.md
-- EVENT_MANAGEMENT_STATUS.md
-- FIX_SCHEMA_ERROR.md
-- MOTHER_EVENT_GROUPING_QUESTIONS.md
-- PRIORITY_4_COMPLETION.md
-- PROJECT_UPDATE_SUMMARY.md
-- QUICK_FIX.md
-- SARFI_CONFIG_IMPLEMENTATION.md
-- SARFI_DEPLOYMENT_CHECKLIST.md
-- SARFI_IMPLEMENTATION_SUMMARY.md
-- SARFI_INVESTIGATION_SUMMARY.md
-- SARFI_QUICK_START.md
-- SARFI_SETUP_GUIDE.md
-- SARFI_TABLE_TROUBLESHOOTING.md
-- SECURITY_FIXES.md
-
----
-
-## 📂 Subdirectories
-
-### Documents/
-- CPDIS_Summary.md
-- PQMAP_Requirement_20251107.csv
-- PQMAP_User_Survey.md
-
-### From Users/
-- System Images/
-  - Meter Inventory.csv
-  - Mother Event List.csv
-
-### Minutes/
-- Meeting minutes and summaries
-- Design discussion notes
-
----
-
-## 📝 Document Maintenance Guidelines
-
-### When to Archive
-Archive documents when:
-- ✅ Task/migration is completed and verified
-- ✅ Bug is fixed and merged to main
-- ✅ Analysis is complete and decisions implemented
-- ✅ Test results are final and no longer needed
-
-### When to Keep Active
-Keep documents active when:
-- 📌 Content is referenced frequently
-- 📌 Document provides ongoing guidance
-- 📌 Information is needed for future development
-- 📌 Document is part of core reference set
-
-### Update Frequency
-- **DATABASE_SCHEMA.md**: After each migration
-- **PROJECT_FUNCTION_DESIGN.md**: After major features
-- **Feature Docs**: When implementation changes
-- **Archive Index**: When archiving documents
-
----
-
-## 🔍 Quick Reference
-
-**Need database info?** → DATABASE_SCHEMA.md  
-**Need architecture overview?** → PROJECT_FUNCTION_DESIGN.md  
-**Need setup instructions?** → SETUP_GUIDE.md  
+**Questions?** Contact Product Manager or Tech Lead  
+**Feedback?** Create GitHub Issue with label `documentation`
 **Need feature details?** → See feature-specific docs  
 **Need requirements?** → REQUIREMENTS_TRACEABILITY.md  
 **Looking for old docs?** → Check Archive/ folders

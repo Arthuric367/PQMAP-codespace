@@ -1,7 +1,7 @@
 # PQMAP Styles Guide
 
-**Version:** 1.5  
-**Last Updated:** January 5, 2026  
+**Version:** 1.6  
+**Last Updated:** January 14, 2026  
 **Purpose:** Document reusable UI patterns, export/import utilities, and design standards for PQMAP application
 
 ---
@@ -18,7 +18,8 @@
 8. [Animation Standards](#animation-standards)
 9. [Modal Patterns](#modal-patterns)
 10. [Profile Edit Modal Patterns](#profile-edit-modal-patterns)
-11. [Adding New Features](#adding-new-features) ⭐ NEW
+11. [Data Refresh Pattern (RefreshKey)](#data-refresh-pattern-refreshkey) ⭐ NEW
+12. [Adding New Features](#adding-new-features)
 
 ---
 
@@ -3325,6 +3326,318 @@ const datePresets = [
   color: #334155;
 }
 ```
+
+---
+
+## Data Refresh Pattern (RefreshKey)
+
+**IMPORTANT RULE**: Every component with CRUD operations (Create, Update, Delete) should implement the refreshKey pattern to automatically reload data and show the latest changes without manual page refresh.
+
+### What is RefreshKey?
+
+RefreshKey is a simple counter-based pattern that triggers data reload in child list components when parent components perform CRUD operations. It eliminates the need for manual page refresh (F5) and provides instant feedback to users.
+
+### When to Use
+
+Use the refreshKey pattern when:
+- **Parent-child component relationship** exists (e.g., Management component + List component)
+- **CRUD operations** are performed in modals or separate components
+- **Data lists need to refresh** after create/update/delete operations
+- **User expects immediate visual feedback** after changes
+
+### Implementation Pattern
+
+#### 1. Parent Component Setup (Management/Container)
+
+**Example: GroupManagement.tsx**
+
+```typescript
+import { useState } from 'react';
+import GroupList from './GroupList';
+import GroupEditor from './GroupEditor';
+import type { NotificationGroup } from '../../types/database';
+
+export default function GroupManagement() {
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>();
+  
+  // 🔑 RefreshKey state - increment to trigger reload
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleEdit = (group: NotificationGroup) => {
+    setSelectedGroupId(group.id);
+    setEditorOpen(true);
+  };
+
+  const handleNew = () => {
+    setSelectedGroupId(undefined);
+    setEditorOpen(true);
+  };
+
+  const handleEditorClose = () => {
+    setEditorOpen(false);
+    setSelectedGroupId(undefined);
+  };
+
+  const handleEditorSaved = () => {
+    setEditorOpen(false);
+    setSelectedGroupId(undefined);
+    // 🔑 Increment refreshKey to trigger list reload
+    setRefreshKey(prev => prev + 1);
+  };
+
+  return (
+    <div>
+      {/* 🔑 Pass refreshKey to list component */}
+      <GroupList 
+        onEdit={handleEdit} 
+        onNew={handleNew} 
+        refreshKey={refreshKey} 
+      />
+      
+      {editorOpen && (
+        <GroupEditor
+          groupId={selectedGroupId}
+          onClose={handleEditorClose}
+          onSaved={handleEditorSaved}
+        />
+      )}
+    </div>
+  );
+}
+```
+
+**Key Points:**
+- Initialize `refreshKey` with `useState(0)`
+- Increment in success handlers: `setRefreshKey(prev => prev + 1)`
+- Pass as prop to list component
+- Increment after ANY data-modifying operation (create, update, delete)
+
+#### 2. Child Component Setup (List/Table)
+
+**Example: GroupList.tsx**
+
+```typescript
+import { useEffect, useState } from 'react';
+import { supabase } from '../../lib/supabase';
+import type { NotificationGroup } from '../../types/database';
+
+interface GroupListProps {
+  onEdit: (group: NotificationGroup) => void;
+  onNew: () => void;
+  // 🔑 Add optional refreshKey prop
+  refreshKey?: number;
+}
+
+export default function GroupList({ onEdit, onNew, refreshKey }: GroupListProps) {
+  const [groups, setGroups] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Initial load
+  useEffect(() => {
+    loadGroups();
+  }, []);
+
+  // 🔑 Reload when refreshKey changes
+  useEffect(() => {
+    if (refreshKey !== undefined && refreshKey > 0) {
+      loadGroups();
+    }
+  }, [refreshKey]);
+
+  const loadGroups = async () => {
+    setLoading(true);
+    
+    const { data: groupsData } = await supabase
+      .from('notification_groups')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (groupsData) {
+      // Process data...
+      setGroups(groupsData);
+    }
+
+    setLoading(false);
+  };
+
+  // ... rest of component
+}
+```
+
+**Key Points:**
+- Add `refreshKey?: number` to props interface (optional)
+- Create separate `useEffect` watching `refreshKey`
+- Check `refreshKey !== undefined && refreshKey > 0` before reloading
+- Call existing `loadGroups()` function (don't duplicate logic)
+
+#### 3. Operations That Should Trigger Refresh
+
+**Always increment refreshKey after:**
+
+1. ✅ **Create Operations**
+   ```typescript
+   const handleCreate = async () => {
+     // ... create logic
+     if (success) {
+       setRefreshKey(prev => prev + 1);
+     }
+   };
+   ```
+
+2. ✅ **Update Operations**
+   ```typescript
+   const handleUpdate = async () => {
+     // ... update logic
+     if (success) {
+       setRefreshKey(prev => prev + 1);
+     }
+   };
+   ```
+
+3. ✅ **Delete Operations**
+   ```typescript
+   const handleDelete = async () => {
+     // ... delete logic
+     if (success) {
+       setRefreshKey(prev => prev + 1);
+     }
+   };
+   ```
+
+4. ✅ **Status Changes**
+   ```typescript
+   const handleStatusToggle = async () => {
+     // ... status change logic
+     if (success) {
+       setRefreshKey(prev => prev + 1);
+     }
+   };
+   ```
+
+5. ✅ **Batch Operations**
+   ```typescript
+   const handleBulkAction = async () => {
+     // ... bulk operation
+     if (success) {
+       setRefreshKey(prev => prev + 1);
+     }
+   };
+   ```
+
+### Common Use Cases
+
+#### Use Case 1: Group Management
+- **Parent**: `GroupManagement.tsx`
+- **List**: `GroupList.tsx`
+- **Editor**: `GroupEditor.tsx`
+- **Trigger**: After saving group or adding/removing members
+- **Result**: Member count updates immediately in group cards
+
+#### Use Case 2: Template Management
+- **Parent**: `TemplateManagement.tsx`
+- **List**: `TemplateList.tsx`
+- **Editor**: `TemplateEditor.tsx`
+- **Trigger**: After creating, updating, or archiving templates
+- **Result**: Template status and counts update immediately
+
+#### Use Case 3: Rule Management
+- **Parent**: `RuleManagement.tsx`
+- **List**: `RuleList.tsx`
+- **Editor**: `RuleEditor.tsx`
+- **Trigger**: After saving, activating, or deleting rules
+- **Result**: Rule list reflects changes instantly
+
+### Best Practices
+
+1. **Use Increment Pattern**: Always use `setRefreshKey(prev => prev + 1)` instead of `setRefreshKey(refreshKey + 1)` to avoid stale closure issues
+
+2. **Optional Prop**: Make `refreshKey` optional in child components for backward compatibility
+   ```typescript
+   refreshKey?: number;
+   ```
+
+3. **Check Before Reload**: In child component, check if refreshKey is defined and greater than 0
+   ```typescript
+   if (refreshKey !== undefined && refreshKey > 0) {
+     loadData();
+   }
+   ```
+
+4. **Single Responsibility**: RefreshKey should only trigger data reload, not change UI state
+
+5. **Combine with Toast**: Use toast notifications alongside refreshKey for complete user feedback
+   ```typescript
+   const handleSaved = () => {
+     toast.success('Group updated successfully!');
+     setRefreshKey(prev => prev + 1);
+   };
+   ```
+
+6. **Don't Overuse**: Only use for parent-child relationships. If components are siblings, use a shared state manager or context instead
+
+### Common Mistakes to Avoid
+
+❌ **DON'T** reload on every refreshKey change:
+```typescript
+// BAD - reloads even when refreshKey is 0 initially
+useEffect(() => {
+  loadData();
+}, [refreshKey]);
+```
+
+✅ **DO** check if refreshKey is valid:
+```typescript
+// GOOD - only reloads when intentionally incremented
+useEffect(() => {
+  if (refreshKey !== undefined && refreshKey > 0) {
+    loadData();
+  }
+}, [refreshKey]);
+```
+
+❌ **DON'T** use direct value:
+```typescript
+// BAD - can cause stale closure issues
+setRefreshKey(refreshKey + 1);
+```
+
+✅ **DO** use function form:
+```typescript
+// GOOD - always uses latest value
+setRefreshKey(prev => prev + 1);
+```
+
+❌ **DON'T** forget to pass the prop:
+```typescript
+// BAD - forgot refreshKey
+<ListComponent onEdit={handleEdit} />
+```
+
+✅ **DO** pass refreshKey prop:
+```typescript
+// GOOD
+<ListComponent onEdit={handleEdit} refreshKey={refreshKey} />
+```
+
+### Testing RefreshKey Implementation
+
+To verify refreshKey works correctly:
+
+1. Open the component in browser
+2. Perform a create/update operation (e.g., add member to group)
+3. Close the modal/editor
+4. **Verify**: List should update immediately without F5
+5. **Check**: Updated data should be visible (e.g., member count increases)
+6. **Confirm**: No manual refresh required
+
+### Components Using RefreshKey Pattern
+
+Current implementations:
+- ✅ `GroupManagement.tsx` → `GroupList.tsx`
+- 🔜 `TemplateManagement.tsx` → `TemplateList.tsx` (recommended)
+- 🔜 `RuleManagement.tsx` → `RuleList.tsx` (recommended)
+- 🔜 Any component with create/edit modals and list views
 
 ---
 
