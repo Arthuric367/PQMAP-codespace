@@ -165,6 +165,47 @@
    - PDF reports with charts
    - Scheduled email reports
 
+5. **Event Management Module Restructure** (Week 4)
+   - **Purpose:** Restructure event management to focus on voltage dip/swell events
+   - **Key Changes:**
+     - Event Management module shows only voltage_dip and voltage_swell events
+     - Other PQ event types (harmonic, interruption, transient) moved to AssetManagement.tsx
+     - Users select specific PQ meter in AssetManagement to view related events
+   - **UI Updates:**
+     - EventManagement.tsx: Filter to show only voltage dip/swell
+     - AssetManagement.tsx: Add event viewing capability for selected meter
+   - **Estimated Effort:** 1 week
+
+6. **Advanced Filter Button in Event Management** (Week 4)
+   - **Purpose:** Add comprehensive filtering for voltage dip/swell events
+   - **Key Features:**
+     - "Advanced Filter" button in EventManagement module
+     - Shows all filters that influence voltage dip & voltage swell event list
+     - Includes date range, severity, substation, meter, cause, customer impact, etc.
+     - Collapsible filter panel with save/load filter profiles
+   - **UI Components:**
+     - AdvancedFilterModal component with all filter options
+     - Integration with existing filter profiles system
+   - **Estimated Effort:** 3 days
+
+7. **Special IDR Upload Feature** (Week 4-5)
+   - **Purpose:** Automated mapping of IDR records to PQ events using timestamp and substation
+   - **Key Features:**
+     - Excel upload with multiple IDR records
+     - Automatic mapping using timestamp ± tolerance (e.g., ±5 minutes) and substation
+     - Mapping results table for user confirmation before import
+     - Handle timestamp differences between ADMS (IDR) and PQMS/CPDIS (PQ events)
+     - Manual override: Remove IDR from event_detail, manually add IDR from database
+   - **Technical Implementation:**
+     - IDR upload modal with Excel parsing
+     - Fuzzy matching algorithm for timestamp/substation correlation
+     - Preview table showing matched/unmatched records
+     - Database updates with audit trail
+   - **UI Components:**
+     - IDRUploadModal with file upload and mapping preview
+     - Event detail page with IDR management (add/remove)
+   - **Estimated Effort:** 1 week
+
 ---
 
 ## Short-term (Q2 2026)
@@ -640,6 +681,7 @@ Real Notification Integrations ⭐ **NEW**
 | 2026-01-07 | In Progress | Added Weighting Factors, PQ Benchmarking (completed) | System |
 | 2026-01-07 | Power BI | Consolidated QA document, added decision criteria | System |
 | 2026-01-08 | Q1 2026 Planned | Added System Parameters module with placeholder UI | System |
+| 2026-01-19 | Q1 2026 Planned | Added Event Management restructure, Advanced Filter button, and Special IDR Upload features after requirement workshop | System |
 
 ---
 
