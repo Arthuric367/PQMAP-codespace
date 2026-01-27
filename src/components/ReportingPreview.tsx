@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Clock, Download, FileText, Search } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, ArrowUpDown, BarChart3, Clock, Download, FileText, Search, Target } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { getVoltageProfiles } from '../services/meterReadingsService';
@@ -711,6 +711,64 @@ export default function ReportingPreview() {
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-purple-50 p-3 rounded-xl">
+              <BarChart3 className="w-6 h-6 text-purple-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">PQ Summary</h2>
+              <p className="text-sm text-slate-600 mt-1">Power quality summary reports and analytics</p>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">
+            Preview
+          </span>
+        </div>
+
+        <div className="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-4">
+          <p className="text-sm text-slate-700">
+            This section will surface PQ Summary views similar to the Erxi reporting screen (filters + summary table).
+            In Phase 4 we’ll keep it read-only until data sources are finalized.
+          </p>
+        </div>
+
+        <div className="mt-4 text-center py-8">
+          <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-500 font-medium">PQ Summary preview will be enabled after data mapping</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-amber-50 p-3 rounded-xl">
+              <Target className="w-6 h-6 text-amber-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Benchmarking</h2>
+              <p className="text-sm text-slate-600 mt-1">Benchmarking against PQ standards and voltage dip analysis</p>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">
+            Preview
+          </span>
+        </div>
+
+        <div className="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-4">
+          <p className="text-sm text-slate-700">
+            This section will align with existing PQ Benchmarking data sources (`pq_benchmark_standards` and
+            `pq_benchmark_thresholds`) and future voltage dip benchmarking views.
+          </p>
+        </div>
+
+        <div className="mt-4 text-center py-8">
+          <Target className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-500 font-medium">Benchmarking preview will be enabled after data wiring</p>
         </div>
       </div>
 

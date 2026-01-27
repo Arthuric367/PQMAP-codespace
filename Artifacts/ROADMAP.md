@@ -1,7 +1,7 @@
 # Product Roadmap
 
 **Document Purpose:** Capture planned features and future development initiatives  
-**Last Updated:** January 23, 2026  
+**Last Updated:** January 27, 2026  
 **Status:** In Progress
 
 ---
@@ -260,6 +260,68 @@
 
     - **Remaining Items:** Deferred by request (server-side aggregation, profiles CRUD, ingestion spec)
     - **Estimated Effort:** 5–7 working days (4 phases, testable checkpoints)
+
+9. **Dashboard Enhancements Phase 1** (Week 5-6) ⭐ **NEW** (Jan 27)
+   - **Purpose:** Enhance existing dashboard components with new analysis capabilities and data visualization options
+   - **Scope:**
+     - **9.1 AffectedCustomerChart Tab System**
+       - Add tab selector in upper left corner
+       - Tab 1: Voltage Dip Events per Customer (existing functionality)
+       - Tab 2: PQ Services Provided to Customers (new)
+       - Show sum of PQ services from `pq_service_records` table
+       - Maintain same TreeMap visualization style for consistency
+     
+     - **9.2 RootCauseChart Logic Update**
+       - Add new "Cause" column populated by regional staff
+       - Fallback hierarchy: Use regional staff "Cause" first, if empty use IDR "Cause"
+       - Database update: Add `cause_regional` column to `pq_events` table
+       - Update chart calculation to implement prioritization logic
+     
+     - **9.3 AffectedEquipmentChart (NEW)**
+       - New dashboard component for equipment failure analysis
+       - Data source: IDR → EquipmentCategory field
+       - Visualization: Bar chart showing equipment types vs voltage dip count
+       - Integration: Add to Dashboard.tsx layout
+     
+     - **9.4 InsightChart Year Comparison**
+       - Upper chart: Add configuration modal to select 3+ years for comparison
+       - Allow custom year selection (not limited to current-2, current-1, current)
+       - Dynamic legend generation based on selected years
+     
+     - **9.5 InsightChart Fragile Circuit Analysis**
+       - Lower chart: Replace substation analysis with circuit analysis
+       - Data source: IDR → Circuit field
+       - Parse circuit code from brackets: "(ST10) Yuen Long - Au Tau" → "ST10"
+       - Aggregate voltage dips by circuit code
+       - Show circuits with > 10 voltage dip events
+     
+     - **9.6 SARFI70Monitor Display Mode Toggle**
+       - Add toggle button: "Single" vs "Accumulative"
+       - Single mode: Show monthly SARFI-70 scores (current behavior)
+       - Accumulative mode: Show cumulative sum (Jan=1.1, Feb=1.1+0.9=2.0, Mar=2.0+0.8=2.8)
+       - Save preference to localStorage
+   
+   - **Technical Implementation:**
+     - Add `idr_circuit`, `idr_equipment_category` columns to `idr_records` table
+     - Create `AffectedEquipmentChart.tsx` component (300+ lines)
+     - Update `AffectedCustomerChart.tsx` with tab system (150 lines)
+     - Update `RootCauseChart.tsx` with fallback logic (50 lines)
+     - Update `InsightChart.tsx` with year selector and circuit parsing (200 lines)
+     - Update `SARFI70Monitor.tsx` with accumulative mode (100 lines)
+   
+   - **Database Changes:**
+     ```sql
+     ALTER TABLE pq_events ADD COLUMN cause_regional text;
+     ALTER TABLE idr_records ADD COLUMN circuit text;
+     ALTER TABLE idr_records ADD COLUMN equipment_category text;
+     ```
+   
+   - **UI Components:**
+     - InsightYearConfigModal (for year selection)
+     - Tab system in AffectedCustomerChart
+     - Mode toggle button in SARFI70Monitor
+   
+   - **Estimated Effort:** 2 weeks
 
 ---
 
@@ -738,6 +800,7 @@ Real Notification Integrations ⭐ **NEW**
 | 2026-01-08 | Q1 2026 Planned | Added System Parameters module with placeholder UI | System |
 | 2026-01-19 | Q1 2026 Planned | Added Event Management restructure, Advanced Filter button, and Special IDR Upload features after requirement workshop | System |
 | 2026-01-23 | Q1 2026 Planned | Updated Erxi-Reporting Merge Plan to Phase 4 completed and deferred remaining items | System |
+| 2026-01-27 | Q1 2026 Planned | **Added Dashboard Enhancements Phase 1** - AffectedCustomerChart tabs, RootCauseChart fallback logic, AffectedEquipmentChart (new), InsightChart year comparison & circuit analysis, SARFI70Monitor accumulative mode | System |
 
 ---
 
