@@ -11,11 +11,44 @@ interface FilterState {
   status: string;
   substations: string[];
   voltageLevels: string[];
+  areas: string[];
   circuitId: string;
   brand: string;
   model: string;
   searchText: string;
 }
+
+type EnergyReportType =
+  | 'voltage'
+  | 'current'
+  | 'v_magnitude'
+  | 'frequency'
+  | 'v_unbalance'
+  | 'flicker'
+  | 'v_thd'
+  | 'v_tehd'
+  | 'v_tohd';
+
+type EnergyReportRangePreset = '24h' | '7d' | '30d' | 'all' | 'custom';
+
+type EnergyReportRow = {
+  timestamp: string;
+  v1?: number;
+  v2?: number;
+  v3?: number;
+  i1?: number;
+  i2?: number;
+  i3?: number;
+  magnitude?: number;
+  frequency?: number;
+  vUnbalance?: number;
+  pst?: number;
+  plt?: number;
+  vThdA?: number;
+  vThdB?: number;
+  vThdC?: number;
+  vThdAvg?: number;
+};
 
 interface AssetManagementProps {
   selectedMeterId?: string | null;
@@ -64,6 +97,15 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
   const [latestReading, setLatestReading] = useState<LatestMeterReading | null>(null);
   const [loadingLatestReading, setLoadingLatestReading] = useState(false);
   const [latestReadingError, setLatestReadingError] = useState<string | null>(null);
+
+  // Energy Profile report states
+  const [selectedEnergyReport, setSelectedEnergyReport] = useState<EnergyReportType | null>(null);
+  const [energyReportPreset, setEnergyReportPreset] = useState<EnergyReportRangePreset>('24h');
+  const [energyReportCustomStart, setEnergyReportCustomStart] = useState('');
+  const [energyReportCustomEnd, setEnergyReportCustomEnd] = useState('');
+  const [energyReportRows, setEnergyReportRows] = useState<EnergyReportRow[]>([]);
+  const [energyReportPage, setEnergyReportPage] = useState(1);
+  const energyReportRowsPerPage = 50;
   
   // Filter states
   const [showFilterPanel, setShowFilterPanel] = useState(false);
@@ -71,11 +113,15 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
     status: 'all',
     substations: [],
     voltageLevels: [],
+    areas: [],
     circuitId: '',
     brand: '',
     model: '',
     searchText: ''
   });
+
+  // Meter Inventory inline filter dropdown state
+  const [inventoryDropdownOpen, setInventoryDropdownOpen] = useState<'substations' | 'voltage' | 'area' | null>(null);
   
   // Export states
   const [showExportDropdown, setShowExportDropdown] = useState(false);
@@ -134,7 +180,6 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
         setSelectedMeter(meter);
         loadMeterEvents(meter);
         loadMeterServices(meter);
-        loadRealtimeData();
         // Clear the selectedMeterId after opening modal
         if (onClearSelectedMeter) {
           onClearSelectedMeter();
@@ -143,11 +188,16 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
     }
   }, [selectedMeterId, meters]);
 
+  // Reset Energy Profile view when selecting a different meter
   useEffect(() => {
-    if (selectedMeter && activeTab === 'realtime') {
-      loadLatestReading(selectedMeter.id);
+    if (selectedMeter) {
+      setSelectedEnergyReport(null);
+      setEnergyReportPreset('24h');
+      setEnergyReportCustomStart('');
+      setEnergyReportCustomEnd('');
+      setEnergyReportPage(1);
     }
-  }, [selectedMeter, activeTab]);
+  }, [selectedMeter?.id]);
 
   const loadData = async () => {
     try {
@@ -438,6 +488,117 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
     return acc;
   }, {} as Record<string, Substation>);
 
+  const energyReportLabel = (report: EnergyReportType): string => {
+    switch (report) {
+      case 'voltage':
+        return 'Voltage';
+      case 'current':
+        return 'Current';
+      case 'v_magnitude':
+        return 'V-Magnitude';
+      case 'frequency':
+        return 'Frequency';
+      case 'v_unbalance':
+        return 'V-Unbalance';
+      case 'flicker':
+        return 'Flicker';
+      case 'v_thd':
+        return 'Voltage THD';
+      case 'v_tehd':
+        return 'Voltage TEHD';
+      case 'v_tohd':
+        return 'Voltage TOHD';
+      default:
+        return report;
+    }
+  };
+
+  const mulberry32 = (seed: number) => {
+    return () => {
+      let t = (seed += 0x6D2B79F5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+
+  const hashStringToSeed = (value: string): number => {
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  };
+
+  const generateMockEnergyReportRows = (meterId: string, report: EnergyReportType): EnergyReportRow[] => {
+    const now = Date.now();
+    const intervalMs = 10 * 60 * 1000;
+    const days = 30;
+    const totalPoints = days * 24 * 6; // 10-min buckets
+
+    const baseSeed = hashStringToSeed(`${meterId}:${report}`);
+    const rows: EnergyReportRow[] = [];
+
+    for (let i = 0; i < totalPoints; i++) {
+      const timestamp = new Date(now - i * intervalMs).toISOString();
+      const rng = mulberry32(baseSeed + i);
+
+      switch (report) {
+        case 'voltage': {
+          const v1 = 220 + (rng() - 0.5) * 10;
+          const v2 = 220 + (rng() - 0.5) * 10;
+          const v3 = 220 + (rng() - 0.5) * 10;
+          rows.push({ timestamp, v1, v2, v3 });
+          break;
+        }
+        case 'current': {
+          const i1 = 100 + (rng() - 0.5) * 40;
+          const i2 = 100 + (rng() - 0.5) * 40;
+          const i3 = 100 + (rng() - 0.5) * 40;
+          rows.push({ timestamp, i1, i2, i3 });
+          break;
+        }
+        case 'v_magnitude': {
+          const magnitude = 220 + (rng() - 0.5) * 12;
+          rows.push({ timestamp, magnitude });
+          break;
+        }
+        case 'frequency': {
+          const frequency = 50 + (rng() - 0.5) * 0.1;
+          rows.push({ timestamp, frequency });
+          break;
+        }
+        case 'v_unbalance': {
+          const vUnbalance = 0.5 + rng() * 2.0;
+          rows.push({ timestamp, vUnbalance });
+          break;
+        }
+        case 'flicker': {
+          const pst = 0.2 + rng() * 0.8;
+          const plt = 0.15 + rng() * 0.6;
+          rows.push({ timestamp, pst, plt });
+          break;
+        }
+        case 'v_thd':
+        case 'v_tehd':
+        case 'v_tohd': {
+          const base = report === 'v_thd' ? 2.0 : report === 'v_tehd' ? 3.0 : 1.5;
+          const vThdA = base + rng() * 2.0;
+          const vThdB = base + rng() * 2.0;
+          const vThdC = base + rng() * 2.0;
+          const vThdAvg = (vThdA + vThdB + vThdC) / 3;
+          rows.push({ timestamp, vThdA, vThdB, vThdC, vThdAvg });
+          break;
+        }
+        default:
+          rows.push({ timestamp });
+      }
+    }
+
+    return rows;
+  };
+
   // Sorting handler
   const handleSort = (field: string) => {
     console.log('handleSort called with field:', field);
@@ -459,6 +620,7 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
   const uniqueBrands = Array.from(new Set(meters.map(m => m.brand).filter(Boolean))).sort();
   const uniqueModels = Array.from(new Set(meters.map(m => m.model).filter(Boolean))).sort();
   const uniqueVoltageLevels = Array.from(new Set(meters.map(m => m.voltage_level).filter(Boolean))).sort();
+  const uniqueAreas = Array.from(new Set(meters.map(m => m.area).filter(Boolean))).sort();
 
   // Apply all filters (AND logic)
   const filteredMeters = meters.filter(meter => {
@@ -470,6 +632,9 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
     
     // Voltage level filter
     if (filters.voltageLevels.length > 0 && !filters.voltageLevels.includes(meter.voltage_level || '')) return false;
+
+    // Area filter
+    if (filters.areas.length > 0 && !filters.areas.includes(meter.area || '')) return false;
     
     // Circuit ID filter
     if (filters.circuitId && !meter.circuit_id?.toLowerCase().includes(filters.circuitId.toLowerCase())) return false;
@@ -480,13 +645,11 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
     // Model filter
     if (filters.model && meter.model !== filters.model) return false;
     
-    // Text search (meter_id, site_id, ip_address)
+    // Text search (meter_id only)
     if (filters.searchText) {
       const searchLower = filters.searchText.toLowerCase();
       const matchesMeterId = meter.meter_id?.toLowerCase().includes(searchLower);
-      const matchesSiteId = meter.site_id?.toLowerCase().includes(searchLower);
-      const matchesIpAddress = meter.ip_address?.toLowerCase().includes(searchLower);
-      if (!matchesMeterId && !matchesSiteId && !matchesIpAddress) return false;
+      if (!matchesMeterId) return false;
     }
     
     return true;
@@ -497,6 +660,7 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
     (filters.status !== 'all' ? 1 : 0) +
     filters.substations.length +
     filters.voltageLevels.length +
+    filters.areas.length +
     (filters.circuitId ? 1 : 0) +
     (filters.brand ? 1 : 0) +
     (filters.model ? 1 : 0) +
@@ -675,6 +839,7 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
       status: 'all',
       substations: [],
       voltageLevels: [],
+      areas: [],
       circuitId: '',
       brand: '',
       model: '',
@@ -784,6 +949,19 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showExportDropdown]);
+
+  // Close Meter Inventory inline dropdowns on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (inventoryDropdownOpen && !target.closest('.inventory-filters-container')) {
+        setInventoryDropdownOpen(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [inventoryDropdownOpen]);
 
   if (loading) {
     return (
@@ -924,6 +1102,190 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
                 </span>
               )}
             </button>
+          </div>
+        </div>
+
+        {/* Inline Meter Inventory Filters */}
+        <div className="mb-6 bg-slate-50 border border-slate-200 rounded-xl p-4 inventory-filters-container">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            {/* Meter ID search */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Meter ID</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={filters.searchText}
+                  onChange={(e) => {
+                    setFilters(prev => ({ ...prev, searchText: e.target.value }));
+                    setCurrentPage(1);
+                  }}
+                  placeholder="Contains..."
+                  className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Substation multi-select dropdown */}
+            <div className="relative">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Substation</label>
+              <button
+                type="button"
+                onClick={() => setInventoryDropdownOpen(prev => (prev === 'substations' ? null : 'substations'))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-left text-sm text-slate-700 hover:bg-slate-50"
+                title="Filter by Substation"
+              >
+                {filters.substations.length > 0 ? `${filters.substations.length} selected` : 'All'}
+              </button>
+              {inventoryDropdownOpen === 'substations' && (
+                <div className="absolute z-50 mt-2 w-full bg-white rounded-lg shadow-xl border border-slate-200 py-2 max-h-64 overflow-y-auto">
+                  {substations.length === 0 ? (
+                    <div className="px-4 py-2 text-sm text-slate-500">No substations</div>
+                  ) : (
+                    <div className="p-2 space-y-1">
+                      {substations.map(sub => {
+                        const checked = filters.substations.includes(sub.id);
+                        return (
+                          <label
+                            key={sub.id}
+                            className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer rounded"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                setFilters(prev => {
+                                  const next = e.target.checked
+                                    ? [...prev.substations, sub.id]
+                                    : prev.substations.filter(id => id !== sub.id);
+                                  return { ...prev, substations: next };
+                                });
+                                setCurrentPage(1);
+                              }}
+                              className="rounded text-blue-600"
+                            />
+                            <span className="text-sm text-slate-700">
+                              {sub.code ? `${sub.code} - ${sub.name}` : sub.name}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Voltage Level multi-select dropdown */}
+            <div className="relative">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Voltage Level</label>
+              <button
+                type="button"
+                onClick={() => setInventoryDropdownOpen(prev => (prev === 'voltage' ? null : 'voltage'))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-left text-sm text-slate-700 hover:bg-slate-50"
+                title="Filter by Voltage Level"
+              >
+                {filters.voltageLevels.length > 0 ? `${filters.voltageLevels.length} selected` : 'All'}
+              </button>
+              {inventoryDropdownOpen === 'voltage' && (
+                <div className="absolute z-50 mt-2 w-full bg-white rounded-lg shadow-xl border border-slate-200 py-2 max-h-64 overflow-y-auto">
+                  {uniqueVoltageLevels.length === 0 ? (
+                    <div className="px-4 py-2 text-sm text-slate-500">No voltage levels</div>
+                  ) : (
+                    <div className="p-2 space-y-1">
+                      {uniqueVoltageLevels.map(level => {
+                        const checked = filters.voltageLevels.includes(level);
+                        return (
+                          <label
+                            key={level}
+                            className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer rounded"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                setFilters(prev => {
+                                  const next = e.target.checked
+                                    ? [...prev.voltageLevels, level]
+                                    : prev.voltageLevels.filter(v => v !== level);
+                                  return { ...prev, voltageLevels: next };
+                                });
+                                setCurrentPage(1);
+                              }}
+                              className="rounded text-blue-600"
+                            />
+                            <span className="text-sm text-slate-700">{level}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Area multi-select dropdown */}
+            <div className="relative">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Area</label>
+              <button
+                type="button"
+                onClick={() => setInventoryDropdownOpen(prev => (prev === 'area' ? null : 'area'))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-left text-sm text-slate-700 hover:bg-slate-50"
+                title="Filter by Area"
+              >
+                {filters.areas.length > 0 ? `${filters.areas.length} selected` : 'All'}
+              </button>
+              {inventoryDropdownOpen === 'area' && (
+                <div className="absolute z-50 mt-2 w-full bg-white rounded-lg shadow-xl border border-slate-200 py-2 max-h-64 overflow-y-auto">
+                  {uniqueAreas.length === 0 ? (
+                    <div className="px-4 py-2 text-sm text-slate-500">No areas</div>
+                  ) : (
+                    <div className="p-2 space-y-1">
+                      {uniqueAreas.map(area => {
+                        const checked = filters.areas.includes(area);
+                        return (
+                          <label
+                            key={area}
+                            className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer rounded"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                setFilters(prev => {
+                                  const next = e.target.checked
+                                    ? [...prev.areas, area]
+                                    : prev.areas.filter(v => v !== area);
+                                  return { ...prev, areas: next };
+                                });
+                                setCurrentPage(1);
+                              }}
+                              className="rounded text-blue-600"
+                            />
+                            <span className="text-sm text-slate-700">{area}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center justify-end">
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  handleClearFilters();
+                  setInventoryDropdownOpen(null);
+                }}
+                className="px-3 py-2 text-sm font-semibold bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Clear All
+              </button>
+            )}
           </div>
         </div>
 
@@ -1242,7 +1604,7 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search by Meter ID, Site ID, or IP Address..."
+                    placeholder="Search by Meter ID..."
                     value={filters.searchText}
                     onChange={(e) => setFilters({ ...filters, searchText: e.target.value })}
                     className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -1479,10 +1841,8 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
                 <button
                   onClick={() => {
                     setActiveTab('realtime');
-                    loadRealtimeData(); // Refresh data when switching to realtime tab
-                    if (selectedMeter) {
-                      loadLatestReading(selectedMeter.id);
-                    }
+                    setSelectedEnergyReport(null);
+                    setEnergyReportPage(1);
                   }}
                   className={`px-4 py-3 font-semibold text-sm border-b-2 transition-colors ${
                     activeTab === 'realtime'
@@ -1492,7 +1852,7 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
                 >
                   <div className="flex items-center gap-2">
                     <Radio className="w-4 h-4" />
-                    Realtime Data
+                    Energy Profile
                   </div>
                 </button>
               </div>
@@ -2099,269 +2459,319 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
                 </div>
               )}
 
-              {/* Realtime Data Tab */}
+              {/* Energy Profile Tab */}
               {activeTab === 'realtime' && (
                 <div className="p-6">
-                  <div className="mb-4 flex items-center justify-between">
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-900">Realtime Power Quality Data</h3>
-                      <p className="text-sm text-slate-600 mt-1">
-                        Live measurements from meter {selectedMeter.meter_id}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        loadRealtimeData();
-                        if (selectedMeter) {
-                          loadLatestReading(selectedMeter.id);
-                        }
-                      }}
-                      disabled={loadingRealtime}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
-                    >
-                      {loadingRealtime ? 'Loading...' : 'Refresh'}
-                    </button>
-                  </div>
+                  {!selectedEnergyReport ? (
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-900">Energy Profile</h3>
+                        <p className="text-sm text-slate-600 mt-1">
+                          Select a report to view 10-minute interval data
+                        </p>
+                      </div>
 
-                  {loadingRealtime ? (
-                    <div className="flex items-center justify-center py-12">
-                      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                    </div>
-                  ) : realtimeData ? (
-                    <div className="space-y-6">
-                      {/* Latest Reading (DB) */}
-                      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-                        <div className="bg-slate-800 text-white px-4 py-2 font-semibold flex items-center justify-between">
-                          <span>Latest Voltage/Current Reading (DB)</span>
-                          {loadingLatestReading && (
-                            <span className="text-xs text-slate-200">Loading...</span>
-                          )}
-                        </div>
-                        <div className="p-4">
-                          {latestReadingError && (
-                            <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                              {latestReadingError}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {([
+                          'voltage',
+                          'current',
+                          'v_magnitude',
+                          'frequency',
+                          'v_unbalance',
+                          'flicker',
+                          'v_thd',
+                          'v_tehd',
+                          'v_tohd'
+                        ] as EnergyReportType[]).map((report) => (
+                          <button
+                            key={report}
+                            onClick={() => {
+                              if (!selectedMeter) return;
+                              setSelectedEnergyReport(report);
+                              setEnergyReportPreset('24h');
+                              setEnergyReportCustomStart('');
+                              setEnergyReportCustomEnd('');
+                              setEnergyReportPage(1);
+                              setEnergyReportRows(generateMockEnergyReportRows(selectedMeter.id, report));
+                            }}
+                            className="px-4 py-3 bg-white border border-slate-200 rounded-lg text-left hover:bg-slate-50 transition-colors"
+                            title={`Open ${energyReportLabel(report)} report`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold text-slate-900">{energyReportLabel(report)}</span>
+                              <BarChart3 className="w-5 h-5 text-slate-400" />
                             </div>
-                          )}
+                            <div className="text-xs text-slate-500 mt-1">10-minute interval</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (() => {
+                    const reportName = energyReportLabel(selectedEnergyReport);
+                    const meterSubstation = selectedMeter ? substationMap[selectedMeter.substation_id] : undefined;
 
-                          {latestReading ? (
-                            <div className="space-y-3">
-                              <div className="text-xs text-slate-500 text-right">
-                                Timestamp: {new Date(latestReading.timestamp).toLocaleString()}
-                              </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                                  <p className="text-xs font-semibold text-slate-600 mb-2">Voltage (V)</p>
-                                  <div className="grid grid-cols-3 gap-3 text-sm">
-                                    <div className="text-center">
-                                      <p className="text-xs text-slate-500">V1</p>
-                                      <p className="font-bold text-slate-900">{latestReading.v1 ?? '-'} </p>
-                                    </div>
-                                    <div className="text-center">
-                                      <p className="text-xs text-slate-500">V2</p>
-                                      <p className="font-bold text-slate-900">{latestReading.v2 ?? '-'} </p>
-                                    </div>
-                                    <div className="text-center">
-                                      <p className="text-xs text-slate-500">V3</p>
-                                      <p className="font-bold text-slate-900">{latestReading.v3 ?? '-'} </p>
-                                    </div>
-                                  </div>
+                    const getPresetDates = (): { start?: Date; end?: Date } => {
+                      const end = new Date();
+                      if (energyReportPreset === '24h') {
+                        return { start: new Date(end.getTime() - 24 * 60 * 60 * 1000), end };
+                      }
+                      if (energyReportPreset === '7d') {
+                        return { start: new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000), end };
+                      }
+                      if (energyReportPreset === '30d') {
+                        return { start: new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000), end };
+                      }
+                      if (energyReportPreset === 'custom') {
+                        const start = energyReportCustomStart ? new Date(energyReportCustomStart) : undefined;
+                        const customEnd = energyReportCustomEnd ? new Date(energyReportCustomEnd) : undefined;
+                        return { start: start && !isNaN(start.getTime()) ? start : undefined, end: customEnd && !isNaN(customEnd.getTime()) ? customEnd : undefined };
+                      }
+                      // 'all'
+                      return {};
+                    };
+
+                    const { start, end } = getPresetDates();
+
+                    const filteredRows = energyReportRows.filter(r => {
+                      const ts = new Date(r.timestamp);
+                      if (start && ts < start) return false;
+                      if (end && ts > end) return false;
+                      return true;
+                    });
+
+                    const totalPages = Math.max(1, Math.ceil(filteredRows.length / energyReportRowsPerPage));
+                    const safePage = Math.min(energyReportPage, totalPages);
+                    const pageStart = (safePage - 1) * energyReportRowsPerPage;
+                    const pageRows = filteredRows.slice(pageStart, pageStart + energyReportRowsPerPage);
+
+                    return (
+                      <div className="space-y-4">
+                        {/* Header with back */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedEnergyReport(null);
+                              setEnergyReportPage(1);
+                            }}
+                            className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                            title="Back to Energy Profile"
+                          >
+                            <ChevronLeft className="w-5 h-5" />
+                          </button>
+                          <div className="min-w-0">
+                            <h3 className="text-lg font-bold text-slate-900 truncate">{reportName} Report</h3>
+                            <p className="text-sm text-slate-600 truncate">10-minute interval</p>
+                          </div>
+                        </div>
+
+                        {/* (a) Current report detail */}
+                        <div className="bg-white border border-slate-200 rounded-lg p-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div className="bg-slate-50 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600">Meter ID</div>
+                              <div className="text-sm font-bold text-slate-900 mt-1">{selectedMeter?.meter_id}</div>
+                            </div>
+                            <div className="bg-slate-50 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600">Name</div>
+                              <div className="text-sm font-bold text-slate-900 mt-1">{selectedMeter?.site_id || selectedMeter?.location || '-'}</div>
+                            </div>
+                            <div className="bg-slate-50 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600">Substation</div>
+                              <div className="text-sm font-bold text-slate-900 mt-1">{meterSubstation?.name || 'Unknown'}</div>
+                            </div>
+                            <div className="bg-slate-50 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600">Area</div>
+                              <div className="text-sm font-bold text-slate-900 mt-1">{selectedMeter?.area || '-'}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* (b) Filter section */}
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 mb-1">Range</label>
+                              <select
+                                value={energyReportPreset}
+                                onChange={(e) => {
+                                  setEnergyReportPreset(e.target.value as EnergyReportRangePreset);
+                                  setEnergyReportPage(1);
+                                }}
+                                className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm"
+                              >
+                                <option value="24h">Latest 24h</option>
+                                <option value="7d">Latest 7d</option>
+                                <option value="30d">Latest 30d</option>
+                                <option value="all">All</option>
+                                <option value="custom">Custom</option>
+                              </select>
+                            </div>
+
+                            {energyReportPreset === 'custom' && (
+                              <>
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-700 mb-1">Start</label>
+                                  <input
+                                    type="datetime-local"
+                                    value={energyReportCustomStart}
+                                    onChange={(e) => {
+                                      setEnergyReportCustomStart(e.target.value);
+                                      setEnergyReportPage(1);
+                                    }}
+                                    className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm"
+                                  />
                                 </div>
-                                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                                  <p className="text-xs font-semibold text-slate-600 mb-2">Current (A)</p>
-                                  <div className="grid grid-cols-3 gap-3 text-sm">
-                                    <div className="text-center">
-                                      <p className="text-xs text-slate-500">I1</p>
-                                      <p className="font-bold text-slate-900">{latestReading.i1 ?? '-'} </p>
-                                    </div>
-                                    <div className="text-center">
-                                      <p className="text-xs text-slate-500">I2</p>
-                                      <p className="font-bold text-slate-900">{latestReading.i2 ?? '-'} </p>
-                                    </div>
-                                    <div className="text-center">
-                                      <p className="text-xs text-slate-500">I3</p>
-                                      <p className="font-bold text-slate-900">{latestReading.i3 ?? '-'} </p>
-                                    </div>
-                                  </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-700 mb-1">End</label>
+                                  <input
+                                    type="datetime-local"
+                                    value={energyReportCustomEnd}
+                                    onChange={(e) => {
+                                      setEnergyReportCustomEnd(e.target.value);
+                                      setEnergyReportPage(1);
+                                    }}
+                                    className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm"
+                                  />
                                 </div>
-                              </div>
+                              </>
+                            )}
+
+                            <div className="ml-auto text-sm text-slate-600">
+                              {filteredRows.length} rows
                             </div>
-                          ) : (
-                            <div className="text-sm text-slate-600">
-                              No database readings available yet. Latest values will appear after server-side ingestion.
+                          </div>
+                        </div>
+
+                        {/* (c) Data table */}
+                        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-slate-50">
+                                <tr>
+                                  <th className="px-4 py-2 text-left font-semibold text-slate-700 border-b border-slate-200">Timestamp</th>
+                                  {selectedEnergyReport === 'voltage' && (
+                                    <>
+                                      <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">V1 (V)</th>
+                                      <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">V2 (V)</th>
+                                      <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">V3 (V)</th>
+                                    </>
+                                  )}
+                                  {selectedEnergyReport === 'current' && (
+                                    <>
+                                      <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">I1 (A)</th>
+                                      <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">I2 (A)</th>
+                                      <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">I3 (A)</th>
+                                    </>
+                                  )}
+                                  {selectedEnergyReport === 'v_magnitude' && (
+                                    <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">Magnitude (V)</th>
+                                  )}
+                                  {selectedEnergyReport === 'frequency' && (
+                                    <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">Frequency (Hz)</th>
+                                  )}
+                                  {selectedEnergyReport === 'v_unbalance' && (
+                                    <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">V-Unbalance (%)</th>
+                                  )}
+                                  {selectedEnergyReport === 'flicker' && (
+                                    <>
+                                      <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">Pst</th>
+                                      <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">Plt</th>
+                                    </>
+                                  )}
+                                  {(selectedEnergyReport === 'v_thd' || selectedEnergyReport === 'v_tehd' || selectedEnergyReport === 'v_tohd') && (
+                                    <>
+                                      <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">Phase A (%)</th>
+                                      <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">Phase B (%)</th>
+                                      <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">Phase C (%)</th>
+                                      <th className="px-4 py-2 text-right font-semibold text-slate-700 border-b border-slate-200">Avg (%)</th>
+                                    </>
+                                  )}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {pageRows.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                                      No data for selected range
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  pageRows.map((row) => (
+                                    <tr key={row.timestamp} className="hover:bg-slate-50">
+                                      <td className="px-4 py-2 border-b border-slate-100 text-slate-700">
+                                        {new Date(row.timestamp).toLocaleString()}
+                                      </td>
+                                      {selectedEnergyReport === 'voltage' && (
+                                        <>
+                                          <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">{row.v1?.toFixed(2) ?? '-'}</td>
+                                          <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">{row.v2?.toFixed(2) ?? '-'}</td>
+                                          <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">{row.v3?.toFixed(2) ?? '-'}</td>
+                                        </>
+                                      )}
+                                      {selectedEnergyReport === 'current' && (
+                                        <>
+                                          <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">{row.i1?.toFixed(2) ?? '-'}</td>
+                                          <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">{row.i2?.toFixed(2) ?? '-'}</td>
+                                          <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">{row.i3?.toFixed(2) ?? '-'}</td>
+                                        </>
+                                      )}
+                                      {selectedEnergyReport === 'v_magnitude' && (
+                                        <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">{row.magnitude?.toFixed(2) ?? '-'}</td>
+                                      )}
+                                      {selectedEnergyReport === 'frequency' && (
+                                        <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">{row.frequency?.toFixed(3) ?? '-'}</td>
+                                      )}
+                                      {selectedEnergyReport === 'v_unbalance' && (
+                                        <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">{row.vUnbalance?.toFixed(2) ?? '-'}</td>
+                                      )}
+                                      {selectedEnergyReport === 'flicker' && (
+                                        <>
+                                          <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">{row.pst?.toFixed(2) ?? '-'}</td>
+                                          <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">{row.plt?.toFixed(2) ?? '-'}</td>
+                                        </>
+                                      )}
+                                      {(selectedEnergyReport === 'v_thd' || selectedEnergyReport === 'v_tehd' || selectedEnergyReport === 'v_tohd') && (
+                                        <>
+                                          <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">{row.vThdA?.toFixed(2) ?? '-'}</td>
+                                          <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">{row.vThdB?.toFixed(2) ?? '-'}</td>
+                                          <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">{row.vThdC?.toFixed(2) ?? '-'}</td>
+                                          <td className="px-4 py-2 border-b border-slate-100 text-right font-semibold text-slate-900">{row.vThdAvg?.toFixed(2) ?? '-'}</td>
+                                        </>
+                                      )}
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* Pagination */}
+                          {totalPages > 1 && (
+                            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-white">
+                              <div className="text-sm text-slate-600">Page {safePage} of {totalPages}</div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setEnergyReportPage(prev => Math.max(1, prev - 1))}
+                                  disabled={safePage === 1}
+                                  className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <ChevronLeft className="w-5 h-5" />
+                                </button>
+                                <span className="px-3 py-1.5 bg-slate-100 rounded-lg font-semibold text-slate-900">{safePage}</span>
+                                <button
+                                  onClick={() => setEnergyReportPage(prev => Math.min(totalPages, prev + 1))}
+                                  disabled={safePage === totalPages}
+                                  className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <ChevronRight className="w-5 h-5" />
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
                       </div>
-
-                      {/* Timestamp */}
-                      <div className="text-xs text-slate-500 text-right">
-                        Last updated: {new Date(realtimeData.timestamp).toLocaleString()}
-                      </div>
-
-                      {/* Volts/Amps Section */}
-                      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-                        <div className="bg-blue-600 text-white px-4 py-2 font-semibold">
-                          Volts/Amps
-                        </div>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead className="bg-slate-50">
-                              <tr>
-                                <th className="px-4 py-2 text-left font-semibold text-slate-700 border-b border-slate-200">Parameter</th>
-                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Phase A</th>
-                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Phase B</th>
-                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Phase C</th>
-                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Total/Avg</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Vln (V)</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vln.phaseA.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vln.phaseB.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vln.phaseC.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.vln.avg.toFixed(2)}</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Vll (V)</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vll.phaseA.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vll.phaseB.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vll.phaseC.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.vll.avg.toFixed(2)}</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Current (A)</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.current.phaseA.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.current.phaseB.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.current.phaseC.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.current.total.toFixed(2)}</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Active Power (kW)</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.activePower.phaseA.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.activePower.phaseB.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.activePower.phaseC.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.activePower.total.toFixed(2)}</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Reactive Power (kVAR)</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.reactivePower.phaseA.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.reactivePower.phaseB.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.reactivePower.phaseC.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.reactivePower.total.toFixed(2)}</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Apparent Power (kVA)</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.apparentPower.phaseA.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.apparentPower.phaseB.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.apparentPower.phaseC.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.apparentPower.total.toFixed(2)}</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Frequency (Hz)</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.frequency.phaseA.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.frequency.phaseB.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.frequency.phaseC.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.frequency.avg.toFixed(2)}</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700">Power Factor (Ref: -IEEE, +ve: Lagging)</td>
-                                <td className="px-4 py-2 text-center text-slate-900">{realtimeData.powerFactor.phaseA.toFixed(3)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900">{realtimeData.powerFactor.phaseB.toFixed(3)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900">{realtimeData.powerFactor.phaseC.toFixed(3)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900">{realtimeData.powerFactor.avg.toFixed(3)}</td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-
-                      {/* Power Quality Section */}
-                      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-                        <div className="bg-amber-600 text-white px-4 py-2 font-semibold">
-                          Power Quality
-                        </div>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead className="bg-slate-50">
-                              <tr>
-                                <th className="px-4 py-2 text-left font-semibold text-slate-700 border-b border-slate-200">Parameter</th>
-                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Phase A</th>
-                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Phase B</th>
-                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Phase C</th>
-                                <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-200">Total/Avg</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">V2 Unb (%)</td>
-                                <td colSpan={3} className="px-4 py-2 text-center text-slate-400 border-b border-slate-100">--</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.v2Unb.toFixed(2)}</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">V THD (%)</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vThd.phaseA.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vThd.phaseB.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.vThd.phaseC.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.vThd.avg.toFixed(2)}</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">I THF (%)</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iThf.phaseA.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iThf.phaseB.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iThf.phaseC.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.iThf.avg.toFixed(2)}</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">I THD odd (%)</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iThdOdd.phaseA.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iThdOdd.phaseB.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iThdOdd.phaseC.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.iThdOdd.avg.toFixed(2)}</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">I TDD (%)</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iTdd.phaseA.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iTdd.phaseB.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iTdd.phaseC.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.iTdd.avg.toFixed(2)}</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">I TDD odd (%)</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iTddOdd.phaseA.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iTddOdd.phaseB.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.iTddOdd.phaseC.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.iTddOdd.avg.toFixed(2)}</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700 border-b border-slate-100">Pst</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.pst.phaseA.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.pst.phaseB.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900 border-b border-slate-100">{realtimeData.pst.phaseC.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900 border-b border-slate-100">{realtimeData.pst.avg.toFixed(2)}</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700">Plt</td>
-                                <td className="px-4 py-2 text-center text-slate-900">{realtimeData.plt.phaseA.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900">{realtimeData.plt.phaseB.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center text-slate-900">{realtimeData.plt.phaseC.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-center font-semibold text-slate-900">{realtimeData.plt.avg.toFixed(2)}</td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <Radio className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-                      <p className="text-slate-600 font-medium">No Realtime Data Available</p>
-                      <p className="text-sm text-slate-500 mt-1">
-                        Click refresh to load the latest measurements
-                      </p>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               )}
             </div>
