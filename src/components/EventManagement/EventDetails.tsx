@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Clock, MapPin, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Upload, FileDown, Wrench } from 'lucide-react';
 import { PQEvent, Substation, EventCustomerImpact, IDRRecord, PQServiceRecord, PQMeter, Customer } from '../../types/database';
 import { supabase } from '../../lib/supabase';
-import WaveformDisplay from './WaveformDisplay';
+import WaveformViewer from './WaveformViewer';
 import { MotherEventGroupingService } from '../../services/mother-event-grouping';
 import { ExportService } from '../../services/exportService';
 import CustomerEventHistoryPanel from './CustomerEventHistoryPanel';
@@ -107,6 +107,9 @@ export default function EventDetails({ event: initialEvent, substation: initialS
   const [showCustomerHistory, setShowCustomerHistory] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
+  // Waveform data state
+  const [waveformCsvData, setWaveformCsvData] = useState<string | null>(null);
+
   // Update state when props change
   useEffect(() => {
     console.log('🔍 [EventDetails] Props updated:', {
@@ -182,6 +185,28 @@ export default function EventDetails({ event: initialEvent, substation: initialS
   useEffect(() => {
     loadMeter(currentEvent.meter_id);
   }, [currentEvent.meter_id]);
+
+  // Load demo waveform data (for demonstration purposes)
+  useEffect(() => {
+    const loadDemoWaveform = async () => {
+      try {
+        // For demonstration, load the sample CSV for all events
+        const response = await fetch('/Artifacts/From Users/System Images/BKP0227_20260126 101655_973.csv');
+        if (response.ok) {
+          const csvText = await response.text();
+          setWaveformCsvData(csvText);
+        } else {
+          console.warn('⚠️ Demo waveform CSV not found, using fallback');
+          setWaveformCsvData(null);
+        }
+      } catch (error) {
+        console.error('❌ Error loading demo waveform:', error);
+        setWaveformCsvData(null);
+      }
+    };
+
+    loadDemoWaveform();
+  }, [currentEvent.id]);
 
   // Load child events for mother events
   useEffect(() => {
@@ -1875,7 +1900,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
             )}
 
             {/* Waveform Display */}
-            <WaveformDisplay data={waveformData} />
+            <WaveformViewer csvData={waveformCsvData} />
           </div>
         )}
 

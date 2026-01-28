@@ -221,6 +221,50 @@
      - Status mapping: open→New, investigating→Investigating, closed/resolved→Closed
    - **Estimated Effort:** 0.5 day → **Actual: 0.5 day**
 
+6.2. **Waveform Analysis Viewer in Technical Tab** ✅ **COMPLETED** (Jan 28, 2026)
+   - **Purpose:** Add interactive waveform visualization for voltage event analysis
+   - **Completed Features:**
+     - ✅ CSV-based waveform data parsing (Timestamp, V1, V2, V3 format)
+     - ✅ Combined view: All 3 voltage phases (Red V1, Green V2, Blue V3) in single chart
+     - ✅ Individual phase views: Separate charts for V1, V2, V3 with phase-specific colors
+     - ✅ Interactive tooltip: Mouse hover shows exact voltage values at each timestamp
+     - ✅ Zoom functionality: Mouse wheel zoom (50%-200%), Reset to 100% button
+     - ✅ Statistics display: Min/Max/RMS values for each phase
+     - ✅ Performance optimization: Downsampling for display (max 1000 points) while preserving full data for tooltips
+     - ✅ Fallback message: "No waveform data available" when CSV data is missing
+   - **UI Components:**
+     - `WaveformViewer.tsx` (450+ lines) - Main component with Recharts integration
+     - View selector buttons: Combined | V1 | V2 | V3
+     - Zoom controls: Zoom In/Out buttons + percentage display + Reset button
+     - Statistics summary bar with color-coded phase indicators
+     - Gradient header (indigo-purple theme)
+   - **Technical Implementation:**
+     - **Chart Library:** Recharts for React-based line charts
+     - **Data Flow:** CSV → Parse → Downsample → Display → Tooltip (full data)
+     - **Database:** Added `waveform_csv` TEXT field to `pq_events` table (stores CSV content)
+     - **Demo Mode:** Currently loads sample CSV for all events (pending PQMS integration)
+     - **Timestamp Format:** HH:mm:ss.SSS (24-hour with milliseconds)
+     - **X-Axis:** Timestamp from CSV data
+     - **Y-Axis:** Voltage in Volts (V)
+   - **Chart Configuration:**
+     - Combined view: 3 lines (Red/Green/Blue) with CartesianGrid, Legend, responsive container (400px height)
+     - Individual views: Single-phase charts (250px height each) with phase-specific grid colors
+     - Tooltip: White background, 2px border, displays all phases at selected timestamp
+     - Line styling: strokeWidth 1.5-2, no dots (for performance), monotone curve
+   - **Performance Features:**
+     - Sample CSV: 3586 rows → downsampled to ~1000 points for rendering
+     - Zoom adjusts sample rate dynamically (higher zoom = more points)
+     - useEffect for CSV loading (async fetch from public folder)
+     - useMemo for parsed data and statistics calculation
+   - **Future Enhancements:**
+     - Real CSV upload from PQMS system (replace demo data)
+     - Waveform capture trigger marking (orange dashed line)
+     - Export waveform chart as PNG image
+     - Compare multiple waveforms (overlay)
+   - **Reference Image:** `Artifacts/From Users/System Images/image.png` (PQMS waveform viewer UI design)
+   - **Sample Data:** `Artifacts/From Users/System Images/BKP0227_20260126 101655_973.csv` (3586 rows, 4 columns)
+   - **Estimated Effort:** 1 day → **Actual: 1 day**
+
 7. **Special IDR Upload Feature** (Week 4-5)
    - **Purpose:** Automated mapping of IDR records to PQ events using timestamp and substation
    - **Key Features:**

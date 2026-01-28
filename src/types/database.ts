@@ -198,6 +198,7 @@ export interface PQEvent {
   affected_phases: string[];
   severity: SeverityLevel;
   waveform_data: WaveformData | null;
+  waveform_csv: string | null; // CSV data for waveform visualization (Timestamp,V1,V2,V3)
   status: EventStatus;
   // Mother Event Grouping properties
   grouping_type: 'automatic' | 'manual' | null;
