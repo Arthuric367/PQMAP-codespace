@@ -204,7 +204,7 @@
    - **Completed Features:**
      - ✅ AC1 - Core Event Data card: Incident Time (DD/MM/YYYY HH:mm:ss), Voltage Level, Source Substation, Transformer No. & Ring Number
      - ✅ AC2 - Magnitude & Duration card: VL1/VL2/VL3 phase percentages with large display, Duration with units
-     - ✅ AC3 - Binary Indicators row: Min Volt (<70% threshold), FR (Fault Recorder from false_event), False Alarm status
+     - ✅ AC3 - Binary Indicators row: Min Volt (<70% threshold), False Alarm status (2 indicators)
      - ✅ AC4 - Classification & Workflow card: Event Type, Severity badges, Status (New/Investigating/Closed mapping)
      - ✅ Icon design: Green checkmark ✅ / Red X ❌ with color-coded badges
      - ✅ Additional info: Magnitude, Affected Phases, Customer Count, Region, OC
@@ -217,7 +217,7 @@
      - Transformer No. displays circuit_id from pq_meters table
      - Ring Number uses "TTNR0003" placeholder (pending database field)
      - Min Volt checks any phase (v1, v2, v3) < 70%
-     - FR (Fault Recorder) uses false_event boolean field
+     - False Alarm uses false_event boolean field
      - Status mapping: open→New, investigating→Investigating, closed/resolved→Closed
    - **Estimated Effort:** 0.5 day → **Actual: 0.5 day**
 

@@ -1384,7 +1384,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                 </h3>
               </div>
               <div className="p-4">
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   {/* Min Volt Indicator */}
                   <div className="p-3 bg-slate-50 rounded-lg">
                     <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Min Volt (Below 70%)</label>
@@ -1406,24 +1406,6 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                           </>
                         );
                       })()}
-                    </div>
-                  </div>
-
-                  {/* FR (Fault Recorder Trigger) */}
-                  <div className="p-3 bg-slate-50 rounded-lg">
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">FR (Fault Recorder)</label>
-                    <div className="flex items-center gap-2">
-                      {currentEvent.false_event ? (
-                        <>
-                          <CheckCircle className="w-5 h-5 text-green-600" />
-                          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold">Yes</span>
-                        </>
-                      ) : (
-                        <>
-                          <XCircle className="w-5 h-5 text-red-600" />
-                          <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-semibold">No</span>
-                        </>
-                      )}
                     </div>
                   </div>
 
