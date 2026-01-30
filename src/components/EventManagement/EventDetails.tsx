@@ -97,6 +97,9 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     equipment_affected: '',
     restoration_actions: '',
     notes: '',
+    circuit: '',
+    faulty_component: '',
+    external_internal: '' as 'external' | 'internal' | '',
   });
   const [savingIDR, setSavingIDR] = useState(false);
 
@@ -309,6 +312,9 @@ export default function EventDetails({ event: initialEvent, substation: initialS
           equipment_affected: data.equipment_affected || '',
           restoration_actions: data.restoration_actions || '',
           notes: data.notes || '',
+          circuit: data.circuit || '',
+          faulty_component: data.faulty_component || '',
+          external_internal: data.external_internal || '',
         });
       } else {
         console.log('ℹ️ No IDR record found, showing empty form');
@@ -340,6 +346,9 @@ export default function EventDetails({ event: initialEvent, substation: initialS
           equipment_affected: '',
           restoration_actions: '',
           notes: '',
+          circuit: '',
+          faulty_component: '',
+          external_internal: '',
         });
       }
     } catch (error) {
@@ -2861,11 +2870,11 @@ export default function EventDetails({ event: initialEvent, substation: initialS
 
             {/* IDR Content - Grouped Cards Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {/* Basic Information */}
+              {/* IDR Core Information */}
               <div className="bg-white border border-slate-200 rounded-lg p-3">
                 <h4 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
                   <span className="w-1 h-4 bg-blue-500 rounded"></span>
-                  Basic Information
+                  IDR Core Information
                 </h4>
                 <div className="space-y-2">
                   <div className="grid grid-cols-2 gap-2">
@@ -2949,51 +2958,12 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                 </div>
               </div>
 
-              {/* Location & Equipment */}
-              <div className="bg-white border border-slate-200 rounded-lg p-3">
-                <h4 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
-                  <span className="w-1 h-4 bg-green-500 rounded"></span>
-                  Location & Equipment
-                </h4>
-                <div className="space-y-2">
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Region</label>
-                    <p className="text-sm font-semibold text-slate-900 mt-1">{currentSubstation?.region || '-'}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Address</label>
-                    {isEditingIDR ? (
-                      <input
-                        type="text"
-                        value={idrFormData.address}
-                        onChange={(e) => setIDRFormData({ ...idrFormData, address: e.target.value })}
-                        className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
-                      />
-                    ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.address || '-'}</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Equipment Type</label>
-                    {isEditingIDR ? (
-                      <input
-                        type="text"
-                        value={idrFormData.equipment_type}
-                        onChange={(e) => setIDRFormData({ ...idrFormData, equipment_type: e.target.value })}
-                        className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
-                      />
-                    ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.equipment_type || '-'}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
 
-              {/* Fault Details */}
+              {/* Fault & Asset Location */}
               <div className="bg-white border border-slate-200 rounded-lg p-3">
                 <h4 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
                   <span className="w-1 h-4 bg-red-500 rounded"></span>
-                  Fault Details
+                  Fault & Asset Location
                 </h4>
                 <div className="space-y-2">
                   <div>
@@ -3061,26 +3031,60 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                   </div>
 
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Fault Type</label>
+                    <label className="text-xs font-medium text-slate-600">Address</label>
                     {isEditingIDR ? (
                       <input
                         type="text"
-                        value={idrFormData.fault_type}
-                        onChange={(e) => setIDRFormData({ ...idrFormData, fault_type: e.target.value })}
+                        value={idrFormData.address}
+                        onChange={(e) => setIDRFormData({ ...idrFormData, address: e.target.value })}
                         className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                       />
                     ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.fault_type || '-'}</p>
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.address || '-'}</p>
                     )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Circuit</label>
+                    {isEditingIDR ? (
+                      <input
+                        type="text"
+                        value={idrFormData.circuit}
+                        onChange={(e) => setIDRFormData({ ...idrFormData, circuit: e.target.value })}
+                        className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    ) : (
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.circuit || '-'}</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Region</label>
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{currentSubstation?.region || '-'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Equipment Type</label>
+                      {isEditingIDR ? (
+                        <input
+                          type="text"
+                          value={idrFormData.equipment_type}
+                          onChange={(e) => setIDRFormData({ ...idrFormData, equipment_type: e.target.value })}
+                          className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.equipment_type || '-'}</p>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Cause Analysis */}
+              {/* Root Cause Analysis */}
               <div className="bg-white border border-slate-200 rounded-lg p-3">
                 <h4 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
                   <span className="w-1 h-4 bg-yellow-500 rounded"></span>
-                  Cause Analysis
+                  Root Cause Analysis
                 </h4>
                 <div className="space-y-2">
                   <div className="grid grid-cols-2 gap-2">
@@ -3113,6 +3117,20 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                   </div>
 
                   <div>
+                    <label className="text-xs font-medium text-slate-600">Faulty Component</label>
+                    {isEditingIDR ? (
+                      <input
+                        type="text"
+                        value={idrFormData.faulty_component}
+                        onChange={(e) => setIDRFormData({ ...idrFormData, faulty_component: e.target.value })}
+                        className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    ) : (
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.faulty_component || '-'}</p>
+                    )}
+                  </div>
+
+                  <div>
                     <label className="text-xs font-medium text-slate-600">Remarks</label>
                     {isEditingIDR ? (
                       <textarea
@@ -3123,6 +3141,32 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                       />
                     ) : (
                       <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.remarks || '-'}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Extended Technical Detail */}
+              <div className="bg-white border border-slate-200 rounded-lg p-3">
+                <h4 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
+                  <span className="w-1 h-4 bg-purple-500 rounded"></span>
+                  Extended Technical Detail
+                </h4>
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">External / Internal</label>
+                    {isEditingIDR ? (
+                      <select
+                        value={idrFormData.external_internal}
+                        onChange={(e) => setIDRFormData({ ...idrFormData, external_internal: e.target.value as 'external' | 'internal' | '' })}
+                        className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="">Select...</option>
+                        <option value="external">External</option>
+                        <option value="internal">Internal</option>
+                      </select>
+                    ) : (
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.external_internal ? (idrFormData.external_internal === 'external' ? 'External' : 'Internal') : '-'}</p>
                     )}
                   </div>
 
@@ -3183,13 +3227,42 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                       )}
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Fault Type</label>
+                      {isEditingIDR ? (
+                        <input
+                          type="text"
+                          value={idrFormData.fault_type}
+                          onChange={(e) => setIDRFormData({ ...idrFormData, fault_type: e.target.value })}
+                          className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.fault_type || '-'}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Outage Type</label>
+                      {isEditingIDR ? (
+                        <input
+                          type="text"
+                          value={idrFormData.outage_type}
+                          onChange={(e) => setIDRFormData({ ...idrFormData, outage_type: e.target.value })}
+                          className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.outage_type || '-'}</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {/* Environment & Operations */}
               <div className="bg-white border border-slate-200 rounded-lg p-3 lg:col-span-2">
                 <h4 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
-                  <span className="w-1 h-4 bg-purple-500 rounded"></span>
+                  <span className="w-1 h-4 bg-orange-500 rounded"></span>
                   Environment & Operations
                 </h4>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
@@ -3220,20 +3293,6 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                       />
                     ) : (
                       <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.weather_condition || '-'}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Outage Type</label>
-                    {isEditingIDR ? (
-                      <input
-                        type="text"
-                        value={idrFormData.outage_type}
-                        onChange={(e) => setIDRFormData({ ...idrFormData, outage_type: e.target.value })}
-                        className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
-                      />
-                    ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.outage_type || '-'}</p>
                     )}
                   </div>
 

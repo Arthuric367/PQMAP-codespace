@@ -313,30 +313,32 @@ export interface HarmonicEvent {
 export interface IDRRecord {
   id: string;
   event_id: string;
-  // Basic Information
+  // IDR Core Information
   idr_no: string | null;
   status: string | null;
-  voltage_level: string | null;
+  voltage_level: '400kV' | '132kV' | '11kV' | '380V' | null;
   duration_ms: number | null;
-  // Location & Equipment
-  address: string | null;
-  equipment_type: string | null;
-  // Voltage Measurements
+  // Fault & Asset Location
   v1: number | null;
   v2: number | null;
   v3: number | null;
-  // Fault Details
-  fault_type: string | null;
-  // Cause Analysis
+  address: string | null;
+  circuit: string | null;
+  equipment_type: string | null;
+  // Root Cause Analysis
   cause_group: string | null;
   cause: string; // REQUIRED
+  faulty_component: string | null;
   remarks: string | null;
+  // Extended Technical Details
+  external_internal: 'external' | 'internal' | null;
   object_part_group: string | null;
   object_part_code: string | null;
   damage_group: string | null;
   damage_code: string | null;
-  // Environment & Operations
+  fault_type: string | null;
   outage_type: string | null;
+  // Environment & Operations
   weather: string | null;
   weather_condition: string | null;
   responsible_oc: string | null;
