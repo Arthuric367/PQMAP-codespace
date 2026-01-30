@@ -19,7 +19,6 @@ export default function Navigation({ currentView, onViewChange, collapsed, onTog
     { id: 'reports', icon: FileText, label: 'Reports' },
     { id: 'reportingPreview', icon: FlaskConical, label: 'Reporting (Preview)' },
     { id: 'notifications', icon: Bell, label: 'Notifications' },
-    { id: 'templates', icon: FileCode, label: 'Templates' },
     { id: 'services', icon: Wrench, label: 'PQ Services' },
     { id: 'health', icon: Settings, label: 'System Health' },
   ];
