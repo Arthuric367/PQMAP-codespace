@@ -15,7 +15,7 @@ export default function Navigation({ currentView, onViewChange, collapsed, onTog
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { id: 'events', icon: Activity, label: 'Event Management' },
     { id: 'assets', icon: DatabaseIcon, label: 'Asset Management' },
-    { id: 'reportingPreview', icon: FlaskConical, label: 'Reporting' },
+    { id: 'reporting', icon: FileText, label: 'Reporting' },
     { id: 'notifications', icon: Bell, label: 'Notifications' },
     { id: 'services', icon: Wrench, label: 'PQ Services' },
   ];

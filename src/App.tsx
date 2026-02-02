@@ -9,8 +9,7 @@ import TyphoonModeIndicator from './components/TyphoonModeIndicator';
 import Dashboard from './components/Dashboard/Dashboard';
 import EventManagement from './components/EventManagement/EventManagement';
 import AssetManagement from './components/AssetManagement';
-import Reports from './components/Reports';
-import ReportingPreview from './components/ReportingPreview';
+import Reporting from './components/Reporting';
 import Notifications from './components/Notifications';
 import PQServices from './components/PQServices';
 import CustomerTransformerMatching from './components/CustomerTransformerMatching';
@@ -63,12 +62,11 @@ function AppContent() {
           <NotificationBell />
         </div>
         
-        <CriticalMessageBar />
+        {currentView !== 'reporting' && <CriticalMessageBar />}
         {currentView === 'dashboard' && <Dashboard onNavigateToMeter={handleNavigateToMeter} />}
         {currentView === 'events' && <EventManagement />}
         {currentView === 'assets' && <AssetManagement selectedMeterId={selectedMeterId} onClearSelectedMeter={() => setSelectedMeterId(null)} />}
-        {currentView === 'reports' && <Reports />}
-        {currentView === 'reportingPreview' && <ReportingPreview />}
+        {currentView === 'reporting' && <Reporting />}
         {currentView === 'notifications' && <Notifications />}
         {currentView === 'services' && <PQServices />}
         {currentView === 'userManagement' && <UserManagement />}
