@@ -588,7 +588,7 @@ const WaveformViewer: React.FC<WaveformViewerProps> = ({ csvData, event, eventTy
         ) : (
           /* Individual Phase Views */
           <div className="space-y-4" onWheel={handleWheel}>
-            {(activeView === 'v1' || activeView === 'combined') && (
+            {activeView === 'v1' && (
               <div>
                 <h4 className="text-sm font-semibold text-red-600 mb-2 flex items-center gap-2">
                   <div className="w-3 h-3 bg-red-500 rounded-full"></div>
@@ -623,7 +623,7 @@ const WaveformViewer: React.FC<WaveformViewerProps> = ({ csvData, event, eventTy
               </div>
             )}
 
-            {(activeView === 'v2' || activeView === 'combined') && (
+            {activeView === 'v2' && (
               <div>
                 <h4 className="text-sm font-semibold text-green-600 mb-2 flex items-center gap-2">
                   <div className="w-3 h-3 bg-green-500 rounded-full"></div>
@@ -658,7 +658,7 @@ const WaveformViewer: React.FC<WaveformViewerProps> = ({ csvData, event, eventTy
               </div>
             )}
 
-            {(activeView === 'v3' || activeView === 'combined') && (
+            {activeView === 'v3' && (
               <div>
                 <h4 className="text-sm font-semibold text-blue-600 mb-2 flex items-center gap-2">
                   <div className="w-3 h-3 bg-blue-500 rounded-full"></div>

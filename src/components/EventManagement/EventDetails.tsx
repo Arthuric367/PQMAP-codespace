@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Clock, MapPin, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Upload, FileDown, Wrench } from 'lucide-react';
+import { Clock, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Upload, FileDown, Wrench } from 'lucide-react';
 import { PQEvent, Substation, EventCustomerImpact, IDRRecord, PQServiceRecord, PQMeter, Customer } from '../../types/database';
 import { supabase } from '../../lib/supabase';
 import WaveformViewer from './WaveformViewer';
@@ -854,16 +854,21 @@ export default function EventDetails({ event: initialEvent, substation: initialS
 
   // PSBG Cause handler
   const handlePsbgCauseChange = async (newPsbgCause: string) => {
+    const validValues: Array<'VEGETATION' | 'DAMAGED BY THIRD PARTY' | 'UNCONFIRMED' | 'ANIMALS, BIRDS, INSECTS'> = [
+      'VEGETATION', 'DAMAGED BY THIRD PARTY', 'UNCONFIRMED', 'ANIMALS, BIRDS, INSECTS'
+    ];
+    const validatedValue = validValues.includes(newPsbgCause as any) ? newPsbgCause as typeof validValues[number] : null;
+
     try {
       const { error } = await supabase
         .from('pq_events')
-        .update({ psbg_cause: newPsbgCause || null })
+        .update({ psbg_cause: validatedValue })
         .eq('id', currentEvent.id);
 
       if (error) throw error;
 
       // Update local state
-      setCurrentEvent({ ...currentEvent, psbg_cause: newPsbgCause || null });
+      setCurrentEvent({ ...currentEvent, psbg_cause: validatedValue });
 
       // Notify parent to reload data
       if (onEventUpdated) {
@@ -1130,8 +1135,6 @@ export default function EventDetails({ event: initialEvent, substation: initialS
       current
     };
   };
-
-  const waveformData = currentEvent.waveform_data || generateMockWaveform();
 
   // Calculate child events severity distribution for preview
   const getChildEventsSummary = () => {
@@ -1556,14 +1559,14 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                     <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Status</label>
                     <div className="mt-1">
                       <span className={`inline-block px-4 py-2 rounded-lg text-base font-semibold ${
-                        currentEvent.status === 'open' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
+                        currentEvent.status === 'new' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
                         currentEvent.status === 'investigating' ? 'bg-blue-100 text-blue-800 border border-blue-300' :
-                        currentEvent.status === 'closed' || currentEvent.status === 'resolved' ? 'bg-green-100 text-green-800 border border-green-300' :
+                        currentEvent.status === 'resolved' ? 'bg-green-100 text-green-800 border border-green-300' :
                         'bg-slate-100 text-slate-800 border border-slate-300'
                       }`}>
-                        {currentEvent.status === 'open' ? 'New' : 
+                        {currentEvent.status === 'new' ? 'New' : 
                          currentEvent.status === 'investigating' ? 'Investigating' : 
-                         currentEvent.status === 'closed' || currentEvent.status === 'resolved' ? 'Closed' : 
+                         currentEvent.status === 'resolved' ? 'Closed' : 
                          currentEvent.status}
                       </span>
                     </div>
