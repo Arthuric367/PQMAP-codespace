@@ -10,8 +10,7 @@ export type WidgetId =
   | 'insight-chart'
   | 'affected-customer-chart'
   | 'event-list'
-  | 'sarfi-70-monitor'
-  | 'report-builder';
+  | 'sarfi-70-monitor';
 
 // Widget size options
 export type WidgetSize = 'full' | 'half'; // 12 cols or 6 cols
@@ -106,13 +105,6 @@ export const WIDGET_CATALOG: Record<WidgetId, WidgetConfig> = {
     id: 'sarfi-70-monitor',
     title: 'SARFI-70 KPI Monitor',
     description: '3-year trend comparison with monthly breakdown',
-    defaultSize: 'full',
-    locked: true,
-  },
-  'report-builder': {
-    id: 'report-builder',
-    title: 'Report Builder',
-    description: 'Create custom reports with pivot tables, charts, and calculated fields',
     defaultSize: 'full',
     locked: true,
   },

@@ -14,7 +14,6 @@ import RootCauseChart from './RootCauseChart';
 import InsightChart from './InsightChart';
 import SARFI70Monitor from './SARFI70Monitor';
 import AffectedCustomerChart from './AffectedCustomerChart';
-import ReportBuilder from './ReportBuilder/ReportBuilder';
 
 interface DashboardProps {
   onNavigateToMeter?: (meterId: string) => void;
@@ -159,8 +158,6 @@ export default function Dashboard({ onNavigateToMeter }: DashboardProps) {
         return <EventList events={events} substations={substations} />;
       case 'sarfi-70-monitor':
         return <SARFI70Monitor events={events} substations={substations} />;
-      case 'report-builder':
-        return <ReportBuilder events={events} substations={substations} />;
       default:
         return null;
     }

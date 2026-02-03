@@ -30,6 +30,8 @@ import {
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import NotificationBell from './NotificationBell';
+import { supabase } from '../lib/supabase';
+import { PQEvent, Substation } from '../types/database';
 
 type PQSummaryEventType = 'Voltage Dip' | 'Voltage Swell' | 'Harmonic' | 'Interruption';
 
@@ -3523,6 +3525,48 @@ function PQSummaryTab() {
 
 export default function Reporting() {
   const [activeTab, setActiveTab] = useState<ReportingTab>('pqSummary');
+  const [events, setEvents] = useState<PQEvent[]>([]);
+  const [substations, setSubstations] = useState<Substation[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+
+  // Fetch events and substations for Dynamic Report
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoadingData(true);
+        
+        // Fetch events
+        const { data: eventsData, error: eventsError } = await supabase
+          .from('pq_events')
+          .select('*')
+          .order('timestamp', { ascending: false });
+        
+        if (eventsError) {
+          console.error('Error fetching events:', eventsError);
+        } else {
+          setEvents(eventsData || []);
+        }
+        
+        // Fetch substations
+        const { data: substationsData, error: substationsError } = await supabase
+          .from('substations')
+          .select('*')
+          .order('name');
+        
+        if (substationsError) {
+          console.error('Error fetching substations:', substationsError);
+        } else {
+          setSubstations(substationsData || []);
+        }
+      } catch (error) {
+        console.error('Error loading data:', error);
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+    
+    fetchData();
+  }, []);
 
   const tabs = useMemo(
     () =>
@@ -3581,7 +3625,18 @@ export default function Reporting() {
 
         {activeTab === 'meterCommunication' && <MeterCommunicationTab />}
 
-        {activeTab === 'dynamicReport' && <ReportBuilder />}
+        {activeTab === 'dynamicReport' && (
+          isLoadingData ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+                <p className="text-slate-600">Loading report data...</p>
+              </div>
+            </div>
+          ) : (
+            <ReportBuilder events={events} substations={substations} />
+          )
+        )}
       </div>
     </div>
   );
