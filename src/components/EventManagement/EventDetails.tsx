@@ -1117,26 +1117,6 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     }
   };
 
-  const generateMockWaveform = () => {
-    const samples = 200;
-    const baseVoltage = currentEvent.magnitude || 100;
-    
-    const voltage: { time: number; value: number }[] = Array.from({ length: samples }, (_, idx) => ({
-      time: idx * 0.001,
-      value: baseVoltage + (Math.random() - 0.5) * 5
-    }));
-
-    const current: { time: number; value: number }[] = voltage.map(point => ({
-      time: point.time,
-      value: point.value * 0.8
-    }));
-
-    return {
-      voltage,
-      current
-    };
-  };
-
   // Calculate child events severity distribution for preview
   const getChildEventsSummary = () => {
     const severityCounts = childEvents.reduce((acc, child) => {

@@ -40,9 +40,12 @@ Load only the minimal necessary context from each artifact:
 **From spec.md:**
 
 - Overview/Context
+- Implementation Status (if present)
 - Functional Requirements
 - Non-Functional Requirements
-- User Stories
+- User Stories (including detailed Acceptance Criteria with database columns, UI components, validation rules)
+- Database Schema Integration (if present)
+- Technical Implementation Reference (if present)
 - Edge Cases (if present)
 
 **From plan.md:**
@@ -111,6 +114,17 @@ Focus on high-signal findings. Limit to 50 findings total; aggregate remainder i
 - Task ordering contradictions (e.g., integration tasks before foundational setup tasks without dependency note)
 - Conflicting requirements (e.g., one requires Next.js while other specifies Vue)
 
+#### G. Technical Consistency
+
+- Database columns referenced in acceptance criteria but not defined in Database Schema Integration section
+- Database tables mentioned but not documented with full schema
+- UI components mentioned in acceptance criteria but no matching component in Technical Implementation Reference
+- TypeScript interfaces referenced but not defined in Technical Implementation Reference
+- Services referenced in acceptance criteria but not documented in Backend Services section
+- Missing validation rule implementations for specified constraints
+- Component file paths referenced that don't match actual codebase structure
+- API queries documented that don't align with database schema
+
 ### 5. Severity Assignment
 
 Use this heuristic to prioritize findings:
@@ -134,8 +148,8 @@ Output a Markdown report (no file writes) with the following structure:
 
 **Coverage Summary Table:**
 
-| Requirement Key | Has Task? | Task IDs | Notes |
-|-----------------|-----------|----------|-------|
+| Requirement Key | Has Task? | Task IDs | Has DB Schema? | Has UI Component? | Has Service? | Notes |
+|-----------------|-----------|----------|----------------|-------------------|--------------|-------|
 
 **Constitution Alignment Issues:** (if any)
 

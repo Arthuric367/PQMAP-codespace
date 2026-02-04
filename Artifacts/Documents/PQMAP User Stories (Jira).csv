@@ -1,0 +1,1295 @@
+Issue Type,Issue key,Issue id,Summary,Parent,Parent key,Parent summary,Description,Assignee,Assignee Id,Status,Due date,Comments
+Story,PQMAP-52,2864675,[Event Grouping] Mother Event - Automated Voltage Dip Grouping Logic (Backend),1017798,PQMAP-1,Event Management,"*As a* System Administrator, 
+
+*I want* the backend to automatically correlate related voltage dips based on time and topology 
+
+*so that* the Event List remains clean and reflects the true structure of grid disturbances.
+
+
+
++*Description*+ +*_(Requirement No: 1.5.1)_*++*:*+
+
+The system shall implement a *time-buffered consolidation logic* for all incoming voltage dip records. When a new dip file is ingested, the system will not immediately finalize the record. Instead, it will hold the event in a ""pending"" state for a configurable window (e.g., 5 minutes) to aggregate related dips from different voltage levels and locations into a single *Mother-Child* hierarchy.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Inactivity/Buffer Timer:*
+
+* Upon receipt of the first dip record in a potential sequence, the backend shall initiate a *Consolidation Window* (Default: 5 minutes, configurable via System Settings).
+
+*AC2 - Grouping Heuristics (The ""Matching"" Logic):* The backend shall group events as Mother and Child if they meet the following criteria:
+
+* *Temporal Correlation:* Occurring within a narrow time window (e.g., < 5 seconds).
+* *Topological Relationship:* The Mother is identified as the highest voltage level (e.g., 11kV), and Children are identified as downstream meters (e.g., 380V) fed by the same substation/transformer.
+
+*AC3 - Mother Event Selection:*
+
+* The event with the *highest voltage level* or the *earliest timestamp* within the cluster shall be designated as the *Mother Event*.
+* If multiple 11kV dips occur, the system should evaluate if they belong to the same ""Ring"" before grouping.
+
+*AC4 - Automatic Attribute Aggregation:*
+
+* The Mother Event shall summarize the ""Worst Magnitude"" and ""Total Duration"" across the entire group for the Overview list.
+
+*AC5 - Finalization:* Once the buffer timer expires and no further related dips are detected, the group is ""committed"" to the database and appears in the UI.",,,To Do,,
+Story,PQMAP-51,2864673,[Event Grouping] Event Operation - Grouping Maintenance,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer,
+
+*I want to* manually manage the relationship between Mother and Child events 
+
+*so that* I can correct automated grouping errors and ensure the incident hierarchy accurately reflects the grid's topology.
+
+
+
++*Description*+ +*_(Requirement No: 1.5.1)_*++*:*+
+
+The *Event Detail* page for a Voltage Dip (Mother Event) shall include a ""Child Events"" section. This tool allows users to see all currently linked Child events, remove (ungroup) incorrect ones, or search for and add (re-group) other events occurring within the same incident window that were missed by the automated logic.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Child Event List:*
+
+* Display a table within the Mother Event's detail pane (Child Events) listing all currently associated Child records.
+* Columns: *Meter Name, SCADA Code, Voltage Level, Incident Time, and Magnitude.*
+
+*AC2 - Ungroup Functionality:*
+
+* Provide an *""Ungroup""* icon next to each child record.
+* Clicking this removes the link; the child record then becomes an independent ""Mother"" event (or orphan) in the main list.
+
+*AC3 - Re-group (Add) Action:*
+
+* Provide a prominent *""Re-group""* button at the top of the child list.
+
+*AC4 - Smart Selection Modal:*
+
+* Clicking ""Re-group"" must open a pop-up modal.
+* *Auto-Filtered Results:* The modal must automatically display events that: 
+** Occurred within 15 sec window of the Mother event. 
+** Belong to meters geographically or electrically downstream (if topology data is available)
+* *Manual Search:* Users can search for other events by SCADA code or specific timestamp if they fall outside the auto-suggested window.
+
+*AC5 - Multi-Select & Link:*
+
+* Users can ""Tick"" multiple events from the modal list.
+* Clicking *""Confirm Grouping""* creates the link, updating the Child's Parent ID to match the current Mother event.
+
+*AC6 - Status Propagation:* As per [https://clpdigital.atlassian.net/browse/PQMAP-22|https://clpdigital.atlassian.net/browse/PQMAP-22|smart-link], any newly linked children must immediately inherit the ""False Alarm"" status of the Mother event.",,,To Do,,
+Story,PQMAP-50,2864554,[Event Detail] Overview - Power Factor,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer, 
+
+*I want to* see a summarized list of key event parameters 
+
+*so that* I can quickly identify the severity and nature of a power factor at a glance.
+
+
+
++*Description*+ +*_(Requirement No: 1.2.1)_*++*:*+
+
+The ""Master"" view shall display a list of events with a specific set of attributes. This table/list provides the essential technical ""signature"" of the swell, including magnitude across all phases and critical operational flags.
+
+
+
++*Acceptance Criteria:*+ {color:#ffc400}+*<<Need to review the columns>>*+{color}
+
+*AC1 - Core Event Data:* The overview must display the following columns/fields:
+
+* *Incident Time:* (Formatted as DD/MM/YYYY HH:mm:ss)
+* *Voltage Level:* (e.g., 11kV, 380V)
+* *Source Substation:* (Site Name/ID)
+* *Transformer No. & Ring Number:* (Asset identification)
+
+*AC2 - Magnitude & Duration:*
+
+* *Phase Percentages:* VL1 (%), VL2 (%), and VL3 (%)
+* *Duration:* (Total time in ms)
+
+*AC3 - Binary Indicators (Yes/No):* These should be represented as clear status icons or labels:
+
+* *Min Volt:* Indicates if the voltage dropped below the minimum threshold.
+* *FR:* Indicates if this is Fault Recorder Trigger.
+
+*AC4 - Classification & Workflow:*
+
+* *False Alarm:* A flag to distinguish genuine events from noise/errors.
+* *Status:* The current workflow stage (e.g., New, Investigating, Closed).",,,To Do,,
+Story,PQMAP-49,2864553,[Event Detail] Overview - Transient Events,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer, 
+
+*I want to* see a summarized list of key event parameters 
+
+*so that* I can quickly identify the severity and nature of a Transient at a glance.
+
+
+
++*Description*+ +*_(Requirement No: 1.2.1)_*++*:*+
+
+The ""Master"" view shall display a list of events with a specific set of attributes. This table/list provides the essential technical ""signature"" of the swell, including magnitude across all phases and critical operational flags.
+
+
+
++*Acceptance Criteria:*+ {color:#ffc400}+*<<Need to review the columns>>*+{color}
+
+*AC1 - Core Event Data:* The overview must display the following columns/fields:
+
+* *Incident Time:* (Formatted as DD/MM/YYYY HH:mm:ss)
+* *Voltage Level:* (e.g., 11kV, 380V)
+* *Source Substation:* (Site Name/ID)
+* *Transformer No. & Ring Number:* (Asset identification)
+
+*AC2 - Magnitude & Duration:*
+
+* *Phase Percentages:* VL1 (%), VL2 (%), and VL3 (%)
+* *Duration:* (Total time in ms)
+
+*AC3 - Binary Indicators (Yes/No):* These should be represented as clear status icons or labels:
+
+* *Min Volt:* Indicates if the voltage dropped below the minimum threshold.
+* *FR:* Indicates if this is Fault Recorder Trigger.
+
+*AC4 - Classification & Workflow:*
+
+* *False Alarm:* A flag to distinguish genuine events from noise/errors.
+* *Status:* The current workflow stage (e.g., New, Investigating, Closed).",,,To Do,,
+Story,PQMAP-48,2864552,[Event Detail] Overview - Flickering Events,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer, 
+
+*I want to* see a summarized list of key event parameters 
+
+*so that* I can quickly identify the severity and nature of a flickering at a glance.
+
+
+
++*Description*+ +*_(Requirement No: 1.2.1)_*++*:*+
+
+The ""Master"" view shall display a list of events with a specific set of attributes. This table/list provides the essential technical ""signature"" of the swell, including magnitude across all phases and critical operational flags.
+
+
+
++*Acceptance Criteria:*+ {color:#ffc400}+*<<Need to review the columns>>*+{color}
+
+*AC1 - Core Event Data:* The overview must display the following columns/fields:
+
+* *Incident Time:* (Formatted as DD/MM/YYYY HH:mm:ss)
+* *Voltage Level:* (e.g., 11kV, 380V)
+* *Source Substation:* (Site Name/ID)
+* *Transformer No. & Ring Number:* (Asset identification)
+
+*AC2 - Magnitude & Duration:*
+
+* *Phase Percentages:* VL1 (%), VL2 (%), and VL3 (%)
+* *Duration:* (Total time in ms)
+
+*AC3 - Binary Indicators (Yes/No):* These should be represented as clear status icons or labels:
+
+* *Min Volt:* Indicates if the voltage dropped below the minimum threshold.
+* *FR:* Indicates if this is Fault Recorder Trigger.
+
+*AC4 - Classification & Workflow:*
+
+* *False Alarm:* A flag to distinguish genuine events from noise/errors.
+* *Status:* The current workflow stage (e.g., New, Investigating, Closed).",,,To Do,,
+Story,PQMAP-47,2864550,[Event Detail] Overview - Harmonic Events,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer, 
+
+*I want to* see a summarized list of key event parameters 
+
+*so that* I can quickly identify the severity and nature of a harmonic at a glance.
+
+
+
++*Description*+ +*_(Requirement No: 1.2.1)_*++*:*+
+
+The ""Master"" view shall display a list of events with a specific set of attributes. This table/list provides the essential technical ""signature"" of the swell, including magnitude across all phases and critical operational flags.
+
+
+
++*Acceptance Criteria:*+ {color:#ffc400}+*<<Need to review the columns>>*+{color}
+
+*AC1 - Core Event Data:* The overview must display the following columns/fields:
+
+* *Incident Time:* (Formatted as DD/MM/YYYY HH:mm:ss)
+* *Voltage Level:* (e.g., 11kV, 380V)
+* *Source Substation:* (Site Name/ID)
+* *Transformer No. & Ring Number:* (Asset identification)
+
+*AC2 - Magnitude & Duration:*
+
+* *Phase Percentages:* VL1 (%), VL2 (%), and VL3 (%)
+* *Duration:* (Total time in ms)
+
+*AC3 - Binary Indicators (Yes/No):* These should be represented as clear status icons or labels:
+
+* *Min Volt:* Indicates if the voltage dropped below the minimum threshold.
+* *FR:* Indicates if this is Fault Recorder Trigger.
+
+*AC4 - Classification & Workflow:*
+
+* *False Alarm:* A flag to distinguish genuine events from noise/errors.
+* *Status:* The current workflow stage (e.g., New, Investigating, Closed).",,,To Do,,
+Story,PQMAP-46,2864549,[Event Detail] Overview - Swell Events,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer, 
+
+*I want to* see a summarized list of key event parameters 
+
+*so that* I can quickly identify the severity and nature of a swell at a glance.
+
+
+
++*Description*+ +*_(Requirement No: 1.2.1)_*++*:*+
+
+The ""Master"" view shall display a list of events with a specific set of attributes. This table/list provides the essential technical ""signature"" of the swell, including magnitude across all phases and critical operational flags.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Core Event Data:* The overview must display the following columns/fields:
+
+* *Incident Time:* (Formatted as DD/MM/YYYY HH:mm:ss)
+* *Voltage Level:* (e.g., 11kV, 380V)
+* *Source Substation:* (Site Name/ID)
+* *Transformer No. & Ring Number:* (Asset identification)
+
+*AC2 - Magnitude & Duration:*
+
+* *Phase Percentages:* VL1 (%), VL2 (%), and VL3 (%)
+* *Duration:* (Total time in ms)
+
+*AC3 - Binary Indicators (Yes/No):* These should be represented as clear status icons or labels:
+
+* *Min Volt:* Indicates if the voltage dropped below the minimum threshold.
+* *FR:* Indicates if this is Fault Recorder Trigger.
+
+*AC4 - Classification & Workflow:*
+
+* *False Alarm:* A flag to distinguish genuine events from noise/errors.
+* *Status:* The current workflow stage (e.g., New, Investigating, Closed).",,,To Do,,
+Story,PQMAP-45,2864547,[Event List] Data Export - All Non-Voltage Dip Events,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer,
+
+*I want to* export Swell, Harmonic, Flickering, Transient, and Power Factor data to CSV or Excel 
+
+*so that* I can perform specialized offline analysis and compliance reporting.
+
+
+
++*Description:*+
+
+The system shall provide a data export utility within the ""PQ Event List"" view. This utility must intelligently adapt the export file structure based on the active event categories selected by the user, ensuring that technical metrics specific to those events are preserved in the output.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Export Formats:* The system must support two export formats: *.CSV* or *.XLSX*.
+
+*AC2 - Filter Integration:* The export must respect all active *Basic and Advanced filters* [https://clpdigital.atlassian.net/browse/PQMAP-44|https://clpdigital.atlassian.net/browse/PQMAP-44|smart-link]. If a user has filtered ""Voltage Level: 132kV,"" only those records should be exported.
+
+*AC3 - Data Fidelity:* All columns listed in the following events' detail (Incident Time, Site ID, Phase Voltages, etc.) must be included in the export file.
+
+* [https://clpdigital.atlassian.net/browse/PQMAP-46|https://clpdigital.atlassian.net/browse/PQMAP-46|smart-link] 
+* [https://clpdigital.atlassian.net/browse/PQMAP-47|https://clpdigital.atlassian.net/browse/PQMAP-47|smart-link] 
+* [https://clpdigital.atlassian.net/browse/PQMAP-48|https://clpdigital.atlassian.net/browse/PQMAP-48|smart-link] 
+* [https://clpdigital.atlassian.net/browse/PQMAP-49|https://clpdigital.atlassian.net/browse/PQMAP-49|smart-link] 
+* [https://clpdigital.atlassian.net/browse/PQMAP-50|https://clpdigital.atlassian.net/browse/PQMAP-50|smart-link] 
+
+*AC4 - File Naming Convention:* The default filename should follow a clear pattern, e.g., {{Voltage_Dip_Events_YYYYMMDD_HHMM.xlsx}}.
+
+*AC5 - Performance:* For large datasets (e.g., >1,000 records), the system should provide a visual indicator (loading spinner) during the file generation process.
+
+
+
++*Sample Screen (For Reference Only):*+
+
+!image-20260129-172755.png|width=625,alt=""image-20260129-172755.png""!",,,In Progress,,
+Story,PQMAP-44,2864542,[Event List] Filter & Searching - All Non-Voltage Dip Events,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer, 
+
+*I want* a streamlined filtering interface for non-dip events
+
+*so that* I can manage diverse power quality data without being overwhelmed by irrelevant parameters.
+
+
+
++*Description*+ +*_(Requirement No: 1.1.3)_*++*:*+
+
+The ""Event List"" shall feature a two-tiered filtering mechanism. By default, the system will display a ""Basic Filter"" bar containing the most frequently used parameters. An ""Advanced Filter"" toggle or expandable section will house more technical or secondary parameters to keep the primary view uncluttered.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Tier 1: Basic Filters (Visible by Default):*
+
+* *Event Category:* Multi-select dropdown (Swell, Harmonic, Flickering, Transient, Power Factor).
+* *Date/Time Range:* Quick selection (e.g., Last 24 hours, Last 7 days) and custom picker.
+* *Voltage Level:* Dropdown filter (e.g., 11kV, 22kV, 132kV).
+* *Source Substation:* Multi-select dropdown.
+* *Include Parent & Child:* Yes/No
+
+*AC2 - Tier 2: Advanced Filters (Expandable/Collapsible):*
+
+* *Technical IDs:* Site ID, IDR No., Meter Name
+* *PQ-Specific Thresholds:*
+** _Swell:_ Voltage Magnitude > X%.
+** _Harmonic:_ THD > X%.
+** _Flicker:_ $P_{st}$ or $P_{lt}$ > X.
+** _Power Factor:_ Value < X.
+
+*AC3 - Persistence:* The system should remember if the ""Advanced"" section was expanded or collapsed during the current user session.
+
+*AC4 - Clear All:* A single-click ""Reset"" button must be available to clear all active filters (both Basic and Advanced).
+
+*AC5 - Profiles*: The system allows users to set multiple profiles to store the filters selected. Users select from the profiles dropdown list, and the event list is updated according to the pre-defined filters.
+
+
+
++*Sample Screen (For Reference Only):*+
+
+!image-20260129-193147.png|width=882,alt=""image-20260129-193147.png""!
+
+!image-20260129-193302.png|width=445,alt=""image-20260129-193302.png""!",,,In Progress,,
+Story,PQMAP-43,2864530,[Event List] Category - All Non-Voltage Dip Events,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer, 
+
+*I want* a dedicated list for non-dip events (Swell, Harmonic, Flickering, Transient, and Power Factor) 
+
+*so that* I can monitor general grid health and identify long-term quality trends without cluttering the critical Voltage Dip workspace.
+
+
+
++*Description*+ +*_(Requirement No.: 1.1.1)_*++*:*+
+
+The system shall provide a separate ""PQ Event List"" page. This page functions as a centralized repository for all detected anomalies that do not fall under the Voltage Dip category. It will follow a similar master-detail structure but will be optimized for the unique parameters of these specific event types.
+
+
+
++*Acceptance Criteria*+
+
+*AC1 - Display Layout:*
+
+* *Top:* 
+** Filters Button [https://clpdigital.atlassian.net/browse/PQMAP-44|https://clpdigital.atlassian.net/browse/PQMAP-44|smart-link] 
+** Data Export Button [https://clpdigital.atlassian.net/browse/PQMAP-45|https://clpdigital.atlassian.net/browse/PQMAP-45|smart-link] 
+** Save Profile Button.
+
+!image-20260129-172755.png|width=625,alt=""image-20260129-172755.png""!
+
+* *Centre:* Full-width Event List Table with the following fields (10 events/page) according to the Filtering Criteria:
+** *Incident Time:* (Formatted as DD/MM/YYYY HH:mm:ss)
+** *Voltage Level:* (e.g., 11kV, 380V)
+** *Source Substation:* (e.g. HWL, YME)
+** *Transformer No.* (e.g. H1, H2)
+** *Ring Number:* (e.g. TCTR0009)
+** *Phase Percentages:* VL1 (%), VL2 (%), and VL3 (%)
+** *Duration:* (Total time in ms)
+** *Min Volt:* Indicates if the voltage dropped below the minimum threshold.
+** *FR:* Indicates if this is Fault Recorder Trigger.
+** *False Alarm:* A flag to distinguish genuine events from noise/errors.
+** *Status:* if the email notification has been sent
+
+!image-20260129-174242.png|width=882,alt=""image-20260129-174242.png""!
+
+* *Bottom:* Event Detail
+** Clicking any row in the result table triggers the Event Detail:
+*** [https://clpdigital.atlassian.net/browse/PQMAP-46|https://clpdigital.atlassian.net/browse/PQMAP-46|smart-link] 
+*** [https://clpdigital.atlassian.net/browse/PQMAP-47|https://clpdigital.atlassian.net/browse/PQMAP-47|smart-link] 
+*** [https://clpdigital.atlassian.net/browse/PQMAP-48|https://clpdigital.atlassian.net/browse/PQMAP-48|smart-link] 
+*** [https://clpdigital.atlassian.net/browse/PQMAP-49|https://clpdigital.atlassian.net/browse/PQMAP-49|smart-link] 
+*** [https://clpdigital.atlassian.net/browse/PQMAP-50|https://clpdigital.atlassian.net/browse/PQMAP-50|smart-link] ",,,In Progress,,
+Story,PQMAP-42,2864375,[Event Detail] Waveform Display - Meter-Centric Waveform Recorder Viewer,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer,
+
+*I want* a dedicated search interface to locate raw waveform recordings by meter 
+
+*so that* I can investigate electrical anomalies and perform manual classifications.
+
+
+
++*Description*+ +*_(Requirement No: 1.2.4)_*++*:*+
+
+The system shall provide a ""Waveform Recorder Viewer"" page. This page allows users to query the database for raw time-series records by meter identity and time frame. The results will be displayed in a summary list, providing a gateway to the high-fidelity waveform visualization tool [https://clpdigital.atlassian.net/browse/PQMAP-37|https://clpdigital.atlassian.net/browse/PQMAP-37|smart-link].
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Search & Filter Criteria (Top Bar):*
+
+* Meter SCADA Code.
+* Meter Name
+* Date Range
+* Data Type
+
+*AC2 - Search Results List:* The system shall return a table with the following columns:
+
+* Meter Name
+* Timestamp
+* Duration
+* V1, V2, V3 Magnitude
+* Worst Phase
+
+*AC3 - Waveform Access:*
+
+* Each row in the list must be clickable or feature a ""View"" icon.
+* Clicking an entry must navigate the user to the *Waveform Visualization Module* [https://clpdigital.atlassian.net/browse/PQMAP-37|https://clpdigital.atlassian.net/browse/PQMAP-37|smart-link] to see the raw time-series graph.
+
+
+
++*Source:*+
+
+PQMS & CDPIS COMTRADE interface
+
+
+
++*PQMS Reference:*+
+
+!image-20260129-062333.png|width=704,alt=""image-20260129-062333.png""!",,,To Do,,
+Story,PQMAP-40,2863927,[Harmonic] Harmonic Bar Chart Visualization,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer,
+
+*I want to* view a harmonic bar chart that mirrors the PQMS/CPDIS layout 
+
+*so that* I can quickly identify which harmonic orders are exceeding permissible limits.
+
+
+
++*Description*+ +*_(Requirement No: 1.3.2)_*++*:*+
+
+The system shall provide a graphical bar chart representing the harmonic spectrum for a selected event or meter reading. This chart must follow the exact visual styling and layout logic currently utilized in the *PQMS/CPDIS* environments. The chart allows for rapid visual diagnostic of frequency-domain issues.
+
+
+
++*Sample Screen (*++*_Just for Reference - Not the final version_*++*):*+
+
+!image-20260127-105656.png|width=572,alt=""image-20260127-105656.png""!
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Data Series (X-Axis):* The bar chart must include the following specific metrics:
+
+* *Harmonics:* THD (Total), TEHD (Even), TOHD (Odd).
+* *Waveform Characteristics:* Crest Factor, Form Factor, Fundamental RMS, RMS.
+* *System Metadata:* Nominal Frequency (Hz), Duration (ms), Worst Magnitude (%), Nominal Voltage (V).
+* *Phase Extremes:* Va Min/Max, Vb Min/Max, Vc Min/Max.
+
+*AC2 - Scaling & Units:* Since the units vary (%, V, Hz, ms), the Y-axis must support either normalized scaling or multiple axes to ensure all bars are visible and meaningful.
+
+*AC3 - Legend & Tooltips:* A clear legend must define each metric, and hovering over any bar must show the exact value and its associated unit.",,,To Do,,
+Story,PQMAP-39,2863918,[Harmonic] Harmonic detail,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer,
+
+*I want to* view harmonic data in a format consistent with legacy systems (PQMS/CPDIS) 
+
+*so that* I can perform traditional frequency-domain analysis without changing my established workflow.
+
+
+
++*Description*+ +*_(Requirement No: 1.3.1)_*++*:*+
+
+The system shall include a *Harmonic Detail* module that functions as a data-mirroring interface for legacy harmonic records. To minimize complexity and ensure data integrity, PQMAP will not apply new calculations; it will simply retrieve and display data following the existing PQMS/CPDIS table structures.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Structural Parity:* The table layout, column headers, and data types must match the existing *PQMS/CPDIS* structures exactly for the relevant voltage levels.
+
+*AC2 - Direct Data Rendering:* The system shall render the retrieved harmonic data ""as-is"" from the source. No additional processing, aggregation, or computational logic shall be applied by PQMAP.
+
+*AC3 - Scope Limitation (Voltage Levels):* The module must only display data for *11kV* and *380V* voltage levels.
+
+*AC4 - Data Attributes:* Display standard harmonic parameters including:
+
+* Total Harmonic Distortion (THD)
+* Individual Harmonic Orders (e.g., 3rd, 5th, 7th, up to the legacy limit).",,,To Do,,
+Story,PQMAP-38,2863654,[Event Detail] Timeline - Event Audit Trail & Activity Logging,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer,
+
+*I want to* view a complete history of system and user actions for each event 
+
+*so that* I can track the lifecycle of an incident and verify the accuracy of manual updates.
+
+
+
++*Description*+ +*_(Requirement No: 1.2.5)_*++*:*+
+
+The system shall maintain a comprehensive *Event Log* for every recorded Voltage Dip. This log must capture two types of activities: *System Operations* (automated triggers, data ingestion, status changes by logic) and *User Operations* (manual edits, overrides, or classifications). This log should be accessible directly within the Event Detail view.
+
+
+
++*Sample Screen (*++*_Just for Reference - Not the final version_*++*):*+
+
+!image-20260126-194214.png|width=572,alt=""image-20260126-194214.png""!
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Chronological Logging:* Display all activities in a vertical timeline or table, with the most recent action at the top.
+
+*AC2 - Data Points per Log Entry:* Each entry must record:
+
+* *Timestamp:* Date and time of the action (down to the second).
+* *Actor:* The specific User ID or ""System"" if automated.
+* *Action Type:* e.g., ""Created,"" ""Status Updated,"" ""Manual Override,"" ""IDR Uploaded.""
+
+*AC3 - Immutable Records:* Log entries must be read-only. Once a log is created, it cannot be edited or deleted by any user level.",,,To Do,,
+Story,PQMAP-37,2863649,[Event Detail] Waveform Display - Meter-Centric Waveform Chart,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer,
+
+*I want to* access raw time-series waveform data directly from a meter's perspective 
+
+*so that* I can manually diagnose anomalies and identify electrical signatures that may not have triggered a standard event.
+
+
+
++*Description*+ +*_(Requirement No: 1.2.4)_*++*:*+
+
+The system shall provide a Waveform Visualization Module that serves as a raw-data browser. Unlike the Event Detail view, this module pulls time-series data based on meter triggers and anomalies. It serves as a forensic tool for expert manual analysis. {color:#ffc400}[Note: While the ability to create ""Ad-hoc Events"" from these waveforms is currently {color}{color:#ffc400}*Under Review (TBD)]*{color}.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Meter-Centric Selection:* Users must be able to select a specific *Meter* and the *Time Interval Table List* to retrieve captured waveform records.
+
+*AC2 - Time-Series Visualization:* Render raw Voltage and Current waves based on the meter's sampling rate. Support overlay of multiple channels (V1, V2, V3, I1, I2, I3, I4) on a synchronized X-axis (Time).
+
+*AC3 - Ad-hoc Event Hook (Placeholder):* The UI should be designed to accommodate a ""Create Event Case"" button, but this feature remains *disabled/hidden* pending the final project team decision.
+
+
+
++*Source:*+
+
+PQMS & CDPIS COMTRADE interface
+
+
+
++*PQMS Waveform Reference:*+
+
+!image-20260126-191958.png|width=572,alt=""image-20260126-191958.png""!",,,To Do,,
+Story,PQMAP-36,2863646,[Event Detail] Affected Customer - Event History,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer,
+
+*I want to* review the historical incidents for a specific sensitive customer 
+
+*so that* I can identify patterns of poor power quality and provide data-backed evidence for mitigation strategies.
+
+
+
++*Description*+ +*_(Requirement No: 1.2.3)_*++*:*+
+
+When a user clicks on a customer from the ""Affected Sensitive Customer List"" [https://clpdigital.atlassian.net/browse/PQMAP-35|https://clpdigital.atlassian.net/browse/PQMAP-35|smart-link], the system shall open a modal for the *Customer Event History*. This view provides a chronological log of all past disturbances affecting that specific customer, with flexible time-range filtering and export capabilities.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Historical Data Attributes:* The history table must display the following columns:
+
+* Incident Timestamp (Formatted as DD/MM/YYYY HH:mm:ss)
+* Voltage Level (e.g. 11kV, 380kV)
+* Source Substation (e.g. NPI)
+* Transformer ID (e.g. H2)
+* Customer S/S
+* Transformer No. (e.g. 405364 D4)
+* Transformer Class
+* VL1(%) at 380, VL2(%) at 380, VL3(%) at 380
+* Duration (in ms)
+
+*AC2 - Time-Range Filtering:* Users must be able to filter the history using a dropdown with the following presets:
+
+* Last Month
+* Last 3 Months
+* Last 6 Months
+* Last Year
+* Custom Date Range (Manual start/end date picker).
+
+*AC3 - Export Functionality:* Provide buttons to export the filtered history list in *CSV* or *Excel* formats. The exported file name should include the Customer Name and the selected date range.
+
+
+
++*VDIMS Reference:*+
+
+!image-20260128-192635.png|width=672,alt=""image-20260128-192635.png""!",,,To Do,,
+Story,PQMAP-35,2863645,[Event Detail] Affected Customer - Display & Content Structure,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer,
+
+*I want to* view all the customers' impact of an event 
+
+*so that* I can quantify the disruption and review individual customer history.
+
+
+
++*Description*+ +*_(Requirement No: 1.2.3)_*++*:*+
+
+For a selected Voltage Dip event, the system shall filter the Transformer-to-Customer mapping [https://clpdigital.atlassian.net/browse/PQMAP-34|https://clpdigital.atlassian.net/browse/PQMAP-34|smart-link]to display only those accounts flagged as *""Sensitive""* (either via GIS or manual override). This ensures that technical staff can focus immediately on the most critical stakeholders, such as hospitals, data centres, or industrial plants.
+
+
+
++*Sample Screen (*++*_Just for Reference - Not the final version_*++*):*+
+
+!image-20260126-185243.png|width=572,alt=""image-20260126-185243.png""!
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Impact Summary Metrics:* 
+
+* *No. Total Sensitive Customers:* Total count of sensitive accounts served by the affected transformer.
+* *Average Downtime:* The calculated average duration of the interruption/dip for the affected group.
+
+*AC2 - Sensitive Customer Detailed List:* A table displaying all accounts linked to the event, including:
+
+* Customer Name
+* Customer Premises Address
+* Customer Account ID
+
+*AC3 - Customer Event History Link:* Each row in the customer list must include a clickable link or icon that navigates the user to a *""Customer Event History""* view.
+
+*AC4 - Zero-State Handling:* If no sensitive customers are mapped to the affected asset, the panel should display a clear message: _""No Sensitive Customers Affected.""_",,,In Progress,,
+Story,PQMAP-33,2863643,[Event Detail] Incident Detail Report (IDR) - Display & Content Structure,1017798,PQMAP-1,Event Management,"*As a* Power Quality Engineer, 
+
+*I want to* view the full content of an IDR record 
+
+*so that* I can understand the root cause, equipment impact, and environmental context of a specific fault.
+
+
+
++*Description*+ +*_(Requirement No: 1.2.2)_*++*:*+
+
+The system shall provide a structured, detailed view for each IDR. This view displays information imported via the Excel utility or updated manually. The data must be organized into five logical categories to facilitate quick technical review and reporting.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - IDR Core Information:*
+
+* IDR No. (e.g. INC 1287744408)
+* Occurrence Time (Timestamp of the fault)
+* Voltage Level (e.g., 11kV, 380V)
+
+*AC2 - Fault & Asset Location:*
+
+* Faulty Phase (e.g., L2-L3)
+* Incident Address / Circuit Affected (e.g. (PCHR0307) CHEUNG MA CHEUK LENG PKG )
+* Region (e.g. NR, WR)
+* Equipment Type (e.g. Cable)
+
+*AC3 - Root Cause Analysis:*
+
+* Cause Group (High-level category)
+* Cause (Detailed root cause)
+* Faulty Component (The specific part that failed)
+* Remark (A multi-line text area for free-text descriptions)
+
+*AC4 - Extended Technical Details:*
+
+* External / Internal
+* Object Part Group & Object Part Code
+* Damage Group & Damage Code
+* Fault Type
+* Outage Type
+
+*AC5 - Environment & Operation  Details:*
+
+* Weather Code & Weather Condition
+* Responsible OC
+
+*AC6 - Customer Impact:*
+
+* Total CMI: (Customer Minutes Interrupted)
+
+*AC7 - Data Provenance:*
+
+* Manual Create IDR (Yes/No)
+
+
+
++*VDIMS Reference:*+
+
+!image-20260128-183635.png|width=723,alt=""image-20260128-183635.png""!",,,In Progress,,
+Story,PQMAP-32,2863640,[Event Detail] Incident Detail Report (IDR) - Data Management & Manual Import,1017798,PQMAP-1,Event Management,"As a *Power Quality Engineer*, 
+
+*I want to* manually upload and manage Excel-based Incident Detail Reports (IDR) 
+
+*so that* I can enrich PQMAP event data with information from ADMS and maintain data accuracy.
+
+
+
++*Description*+ +*_(Requirement No: 1.2.2)_*++*:*+
+
+The system must provide a utility to bridge gaps between ADMS event cases and PQMAP event entities via manual Excel uploads. Additionally, a management interface is required to allow authorized users to edit or update IDR records that have already been imported into the system.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Excel Upload Utility:* Provide a dedicated ""Import"" interface where users can drag and drop or browse for IDR Excel files. The system must validate the file format (.xlsx / .xls) before processing.
+
+*AC2 - Data Mapping (Placeholder):* The system shall ingest IDR data points based on a predefined template. ({color:#ffc400}_Note: The specific logic for matching IDR rows from ADMS Excel to PQMAP Voltage Dip Event is currently TBD._{color})
+
+*AC3 - Data Validation:* Display a summary after upload (e.g., ""10 records successfully imported, 2 failed""). Highlight specific rows in the Excel file that failed validation (e.g., missing mandatory fields or invalid Site IDs).
+
+*AC4 - IDR Data Management Module:* Provide a search/filter view to locate existing IDR records. Filter & Search Fields for IDR Management:
+
+* Region, Voltage Level, Outage Type
+* IDR No, Incident Address / Circuit Affected, Responsible OC
+* Occurrence Time Range, Cause Group 
+
+*AC5 - IDR Record Modification:* Users with ""Power Quality Engineer"" permissions must be able to edit specific fields within an IDR record.",,,In Progress,,
+Story,PQMAP-27,2163485,[Event Detail] Overview - Voltage Dip Events,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer, 
+
+*I want to* see a summarized list of key event parameters 
+
+*so that* I can quickly identify the severity and nature of a voltage dip at a glance.
+
+
+
++*Description*+ +*_(Requirement No: 1.2.1)_*++*:*+
+
+The detail view shall display a list of events with a specific set of attributes used in VDIMS. This table/list provides the essential technical ""signature"" of the dip, including magnitude across all phases and critical operational flags.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - General Incident Information:*
+
+* Incident Time (Formatted as DD/MM/YYYY HH:mm:ss)
+* Source Substation (e.g. DFS)
+* FI Voltage (e.g. 132kV)
+* Incident Condition (e.g. OC & 400/132kV Dip Event)
+* Ring Number (e.g. TCTR0009)
+* Phase Percentages: VL1 (%), VL2 (%), and VL3 (%)
+
+*AC2 - Summary Impact Information:*
+
+* Min. Voltage for 380V, 11kV, 132kV, 400kV
+* Max. Duration for 380V, 11kV, 132kV, 400kV
+
+
+
++*Sample Screen (Just for Reference Only):*+
+
+!image-20260129-190807.png|width=882,alt=""image-20260129-190807.png""!
+
+
+
++*Source Information:*+
+
+*Source Platform:* PQMS
+
+*Interface File:* PQMS_voltdip_<<Timestamp>>.xml
+
+*Sample:*  [^PQMS_voltdip.xml] 
+
+
+
++*For Reference:*+
+
+Existing VDIMS Screen
+
+!image-20260129-183307.png|width=882,alt=""image-20260129-183307.png""!",,,In Progress,,"28/Jan/26 4:58 PM;712020:93caf0c6-3059-47d3-9226-01fe6f341685;[~accountid:712020:137dc8b3-e099-4083-a4ff-0745e46880f2] 
+1. Please add Mother/Child Event, Special Event and Late Event as classification. 
+2. CPDIS as source is missing, any individual data columns specify from CPDIS?
+3. In the {{Summary Impact Information}} card, why all voltage level? Have shown all value for mother & child in 1 page? (e.g. Mother = 11kV, Child = 380V)"
+Story,PQMAP-26,2163484,[Event List] Data Export - Voltage Dip Events,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer, 
+
+*I want to* export the Voltage Dip event data to CSV or Excel,
+
+*so that* I can perform offline analysis, generate reports, or share data with external stakeholders.
+
+
+
++*Description*+ +*_(Requirement No: 1.1.2)_*++*:*+
+
+The system must provide a data export utility within the ""Event List"" view. Users should be able to trigger a download of the records currently displayed in the table. The export process must handle both small and large datasets efficiently, ensuring that the exported file matches the structure and data of the system's event list.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Export Formats:* The system must support two export formats: *.CSV* or *.XLSX*.
+
+*AC2 - Filter Integration:* The export must respect all active *Basic and Advanced filters* [https://clpdigital.atlassian.net/browse/PQMAP-25|https://clpdigital.atlassian.net/browse/PQMAP-25|smart-link]. If a user has filtered ""Voltage Level: 132kV,"" only those records should be exported.
+
+*AC3 - Data Fidelity:* All columns listed in [https://clpdigital.atlassian.net/browse/PQMAP-24|https://clpdigital.atlassian.net/browse/PQMAP-24|smart-link] must be included in the export file.
+
+*AC4 - File Naming Convention:* The default filename should follow a clear pattern, e.g., {{Voltage_Dip_Events_YYYYMMDD_HHMM.xlsx}}.
+
+*AC5 - Performance:* For large datasets (e.g., >1,000 records), the system should provide a visual indicator (loading spinner) during the file generation process.
+
+
+
++*Sample Screen (For Reference Only):*+
+
+!image-20260129-172755.png|width=625,alt=""image-20260129-172755.png""!",,,In Progress,,
+Story,PQMAP-25,2053816,[Event List] Filter & Searching - Voltage Dip Events,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer, 
+
+*I want to* a streamlined filtering interface,
+
+*so that* I can quickly find common events while retaining the ability to perform deep-dive analysis when necessary.
+
+
+
++*Description*+ +*_(Requirement No: 1.1.3)_*++*:*+
+
+The ""Event List"" shall feature a two-tiered filtering mechanism. By default, the system will display a ""Basic Filter"" bar containing the most frequently used parameters. An ""Advanced Filter"" toggle or expandable section will house more technical or secondary parameters to keep the primary view uncluttered.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Tier 1: Basic Filters (Visible by Default):*
+
+* *Date/Time Range:* Quick selection (e.g., Last 24 hours, Last 7 days) and custom picker.
+* *Source Substation:* Multi-select dropdown.
+* *Duration Range:* (in ms)
+* *Voltage Level:* Dropdown filter (380V, 11kV, 132kV, 400kV).
+* *Include Parent /Child:* Tick Box
+
+*AC2 - Tier 2: Advanced Filters (Expandable/Collapsible):*
+
+* *Technical IDs:* IDR No., Tx No., Dx No., Ring Number, Transformer Class.
+* *Customer Information*: Customer S/S Name, Customer A/C No., Customer Class
+* *Thresholds:* Voltage magnitude(%) Ranges.
+* *Flags:* Toggle for “Fault Indicator (FI)”, ""False Alarm,"" ""Sensitive Customer Affected,"" and ""ACB Tripping.""
+
+*AC3 - Persistence:* The system should remember if the ""Advanced"" section was expanded or collapsed during the current user session.
+
+*AC4 - Clear All:* A single-click ""Reset"" button must be available to clear all active filters (both Basic and Advanced).
+
+*AC5 - Profiles*: The system allows users to set multiple profiles to store the filters selected. Users select from the profiles dropdown list, and the event list is updated according to the pre-defined filters.
+
+
+
+*Sample Screen (For Reference Only):*
+
+!image-20260129-193147.png|width=882,alt=""image-20260129-193147.png""!
+
+!image-20260129-193302.png|width=445,alt=""image-20260129-193302.png""!
+
+
+
++*For Reference:*+
+
+Current VDIMS Voltage Dip Search Criteria
+
+!image-20260129-192032.png|width=882,alt=""image-20260129-192032.png""!",,,In Progress,,"30/Jan/26 2:31 PM;712020:93caf0c6-3059-47d3-9226-01fe6f341685;Hi [~accountid:712020:137dc8b3-e099-4083-a4ff-0745e46880f2] ,
+What is the {{Fault Indicator (FI)}}? Refer to the {{Non-CLP system fault}} from VDIMS? What is the data source?
+
+As I remember ACB Tripping is longer needed."
+Story,PQMAP-24,2053714,[Event List] Category - Voltage Dip Events,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer, 
+
+*I want to* view a real-time list of Voltage Dip events 
+
+*so that* I can immediately identify, analyse, and respond to power quality disturbances across the network.
+
+
+
++*Description*+ +*_(Requirement No.: 1.1.1)_*++*:*+
+
+The system must provide a dedicated *""Event List""* view specifically for *Voltage Dip Events*. This list must update in real-time as new events are captured by the monitoring equipment. The purpose is to provide a list where all relevant technical details of a dip are visible at a glance, allowing for quick assessment of impact (e.g., sensitive customers affected) and system health.
+
+
+
++*Acceptance Criteria*+
+
+*AC1 - Display Layout:*
+
+* *Top:* 
+** Filters Button[https://clpdigital.atlassian.net/browse/PQMAP-25|https://clpdigital.atlassian.net/browse/PQMAP-25|smart-link]
+** Data Export Button[https://clpdigital.atlassian.net/browse/PQMAP-26|https://clpdigital.atlassian.net/browse/PQMAP-26|smart-link] 
+** Save Profile Button.
+
+!image-20260129-172755.png|width=625,alt=""image-20260129-172755.png""!
+
+* *Centre:* Full-width Event List Table with the following fields (10 events/page) according to the Filtering Criteria:
+** *Incident Time:* (Formatted as DD/MM/YYYY HH:mm:ss)
+** *IDR No.* (Imported from [https://clpdigital.atlassian.net/browse/PQMAP-32|https://clpdigital.atlassian.net/browse/PQMAP-32|smart-link])
+** *Voltage Level:* (e.g., 11kV, 380V)
+** *Source Substation:* (e.g. HWL, YME)
+** *Transformer No.* (e.g. H1, H2)
+** *Ring Number:* (e.g. TCTR0009)
+** *Phase Percentages:* VL1 (%), VL2 (%), and VL3 (%)
+** *Duration:* (Total time in ms)
+** *Min Volt:* Indicates if the voltage dropped below the minimum threshold.
+** *FR:* Indicates if this is Fault Recorder Trigger.
+** *False Alarm:* A flag to distinguish genuine events from noise/errors.
+** *Status:* if the email notification has been sent
+
+!image-20260129-174242.png|width=882,alt=""image-20260129-174242.png""!
+
+* *Bottom:* Event Detail
+** Clicking any row in the result table triggers the Event Detail [https://clpdigital.atlassian.net/browse/PQMAP-27|https://clpdigital.atlassian.net/browse/PQMAP-27|smart-link].
+
+!image-20260129-191400.png|width=698,alt=""image-20260129-191400.png""!
+
+
+
++*For Reference:*+
+
+Existing VDIMS Screen
+
+!image-20260129-163435.png|width=878,alt=""image-20260129-163435.png""!",,,In Progress,,"29/Jan/26 4:24 PM;712020:93caf0c6-3059-47d3-9226-01fe6f341685;[~accountid:712020:137dc8b3-e099-4083-a4ff-0745e46880f2] I have created 2 views, please check if it is technically feasible.
+
+!image-20260129-082336.png|width=226,alt=""image-20260129-082336.png""!
+
+!image-20260129-082356.png|width=211,alt=""image-20260129-082356.png""!"
+Story,PQMAP-22,2053646,[Event Validation] False Event Handling,1017798,PQMAP-1,Event Management,"*As a* System Operator or Power Quality Engineer,
+
+*I want to* manually flag an event as a ""False Event"" from the overview page 
+
+*so that* I can correct system misidentifications and ensure all related records are updated simultaneously.
+
+
+
++*Description*+ +*_(Requirement No: 1.4.1, 1.4.2, 1.4.3)_*++*:*+
+
+The system shall provide a manual override action accessible directly from the *Voltage Dip Overview* page. This allows authorized users to toggle the ""False Alarm"" status of a record. To maintain data synchronization, any status change applied to a *Mother Event* must be automatically inherited by all its linked *Child Events*.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Primary Action Trigger:* 
+
+* Place a *""Flag as False Alarm""* or *""Validate Event""* buttons in the *Header*  of the Voltage Dip Overview page [https://clpdigital.atlassian.net/browse/PQMAP-27|https://clpdigital.atlassian.net/browse/PQMAP-27|smart-link].
+
+*AC2 - Propagation Logic (Parent-to-Child):*
+
+* When a user marks a *Mother Event* as a ""False Event,"" the system must perform a background update on all associated *Child Events* to match this status.
+* A confirmation dialog must appear before the change is finalized (e.g., _""This action will update 5 associated child records. Do you wish to proceed?""_).
+
+*AC3 - Audit Logging:*
+
+* Every manual override must be recorded in the *Event Audit Trail* [https://clpdigital.atlassian.net/browse/PQMAP-38|https://clpdigital.atlassian.net/browse/PQMAP-38|smart-link].
+* The log must capture the *User ID*, *Timestamp*, and the specific transition (e.g., _Status: Real -> False Alarm_).
+
+*AC4 - Visual Indicator:*
+
+* Once flagged, the record in the Master List must display a ""False Alarm"" badge or a greyed-out row style to distinguish it from valid events.
+
+*AC5 - Reversibility:*
+
+* Users must be able to ""Unflag"" a false event, which should similarly propagate the ""Valid"" status back down to all children.",,,To Do,,
+Story,PQMAP-17,2053404,"[Event Detail] Show ""Affected Customer"" in event_detail",1017798,PQMAP-1,Event Management,"*As* a user, 
+
+*I* *want to* view the affected customer name related to voltage dip,
+
+*so that* I could quickly figure out which sensitive customers might be affected and well-prepared for enquiry.
+
+
+
+*Acceptance Criteria*:
+
+*AC1*: User could select a specific voltage dip event and navigate to the “Customer Impact” tabs.
+
+*AC2*: In the “Customer Impact” tab, clearly show 2 statistic data (Customer affected & Sensitive Customer) in the upper section.
+
+*AC3*: In the bottom section, clearly show the sensitive customers affected as individual card, with Customer Account Number, Name). 
+
+*AC4*: The relationship is retrieved from “Customer & transformer mapping”, which voltage dip impact on transformer in same hierarchy. 
+
+Remark: Reference from _Link here_ to correlate customers and transformers 
+
+*AC5*: User can click the sensitive customers affected card to open an overlay window, for history of all voltage dip events related. ",,,To Do,,
+Story,PQMAP-62,2864699,[Dynamic Report] Dynamic Report,1017799,PQMAP-2,Dashboard,,,,To Do,,
+Story,PQMAP-61,2864698,[Dynamic Dashboard] Meter Map,1017799,PQMAP-2,Dashboard,,,,To Do,,
+Story,PQMAP-60,2864697,[Dynamic Dashboard] SARFI Summary Report,1017799,PQMAP-2,Dashboard,,,,To Do,,
+Story,PQMAP-59,2864696,[Dynamic Dashboard] SARFI-70 Monitoring,1017799,PQMAP-2,Dashboard,"*As a* System Operator or Power Quality Engineer,
+
+*I want to* toggle between monthly and accumulated SARFI70 trends 
+
+*so that* I can monitor grid reliability targets and identify specific seasonal peaks.
+
+
+
++*Description*+ +*_(Requirement No: 2.1.8)_*++*:*+
+
+The system shall provide a dedicated SARFI70 dashboard utilizing two primary visualizations based on your provided design. This module will allow users to compare performance across multiple years (e.g., 2022, 2023, 2024) to track progress against reliability KPIs.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Accumulated YTD Performance (Area/Line Chart):*
+
+* *Visualization:* A stacked or overlapping area chart showing the cumulative growth of the SARFI70 index from January to December.
+** *Purpose:* To track the year-to-date total and compare if the current year is trending better or worse than historical averages.
+** *Data Points:* Monthly accumulation points must be clearly labelled (e.g., 9.90 YTD for December).
+
+*AC2 - Monthly Discrete Performance (Bar Chart):*
+
+* *Visualization:* A clustered bar chart showing SARFI70 values for each month, with separate bars for each year in the comparison set.
+* *Purpose:* To identify specific months with unusually high dip frequencies (e.g., peak storm seasons).
+* *Data Labels:* Each bar must display its specific SARFI70 value (e.g., 3.97) as per your provided reference image.
+
+*AC3 - Filters:*
+
+* *Year Range Selection:* A multi-select dropdown allowing users to select a *3 to 5-year historical window* for comparison.
+* *Region:* A multi-select dropdown to filter data by specific regions
+* *Voltage Level:* Multi-select dropdown (e.g., *380V, 11kV, 132kV, 400kV*) to filter the SARFI70 calculation based on the nominal voltage of the affected asset.
+
+
+
++*References:*+
+
+PQMS
+
+!image-20260130-094150.png|width=768,alt=""image-20260130-094150.png""!",,,To Do,,
+Story,PQMAP-58,2864695,[Dynamic Dashboard] Insight for Improvement,1017799,PQMAP-2,Dashboard,"*As a* System Operator or Power Quality Engineer,
+
+*I want to* visualize long-term voltage dip trends and identify problematic circuits through automated name parsing, 
+
+*so that* I can prioritize capital investment for grid reinforcement.
+
+
+
++*Description*+ +*_(Requirement No: 2.1.7)_*++*:*+
+
+The system shall provide an ""Improvement Insights"" dashboard. This page will feature a high-level historical trend of incidents and a specific breakdown of failure frequency at the circuit level. To ensure data accuracy, the system must include a string-parsing logic to standardize circuit names from raw IDR text.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Temporal Trend Analysis (Top Visualization):*
+
+* Display a *Bar Chart* showing the total count of Voltage Dips per year.
+* *Historical Range:* Must support a look-back period of *3 to 5 years*.
+
+*AC2- Automated Circuit Name Parsing (Logic):*
+
+* The system shall automatically extract the *Circuit* from the IDR Report [https://clpdigital.atlassian.net/browse/PQMAP-32|https://clpdigital.atlassian.net/browse/PQMAP-32|smart-link].
+* *Parsing Rule:* Identify and extract the string content within the *first set of parentheses*.
+** _Example:_ {{(T1) Kwai Chung to Tsuen Wan}} $\rightarrow$ Result: *T1*.
+** _Example:_ {{(C4) North Point Substation}} $\rightarrow$ Result: *C4*.
+
+*AC3 - Most Impacted Circuits (Bottom Visualization):*
+
+* Display a *Frequency Bar Chart* or ranked list showing the parsed Circuit IDs with the highest number of incidents.
+* *Data Source:* Exclusively based on IDR records.
+
+
+
++*Sample Screen (Just for Reference Only):*+
+
+!image-20260130-093157.png|width=768,alt=""image-20260130-093157.png""!",,,To Do,,
+Story,PQMAP-57,2864694,[Dynamic Dashboard] Affected Equipment Analysis,1017799,PQMAP-2,Dashboard,"*As a* System Operator or Power Quality Engineer,
+
+*I want* a dashboard that shows which categories of equipment are failing most often, using verified manual data as the source of truth, 
+
+*so that* I can allocate my replacement budget effectively.
+
+
+
++*Description*+ +*_(Requirement No: 2.1.6)_*++*:*+
+
+The system shall implement a data precedence logic for ""Affected Equipment"" similar to the Root Cause Analysis module[https://clpdigital.atlassian.net/browse/PQMAP-56|https://clpdigital.atlassian.net/browse/PQMAP-56|smart-link]. While the IDR Report may contain granular data down to specific asset IDs, the reporting dashboard shall aggregate this into broader *Equipment Categories*. Manual overrides by engineers shall always supersede automated IDR data in all reports.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Tiered Data Precedence:*
+
+* Rule: If Manual Equipment Input exists, use it for reporting. Otherwise, use the IDR Report Equipment field.
+
+*AC2 - Categorical Aggregation:*
+
+* Dashboard visualizations must roll up specific assets into high-level categories (e.g., *""Transformer"" ""Switch"" ""Cable"" ""Overhead Line""*).
+
+*AC3 - Visual Consistency:*
+
+* Use a ranked bar-chart format identical to the *Root Cause Analysis* layout to show the frequency of equipment category failures.
+
+*AC4 - Dynamic Totals:*
+
+* The dashboard must reflect the total number of incidents analysed, with bars representing the percentage of failures attributed to each equipment category.",,,To Do,,
+Story,PQMAP-56,2864692,[Dynamic Dashboard] Root Causes Analysis,1017799,PQMAP-2,Dashboard,"*As a* System Operator or Power Quality Engineer,
+
+*I want* a dashboard that prioritizes manual root cause overrides over automated reports 
+
+*so that* I can report on verified systemic trends rather than raw, unvalidated data.
+
+
+
++*Description*+ +*_(Requirement No: 2.1.4)_*++*:*+
+
+The system shall provide a Dashboard that visualizes the distribution of incident causes. The backend must follow a specific ""Tiered Retrieval"" logic: if a manual root cause exists for an incident, the dashboard uses it; otherwise, it defaults to the IDR Report data. A maintenance interface will facilitate these manual inputs.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Tiered Data Precedence Logic:*
+
+* The backend shall calculate the chart based on a ""Manual First"" rule.
+* *Rule:* If a {{Manual_Root_Cause}} exists for an Event ID, use it. Else, use the {{IDR_Report_Cause}}.
+
+*AC2 - Ranked List Visualization:*
+
+* The dashboard must display causes in descending order of frequency (Highest count at the top).
+* Each row must include: *Cause Label*, *Coloured Horizontal Bar* (proportional to total), *Total Count*, and *Percentage (%)*.
+
+*AC3 - Interactive Filtering:*
+
+* Clicking a specific bar (e.g., ""Lightning Strike"") should filter the underlying event list to show only those specific incidents in Voltage Dip Events List [https://clpdigital.atlassian.net/browse/PQMAP-24|https://clpdigital.atlassian.net/browse/PQMAP-24|smart-link].
+
+
+
++*Sample Screen (Not the final version, just for reference)*+
+
+!image-20260129-141605.png|width=650,alt=""image-20260129-141605.png""!",,,To Do,,
+Story,PQMAP-55,2864691,[Dynamic Dashboard] Affected Customer List,1017799,PQMAP-2,Dashboard,"*As a* System Operator or Power Quality Engineer,
+
+*I want to* identify which sensitive customers are most affected by voltage dip event 
+
+*so that* I can prioritize technical audits and client support.
+
+
+
++*Description*+ +*_(Requirement No: 2.1.3)_*++*:*+
+
+The system shall provide a ""Sensitive Customer Dashboard"" that aggregates event data specifically for high-priority client segments. It allows for the correlation of grid events with actual customer-reported complaints or service requests.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Sensitive Customer Filtering:*
+
+* The entire dashboard must have to isolate specific ""Sensitive Customer"" categories.
+
+*AC2 - Top Impacted Ranking:*
+
+* Display a *ranked list* showing customers with the highest frequency of Voltage Dip incidents over a selected period.",,,To Do,,
+Story,PQMAP-54,2864687,[Dynamic Dashboard] Event List - Voltage Dip Events,1017799,PQMAP-2,Dashboard,"*As a* System Operator or Power Quality Engineer,
+
+*I want* a high-performance list of recent voltage dips 
+
+*so that* I can monitor the most current grid disturbances without manual searching.
+
+
+
++*Description*+ +*_(Requirement No: 2.1.2)_*++*:*+
+
+The system shall provide a dedicated ""Voltage Dip"" view. To ensure speed and operational relevance, the view will automatically load the *50 most recent events* upon opening. The table layout and data fields are specifically mapped to match existing CDPIS reporting formats to aid user familiarity.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Default View State:*
+
+* On page load, the system must automatically query and display the *50 most recent* voltage dip records.
+
+*AC2 - Table Fields:* The list must include the following columns in order:
+
+* *Event Start Time:* (Formatted as DD/MM/YYYY HH:mm:ss.ms)
+* *Voltage Level:* (e.g., 11kV, 380V)
+* *S/S Circuit:* The specific Substation or Circuit ID.
+* *Duration:* (Length of the dip in milliseconds).
+* *V-L1, V-L2, V-L3:* The recorded percentage magnitude for each of the three phases.
+
+*AC3 - Drill-Down Navigation:*
+
+* Clicking any row (item) in the list must immediately open the *Voltage Dip Event Detail* page [https://clpdigital.atlassian.net/browse/PQMAP-27|https://clpdigital.atlassian.net/browse/PQMAP-27|smart-link] for that specific record.
+
+*AC4 - Real-Time Updates:*
+
+* As new events are ingested by the backend, the list should refresh (or provide a ""New Events"" notification) to maintain the ""latest 50"" logic.
+
+
+
++*CDPIS Reference:*+
+
+!image-20260129-135104.png|width=650,alt=""image-20260129-135104.png""!",,,To Do,,
+Story,PQMAP-53,2864685,[Dynamic Dashboard] Affected Substation - Map View,1017799,PQMAP-2,Dashboard,"*As a* System Operator or Power Quality Engineer,
+
+*I want* a geospatial view of substations with incident heat-mapping 
+
+*so that* I can identify high-risk areas and manage asset metadata efficiently.
+
+
+
++*Description*+ +*_(Requirement No: 2.1.1)_*++*:*+
+
+The system shall provide an interactive GIS Map interface. This map will serve visualizing incident density at the substation level and providing granular fault history at the meter level. 
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Substation-Level Visualization:*
+
+* *Dynamic Color-Coding:* Markers must change colour based on incident count (e.g., Green: 1-2, Yellow: 3-9, *Red: 10+*).
+* *Interactive Drill-down:* Clicking a substation marker opens with a paginated table of the *latest 10 Voltage Dip events* (10 records per page).
+
+*AC2 - Meter-Level Geospatial View:*
+
+* *Meter Plotting:* Ability to zoom in to see individual meter locations.
+* *Rich Tooltips:* Hovering/Clicking a meter shows:
+** Location Name & ID.
+** Total Fault Count.
+** *Temporal Breakdown:* A mini-chart or list showing faults by *Quarter* (Q1-Q4) and *Month*.
+
+*AC3 - Synchronized Data Table:*
+
+* A table below updates in real-time to show the metadata of the affected customers currently visible in the map's viewport with the following information:
+** Sub-Station Name
+** Sensitive Customer Name
+** No. of PQ Events
+
+
+
++*For Reference:*+
+
+PQMS Current Map View
+
+!image-20260129-133704.png|width=363,alt=""image-20260129-133704.png""!",,,To Do,,
+Story,PQMAP-65,2864702,[Meter & Communication Availability] Meter Availability Report,1017800,PQMAP-3,Reporting,,,,To Do,,
+Story,PQMAP-64,2864701,[Annual PQ Performance Report] Compliance Summary,1017800,PQMAP-3,Reporting,,,,To Do,,
+Story,PQMAP-63,2864700,[PQ Summary Table] Selectable Parameters,1017800,PQMAP-3,Reporting,,,,To Do,,
+Story,PQMAP-71,2864708,[Meter Detail] Energy Profile,1017801,PQMAP-4,Asset Management,,,,To Do,,
+Story,PQMAP-70,2864707,[Meter Detail] PQ Services Logging,1017801,PQMAP-4,Asset Management,,,,To Do,,
+Story,PQMAP-69,2864706,[Meter Detail] Meter Event Log,1017801,PQMAP-4,Asset Management,,,,To Do,,
+Story,PQMAP-68,2864705,[Meter detail] Meter Information,1017801,PQMAP-4,Asset Management,,,,To Do,,
+Story,PQMAP-67,2864704,[Meter Inventory] Status Dashboard,1017801,PQMAP-4,Asset Management,,,,To Do,,
+Story,PQMAP-66,2864703,[Meter Inventory] Asset Details,1017801,PQMAP-4,Asset Management,,,,To Do,,
+Story,PQMAP-82,2864719,[Notification Setting] Recipient Management,1017802,PQMAP-5,Notification,,,,To Do,,
+Story,PQMAP-81,2864718,[Notification Setting] Typhoon Mode,1017802,PQMAP-5,Notification,,,,To Do,,
+Story,PQMAP-80,2864717,[Notification Setting] Notification Control,1017802,PQMAP-5,Notification,,,,To Do,,
+Story,PQMAP-79,2864716,[System trigger notification] System Abnormalities & Alerts,1017802,PQMAP-5,Notification,,,,To Do,,
+Story,PQMAP-78,2864715,[Notification Management] Rule-based configuration,1017802,PQMAP-5,Notification,,,,To Do,,
+Story,PQMAP-77,2864714,[Notification Management] Mother Event Notification,1017802,PQMAP-5,Notification,,,,To Do,,
+Story,PQMAP-76,2864713,[Notification Management] Notification,1017802,PQMAP-5,Notification,,,,To Do,,
+Story,PQMAP-75,2864712,[Templates Management] Template Builder,1017802,PQMAP-5,Notification,,,,To Do,,
+Story,PQMAP-74,2864711,[Inbox] Notification History,1017802,PQMAP-5,Notification,,,,To Do,,
+Story,PQMAP-73,2864710,[Inbox] Message List,1017802,PQMAP-5,Notification,,,,To Do,,
+Story,PQMAP-72,2864709,[Dashboard] Dashboard,1017802,PQMAP-5,Notification,,,,To Do,,
+Story,PQMAP-89,2864727,[System Parameter] System Logic,1017804,PQMAP-7,Data Maintenance,,,,To Do,,
+Story,PQMAP-88,2864725,[Weighting Factors] Weighting Factors,1017804,PQMAP-7,Data Maintenance,,,,To Do,,
+Story,PQMAP-87,2864724,[Customer information] Customer Transformers,1017804,PQMAP-7,Data Maintenance,,,,To Do,,
+Story,PQMAP-86,2864723,[Meter Hierarchies] Meter Hierarchy,1017804,PQMAP-7,Data Maintenance,,,,To Do,,
+Story,PQMAP-85,2864722,[SCADA Code] SCADA,1017804,PQMAP-7,Data Maintenance,,,,To Do,,
+Story,PQMAP-84,2864721,[User Management (UAM)] User Management,1017804,PQMAP-7,Data Maintenance,,,,To Do,,
+Story,PQMAP-34,2863644,[Event Detail] Affected Customer - Customer Information Management,1017804,PQMAP-7,Data Maintenance,"As a *System Administrator* or *Power Quality Engineer*, 
+
+*I want to* maintain an up-to-date repository of customer data and transformer mappings 
+
+*so that* the system can accurately identify which sensitive accounts are affected by a voltage dip.
+
+
+
++*Description*+ +*_(Requirement No: 1.2.3)_*++*:*+
+
+While GIS is the master source, PQMAP requires a local utility to ingest and manage customer records, as well as the Transformer-to-Customer mapping. The system must also allow users to manually designate or ""override"" a customer’s status as ""Sensitive,"" ensuring the most critical accounts are always monitored regardless of the latest GIS sync.
+
+
+
++*Acceptance Criteria:*+
+
+*AC1 - Data Upload Utility:* Support bulk upload (Excel/CSV) of the master customer list (Including all customers, sensitive customers, and transformer-to-customer mapping).
+
+*AC2 - Customer Maintenance Page:* Provide a searchable/filterable list of all uploaded customers.
+
+*AC3 - Sensitivity Override Feature:* Provide a ""Manual Override"" toggle/checkbox for the *Sensitive Customer* status. If a customer is not marked as sensitive in the GIS upload, an authorized user can manually toggle them to ""Sensitive.""",,,To Do,,
+Story,PQMAP-83,2864720,[PQ Services Detail] Customer Related Services,2861755,PQMAP-29,PQ Services,,,,To Do,,
+Story,PQMAP-91,2864841,Testing ,,,,For testing on process only,Arthur Man Him Chan,712020:93caf0c6-3059-47d3-9226-01fe6f341685,Ready for Business Review,,
