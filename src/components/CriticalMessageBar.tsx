@@ -52,9 +52,9 @@ export default function CriticalMessageBar() {
         return startTime <= now && (!endTime || endTime > now);
       });
       
-      // 🔑 Sort by creation date descending (newest first)
+      // 🔑 Sort by start_time descending (most recent start_time first)
       const sortedMessages = (activeMessages as CriticalMessage[]).sort((a, b) => {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
       });
       
       setMessages(sortedMessages);
