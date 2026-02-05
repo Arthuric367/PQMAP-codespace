@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { NotificationRule } from '../types/database';
 import { Bell, Plus, Edit2, Trash2, FileText, Radio, Users, ScrollText, LayoutDashboard, Settings, X } from 'lucide-react';
 import TemplateManagement from './Notifications/TemplateManagement';
-import GroupManagement from './Notifications/GroupManagement';
+import GroupList from './Notifications/GroupList';
 import RuleManagement from './Notifications/RuleManagement';
 import NotificationLogs from './Notifications/NotificationLogs';
 import SystemConfig from './Notifications/SystemConfig';
@@ -167,7 +167,7 @@ export default function Notifications() {
 
           {activeTab === 'templates' && <TemplateManagement />}
 
-          {activeTab === 'groups' && <GroupManagement />}
+          {activeTab === 'groups' && <GroupList />}
 
           {activeTab === 'logs' && <NotificationLogs />}
         </div>

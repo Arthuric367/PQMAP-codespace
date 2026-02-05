@@ -5,14 +5,14 @@ import sampleGroups from '../../data/sampleNotificationGroups.json';
 
 // Dummy user data for display
 const dummyUsers = [
-  { id: '1', name: 'John Smith', email: 'john.smith@clp.com', avatar: '👨‍💼' },
-  { id: '2', name: 'Sarah Johnson', email: 'sarah.johnson@clp.com', avatar: '👩‍💼' },
-  { id: '3', name: 'Michael Chen', email: 'michael.chen@clp.com', avatar: '👨‍💼' },
-  { id: '4', name: 'Emma Williams', email: 'emma.williams@clp.com', avatar: '👩‍💼' },
-  { id: '5', name: 'David Brown', email: 'david.brown@clp.com', avatar: '👨‍💼' },
-  { id: '6', name: 'Lisa Garcia', email: 'lisa.garcia@clp.com', avatar: '👩‍💼' },
-  { id: '7', name: 'Robert Martinez', email: 'robert.martinez@clp.com', avatar: '👨‍💼' },
-  { id: '8', name: 'Jennifer Lee', email: 'jennifer.lee@clp.com', avatar: '👩‍💼' },
+  { id: '1', name: 'John Smith', email: 'john.smith@clp.com' },
+  { id: '2', name: 'Sarah Johnson', email: 'sarah.johnson@clp.com' },
+  { id: '3', name: 'Michael Chen', email: 'michael.chen@clp.com' },
+  { id: '4', name: 'Emma Williams', email: 'emma.williams@clp.com' },
+  { id: '5', name: 'David Brown', email: 'david.brown@clp.com' },
+  { id: '6', name: 'Lisa Garcia', email: 'lisa.garcia@clp.com' },
+  { id: '7', name: 'Robert Martinez', email: 'robert.martinez@clp.com' },
+  { id: '8', name: 'Jennifer Lee', email: 'jennifer.lee@clp.com' },
 ];
 
 interface GroupListProps {
@@ -171,7 +171,7 @@ export default function GroupList({ refreshKey }: GroupListProps) {
                       <div className="mt-4 pt-4 border-t border-slate-200">
                         <div className="space-y-1">
                           {group.members.map((member: any) => (
-                            <div key={member.id} className="py-1.5 px-2">
+                            <div key={member.id} className="py-1.5 px-2 flex items-center gap-2">
                               <p className="text-sm font-medium text-slate-900">{member.name}</p>
                               <p className="text-xs text-slate-500">{member.email}</p>
                             </div>
