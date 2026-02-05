@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users, Trash2, UserCheck, ChevronDown } from 'lucide-react';
+import { Users, Trash2, UserCheck, ChevronDown, Plus, X, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
 import sampleGroups from '../../data/sampleNotificationGroups.json';
 
@@ -23,6 +23,9 @@ export default function GroupList({ refreshKey }: GroupListProps) {
   const [groups, setGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [formData, setFormData] = useState({ name: '', description: '' });
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     loadGroups();
@@ -83,6 +86,41 @@ export default function GroupList({ refreshKey }: GroupListProps) {
     return members;
   };
 
+  const handleAddGroup = async () => {
+    if (!formData.name.trim()) {
+      toast.error('Group name is required');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Create new group object
+      const newGroup = {
+        id: `group_${Date.now()}`,
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        status: 'active',
+        created_at: new Date().toISOString(),
+      };
+
+      // Load from localStorage and add new group
+      const storedGroups = localStorage.getItem('notificationGroups');
+      const parsedGroups = storedGroups ? JSON.parse(storedGroups) : [];
+      const updatedGroups = [...parsedGroups, newGroup];
+      localStorage.setItem('notificationGroups', JSON.stringify(updatedGroups));
+
+      toast.success(`Group "${newGroup.name}" created successfully!`);
+      setShowAddModal(false);
+      setFormData({ name: '', description: '' });
+      loadGroups();
+    } catch (error) {
+      console.error('Error creating group:', error);
+      toast.error('Failed to create group. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleDelete = async (groupId: string, groupName: string) => {
     if (!confirm('Are you sure you want to delete this group? This action cannot be undone.')) {
       return;
@@ -120,6 +158,13 @@ export default function GroupList({ refreshKey }: GroupListProps) {
           <h2 className="text-2xl font-bold text-slate-900">Notification Groups</h2>
           <p className="text-slate-600 mt-1">View recipient groups and their members</p>
         </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
+        >
+          <Plus className="w-5 h-5" />
+          Add Group
+        </button>
       </div>
 
       {groups.length === 0 ? (
@@ -171,6 +216,11 @@ export default function GroupList({ refreshKey }: GroupListProps) {
                       </div>
                     </div>
 
+                    <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
+                      <Mail className="w-3.5 h-3.5 text-blue-500" />
+                      <span>Synced from Outlook group: <span className="font-semibold text-slate-700">{group.name}</span></span>
+                    </div>
+
                     {/* Members List Section */}
                     {expandedGroup === group.id && group.members && group.members.length > 0 && (
                       <div className="mt-4 pt-4 border-t border-slate-200">
@@ -218,14 +268,124 @@ export default function GroupList({ refreshKey }: GroupListProps) {
             <Users className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h3 className="font-bold text-slate-900 mb-2">Independent Groups</h3>
+            <h3 className="font-bold text-slate-900 mb-2">Outlook Integration</h3>
+            <p className="text-sm text-slate-700 mb-2">
+              Notification groups are automatically synced with Microsoft Outlook distribution lists.
+              When you create a group, the system matches it with an Outlook group of the same name.
+            </p>
             <p className="text-sm text-slate-700">
-              Notification groups are independent from UAM roles. You can create specialized groups
-              like "Emergency Response Team" or "Night Shift Operators" and assign any users to them.
+              <strong>Note:</strong> Members are managed in Outlook. Any changes to the Outlook group
+              (adding/removing users) will be automatically reflected in PQMAP.
             </p>
           </div>
         </div>
       </div>
+
+      {/* Add Group Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 rounded-t-2xl flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold">Add Notification Group</h2>
+                <p className="text-blue-100 mt-1">Create a new group synced with Outlook</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  setFormData({ name: '', description: '' });
+                }}
+                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                disabled={isSaving}
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <div className="p-6 space-y-6">
+              {/* Group Name */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Group Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g., Emergency Response Team"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={isSaving}
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Must match the Outlook distribution list name exactly
+                </p>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Description
+                </label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Describe the purpose of this notification group..."
+                  rows={4}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  disabled={isSaving}
+                />
+              </div>
+
+              {/* Info Box */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <Mail className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-blue-900 mb-1">Automatic Outlook Sync</p>
+                    <p className="text-sm text-blue-700">
+                      After creating this group, the system will automatically sync members from the
+                      matching Outlook distribution list. Members are managed in Outlook only.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-slate-200 p-6 flex items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  setFormData({ name: '', description: '' });
+                }}
+                disabled={isSaving}
+                className="px-6 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-semibold disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddGroup}
+                disabled={isSaving || !formData.name.trim()}
+                className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold disabled:opacity-50 flex items-center gap-2"
+              >
+                {isSaving ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-5 h-5" />
+                    Create Group
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
