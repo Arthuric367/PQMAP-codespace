@@ -18,10 +18,12 @@ import {
   X,
   Upload,
   Check,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Customer, PQServiceRecord, ServiceType } from '../types/database';
-import AddServiceModal from './PQServices/AddServiceModal';
+import EditServiceModal from './PQServices/EditServiceModal';
 import ViewDetailsModal from './PQServices/ViewDetailsModal';
 import EventDetails from './EventManagement/EventDetails';
 import * as XLSX from 'xlsx';
@@ -46,9 +48,12 @@ export default function PQServices() {
   const [sortBy, setSortBy] = useState<'name' | 'last_service' | 'total_services'>('name');
   
   // Modals
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedService, setSelectedService] = useState<PQServiceRecord | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [serviceToDelete, setServiceToDelete] = useState<PQServiceRecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
   type EventDetailsTab = 'overview' | 'technical' | 'impact' | 'services' | 'children' | 'timeline' | 'idr';
   const [eventDetailsInitialTab, setEventDetailsInitialTab] = useState<EventDetailsTab>('overview');
@@ -545,14 +550,25 @@ export default function PQServices() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showImportDropdown]);
 
-  const serviceTypeLabels: Record<string, string> = {
-    site_survey: 'Site Survey',
-    harmonic_analysis: 'Harmonic Analysis',
-    consultation: 'Consultation',
-    on_site_study: 'On-site Study',
-    power_quality_audit: 'Power Quality Audit',
-    installation_support: 'Installation Support',
+  // Helper function to convert service_type enum to display label
+  const formatServiceTypeLabel = (serviceType: string): string => {
+    return serviceType
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
   };
+
+  // Get unique service types from actual database data
+  const getServiceTypeLabels = (): Record<string, string> => {
+    const uniqueTypes = Array.from(new Set(services.map(s => s.service_type)));
+    const labels: Record<string, string> = {};
+    uniqueTypes.forEach(type => {
+      labels[type] = formatServiceTypeLabel(type);
+    });
+    return labels;
+  };
+
+  const serviceTypeLabels = getServiceTypeLabels();
 
   return (
     <div className="p-6 space-y-6">
@@ -627,60 +643,89 @@ export default function PQServices() {
           </div>
         </div>
 
-        {/* Dashboard Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
-            <div className="flex items-center gap-3 mb-2">
-              <Users className="w-6 h-6 text-blue-600" />
-              <p className="text-sm font-medium text-slate-600">Total Customers</p>
+        {/* Compact Dashboard: 30% Metrics + 70% Chart */}
+        <div className="grid grid-cols-12 gap-3 h-[320px]">
+          {/* Left: Vertical Metrics (30%) */}
+          <div className="col-span-12 lg:col-span-4 space-y-2">
+            {/* Total Customers */}
+            <div className="bg-white rounded-lg shadow-md p-3 border border-slate-100 h-[calc((100%-1rem)/3)]">
+              <div className="flex items-center gap-2 mb-1">
+                <Users className="w-4 h-4 text-blue-600" />
+                <p className="text-[11px] font-semibold text-slate-600">Total Customers</p>
+              </div>
+              <p className="text-xl font-bold text-slate-900">{metrics.totalCustomers}</p>
             </div>
-            <p className="text-3xl font-bold text-slate-900">{metrics.totalCustomers}</p>
-          </div>
 
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
-            <div className="flex items-center gap-3 mb-2">
-              <Wrench className="w-6 h-6 text-green-600" />
-              <p className="text-sm font-medium text-slate-600">Total Services</p>
+            {/* Total Services */}
+            <div className="bg-white rounded-lg shadow-md p-3 border border-slate-100 h-[calc((100%-1rem)/3)]">
+              <div className="flex items-center gap-2 mb-1">
+                <Wrench className="w-4 h-4 text-green-600" />
+                <p className="text-[11px] font-semibold text-slate-600">Total Services</p>
+              </div>
+              <p className="text-xl font-bold text-slate-900">{metrics.totalServices}</p>
             </div>
-            <p className="text-3xl font-bold text-slate-900">{metrics.totalServices}</p>
-          </div>
 
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
-            <div className="flex items-center gap-3 mb-2">
-              <Calendar className="w-6 h-6 text-purple-600" />
-              <p className="text-sm font-medium text-slate-600">This Month</p>
+            {/* This Month */}
+            <div className="bg-white rounded-lg shadow-md p-3 border border-slate-100 h-[calc((100%-1rem)/3)]">
+              <div className="flex items-center gap-2 mb-1">
+                <Calendar className="w-4 h-4 text-purple-600" />
+                <p className="text-[11px] font-semibold text-slate-600">This Month</p>
+              </div>
+              <p className="text-xl font-bold text-slate-900">{metrics.thisMonthServices}</p>
             </div>
-            <p className="text-3xl font-bold text-slate-900">{metrics.thisMonthServices}</p>
           </div>
-        </div>
 
-        {/* Horizontal Bar Chart */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
-          <div className="flex items-center gap-2 mb-4">
-            <BarChart3 className="w-6 h-6 text-slate-700" />
-            <h2 className="text-xl font-bold text-slate-900">Services by Category</h2>
-          </div>
-          <div className="space-y-3">
-            {Object.entries(serviceTypeLabels).map(([key, label]) => {
-              const count = metrics.serviceCounts[key] || 0;
-              const maxCount = Math.max(...Object.values(metrics.serviceCounts), 1);
-              const percentage = (count / maxCount) * 100;
+          {/* Right: Vertical Bar Chart (70%) */}
+          <div className="col-span-12 lg:col-span-8">
+            <div className="bg-white rounded-lg shadow-md p-3 border border-slate-100 h-full">
+              <div className="flex items-center gap-2 mb-2">
+                <BarChart3 className="w-4 h-4 text-slate-700" />
+                <h2 className="text-sm font-bold text-slate-900">Services by Category</h2>
+              </div>
+              
+              {/* Vertical Bars Container */}
+              <div className="h-[calc(100%-1.75rem)] flex items-end justify-between gap-2">
+                {Object.entries(serviceTypeLabels).map(([key, label]) => {
+                  const count = metrics.serviceCounts[key] || 0;
+                  const maxCount = Math.max(...Object.values(metrics.serviceCounts), 1);
+                  const heightPercentage = (count / maxCount) * 100;
 
-              return (
-                <div key={key} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-slate-700">{label}</span>
-                    <span className="font-bold text-slate-900">{count}</span>
-                  </div>
-                  <div className="h-8 bg-slate-100 rounded-lg overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500"
-                      style={{ width: `${percentage}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+                  return (
+                    <div key={key} className="flex-1 flex flex-col items-center gap-2">
+                      {/* Bar */}
+                      <div className="w-full flex flex-col justify-end items-center" style={{ height: 'calc(100% - 3rem)' }}>
+                        <div className="w-full relative">
+                          <div
+                            className="w-full bg-gradient-to-t from-blue-500 to-indigo-500 rounded-t-lg transition-all duration-500 relative group cursor-pointer hover:from-blue-600 hover:to-indigo-600"
+                            style={{ height: `${heightPercentage}%`, minHeight: count > 0 ? '20px' : '0px' }}
+                          >
+                            {/* Count Label on Hover */}
+                            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <span className="bg-slate-900 text-white text-xs font-bold px-2 py-1 rounded whitespace-nowrap">
+                                {count}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Label */}
+                      <div className="text-center">
+                        <p className="text-[10px] font-medium text-slate-600 leading-tight" style={{ wordBreak: 'break-word' }}>
+                          {label.split(' ').map((word, i) => (
+                            <span key={i}>
+                              {word}
+                              {i < label.split(' ').length - 1 && <br />}
+                            </span>
+                          ))}
+                        </p>
+                        <p className="text-xs font-bold text-slate-900 mt-0.5">{count}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1032,14 +1077,6 @@ export default function PQServices() {
                           )}
                         </div>
 
-                        {/* Add Service */}
-                        <button
-                          onClick={() => setShowAddModal(true)}
-                          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold"
-                        >
-                          <Plus className="w-5 h-5" />
-                          Add Service
-                        </button>
                       </div>
                     </div>
 
@@ -1282,6 +1319,9 @@ export default function PQServices() {
                               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                                 Completion Date
                               </th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                                Actions
+                              </th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-200">
@@ -1328,6 +1368,30 @@ export default function PQServices() {
                                     ? new Date(service.completion_date).toLocaleDateString('en-GB')
                                     : <span className="text-slate-400">Pending</span>
                                   }
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <button
+                                      onClick={() => {
+                                        setSelectedService(service);
+                                        setShowEditModal(true);
+                                      }}
+                                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                      title="Edit Service"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setServiceToDelete(service);
+                                        setShowDeleteModal(true);
+                                      }}
+                                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                      title="Delete Service"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -1385,15 +1449,20 @@ export default function PQServices() {
 
       {/* Modals */}
       {selectedCustomer && (
-        <AddServiceModal
-          isOpen={showAddModal}
-          onClose={() => setShowAddModal(false)}
+        <EditServiceModal
+          isOpen={showEditModal}
+          onClose={() => {
+            setShowEditModal(false);
+            setSelectedService(null);
+          }}
           onSuccess={() => {
             loadServices();
-            setShowAddModal(false);
+            setShowEditModal(false);
+            setSelectedService(null);
           }}
           customerId={selectedCustomer.id}
           customerName={selectedCustomer.name}
+          serviceToEdit={selectedService}
         />
       )}
 
@@ -1531,6 +1600,106 @@ export default function PQServices() {
                 className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && serviceToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-4">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <AlertTriangle className="w-6 h-6" />
+                Confirm Delete
+              </h2>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <p className="text-slate-700 mb-4">
+                Are you sure you want to delete this PQ service record?
+              </p>
+              
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-600">Case Number:</span>
+                  <span className="text-slate-900">{serviceToDelete.case_number}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-600">Service Type:</span>
+                  <span className="text-slate-900">{formatServiceTypeLabel(serviceToDelete.service_type)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-600">Service Date:</span>
+                  <span className="text-slate-900">
+                    {serviceToDelete.service_date 
+                      ? new Date(serviceToDelete.service_date).toLocaleDateString('en-GB')
+                      : 'N/A'
+                    }
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-sm text-red-600 mt-4 font-semibold">
+                This action cannot be undone.
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-slate-200 px-6 py-4 flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setServiceToDelete(null);
+                }}
+                disabled={isDeleting}
+                className="px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!serviceToDelete?.id) return;
+
+                  setIsDeleting(true);
+                  try {
+                    const { error } = await supabase
+                      .from('pq_service_records')
+                      .delete()
+                      .eq('id', serviceToDelete.id);
+
+                    if (error) throw error;
+
+                    // Reload services
+                    await loadServices();
+                    setShowDeleteModal(false);
+                    setServiceToDelete(null);
+                    alert('PQ service record deleted successfully');
+                  } catch (error) {
+                    console.error('Error deleting service:', error);
+                    alert('Failed to delete service record. Please try again.');
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                disabled={isDeleting}
+                className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </>
+                )}
               </button>
             </div>
           </div>

@@ -6,15 +6,42 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { supabase } from '../../lib/supabase';
 import type { ServiceType } from '../../types/database';
 
-interface AddServiceModalProps {
+interface EditServiceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
   customerId: string;
   customerName: string;
+  serviceToEdit?: PQServiceRecord | null;
 }
 
-export default function AddServiceModal({ isOpen, onClose, onSuccess, customerId, customerName }: AddServiceModalProps) {
+interface PQServiceRecord {
+  id: string;
+  customer_id: string | null;
+  service_date: string;
+  service_type: ServiceType;
+  findings: string | null;
+  recommendations: string | null;
+  benchmark_standard: string | null;
+  engineer_id: string | null;
+  event_id: string | null;
+  idr_no?: string | null;
+  content: string | null;
+  case_number?: number;
+  tariff_group?: string | null;
+  service_charge_amount?: number | null;
+  party_charged?: string | null;
+  completion_date?: string | null;
+  planned_reply_date?: string | null;
+  actual_reply_date?: string | null;
+  planned_report_issue_date?: string | null;
+  actual_report_issue_date?: string | null;
+  is_closed?: boolean;
+  is_in_progress?: boolean;
+  completed_before_target?: boolean | null;
+}
+
+export default function EditServiceModal({ isOpen, onClose, onSuccess, customerId, customerName, serviceToEdit }: EditServiceModalProps) {
   const [formData, setFormData] = useState({
     service_date: new Date().toISOString().split('T')[0],
     service_type: 'site_survey' as ServiceType,
@@ -23,6 +50,17 @@ export default function AddServiceModal({ isOpen, onClose, onSuccess, customerId
     findings: '',
     recommendations: '',
     benchmark_standard: '',
+    tariff_group: '',
+    service_charge_amount: '',
+    party_charged: '',
+    completion_date: '',
+    planned_reply_date: '',
+    actual_reply_date: '',
+    planned_report_issue_date: '',
+    actual_report_issue_date: '',
+    is_closed: false,
+    is_in_progress: false,
+    completed_before_target: null as boolean | null,
   });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,8 +103,33 @@ export default function AddServiceModal({ isOpen, onClose, onSuccess, customerId
     if (isOpen) {
       getCurrentUser();
       loadCustomerEvents();
+      
+      // Populate form if editing
+      if (serviceToEdit) {
+        setFormData({
+          service_date: serviceToEdit.service_date || new Date().toISOString().split('T')[0],
+          service_type: serviceToEdit.service_type || 'site_survey',
+          event_id: serviceToEdit.event_id || '',
+          idr_no: serviceToEdit.idr_no || '',
+          findings: serviceToEdit.findings || '',
+          recommendations: serviceToEdit.recommendations || '',
+          benchmark_standard: serviceToEdit.benchmark_standard || '',
+          tariff_group: serviceToEdit.tariff_group || '',
+          service_charge_amount: serviceToEdit.service_charge_amount?.toString() || '',
+          party_charged: serviceToEdit.party_charged || '',
+          completion_date: serviceToEdit.completion_date || '',
+          planned_reply_date: serviceToEdit.planned_reply_date || '',
+          actual_reply_date: serviceToEdit.actual_reply_date || '',
+          planned_report_issue_date: serviceToEdit.planned_report_issue_date || '',
+          actual_report_issue_date: serviceToEdit.actual_report_issue_date || '',
+          is_closed: serviceToEdit.is_closed || false,
+          is_in_progress: serviceToEdit.is_in_progress || false,
+          completed_before_target: serviceToEdit.completed_before_target ?? null,
+        });
+        editor?.commands.setContent(serviceToEdit.content || '');
+      }
     }
-  }, [isOpen, customerId]);
+  }, [isOpen, customerId, serviceToEdit, editor]);
 
   // Load events for the selected customer
   const loadCustomerEvents = async () => {
@@ -183,13 +246,35 @@ export default function AddServiceModal({ isOpen, onClose, onSuccess, customerId
         benchmark_standard: formData.benchmark_standard || null,
         engineer_id: currentUserId,
         content: content,
+        tariff_group: formData.tariff_group || null,
+        service_charge_amount: formData.service_charge_amount ? parseFloat(formData.service_charge_amount) : null,
+        party_charged: formData.party_charged || null,
+        completion_date: formData.completion_date || null,
+        planned_reply_date: formData.planned_reply_date || null,
+        actual_reply_date: formData.actual_reply_date || null,
+        planned_report_issue_date: formData.planned_report_issue_date || null,
+        actual_report_issue_date: formData.actual_report_issue_date || null,
+        is_closed: formData.is_closed,
+        is_in_progress: formData.is_in_progress,
+        completed_before_target: formData.completed_before_target,
       };
 
-      const { error: insertError } = await supabase
-        .from('pq_service_records')
-        .insert(serviceData);
+      if (serviceToEdit?.id) {
+        // UPDATE existing record
+        const { error: updateError } = await supabase
+          .from('pq_service_records')
+          .update(serviceData)
+          .eq('id', serviceToEdit.id);
 
-      if (insertError) throw insertError;
+        if (updateError) throw updateError;
+      } else {
+        // INSERT new record
+        const { error: insertError } = await supabase
+          .from('pq_service_records')
+          .insert(serviceData);
+
+        if (insertError) throw insertError;
+      }
 
       onSuccess();
       handleClose();
@@ -210,6 +295,17 @@ export default function AddServiceModal({ isOpen, onClose, onSuccess, customerId
       findings: '',
       recommendations: '',
       benchmark_standard: '',
+      tariff_group: '',
+      service_charge_amount: '',
+      party_charged: '',
+      completion_date: '',
+      planned_reply_date: '',
+      actual_reply_date: '',
+      planned_report_issue_date: '',
+      actual_report_issue_date: '',
+      is_closed: false,
+      is_in_progress: false,
+      completed_before_target: null,
     });
     editor?.commands.setContent('');
     setError(null);
@@ -224,8 +320,8 @@ export default function AddServiceModal({ isOpen, onClose, onSuccess, customerId
         {/* Header */}
         <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 rounded-t-2xl flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold">Add PQ Service</h2>
-            <p className="text-blue-100 mt-1">Customer: {customerName}</p>
+            <h2 className="text-2xl font-bold">Edit PQ Service</h2>
+            <p className="text-blue-100 mt-1">Customer: {customerName}{serviceToEdit?.case_number ? ` | Case #${serviceToEdit.case_number}` : ''}</p>
           </div>
           <button
             onClick={handleClose}
@@ -482,6 +578,178 @@ export default function AddServiceModal({ isOpen, onClose, onSuccess, customerId
                 ))}
               </select>
             </div>
+
+            {/* Tariff Group */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Tariff Group
+              </label>
+              <select
+                value={formData.tariff_group}
+                onChange={(e) => setFormData({ ...formData, tariff_group: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select Tariff Group</option>
+                <option value="BT">BT (Bulk Tariff)</option>
+                <option value="HT">HT (High Tension)</option>
+                <option value="LT">LT (Low Tension)</option>
+              </select>
+            </div>
+
+            {/* Service Charge Amount */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Service Charge Amount (HKD Thousands)
+              </label>
+              <input
+                type="number"
+                value={formData.service_charge_amount}
+                onChange={(e) => setFormData({ ...formData, service_charge_amount: e.target.value })}
+                placeholder="e.g., 50"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* Party Charged */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Party Charged
+              </label>
+              <select
+                value={formData.party_charged}
+                onChange={(e) => setFormData({ ...formData, party_charged: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select Party</option>
+                <option value="AMD">AMD</option>
+                <option value="CLP">CLP</option>
+                <option value="Customer">Customer</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Timeline & Dates Section */}
+          <div>
+            <h3 className="text-lg font-bold text-slate-800 mb-4 pb-2 border-b border-slate-200">Timeline & Dates</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Completion Date */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Completion Date
+                </label>
+                <input
+                  type="date"
+                  value={formData.completion_date}
+                  onChange={(e) => setFormData({ ...formData, completion_date: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* Planned Reply Date */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Planned Reply Date
+                </label>
+                <input
+                  type="date"
+                  value={formData.planned_reply_date}
+                  onChange={(e) => setFormData({ ...formData, planned_reply_date: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* Actual Reply Date */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Actual Reply Date
+                </label>
+                <input
+                  type="date"
+                  value={formData.actual_reply_date}
+                  onChange={(e) => setFormData({ ...formData, actual_reply_date: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* Planned Report Issue Date */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Planned Report Issue Date
+                </label>
+                <input
+                  type="date"
+                  value={formData.planned_report_issue_date}
+                  onChange={(e) => setFormData({ ...formData, planned_report_issue_date: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* Actual Report Issue Date */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Actual Report Issue Date
+                </label>
+                <input
+                  type="date"
+                  value={formData.actual_report_issue_date}
+                  onChange={(e) => setFormData({ ...formData, actual_report_issue_date: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Status Section */}
+          <div>
+            <h3 className="text-lg font-bold text-slate-800 mb-4 pb-2 border-b border-slate-200">Status</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Is Closed */}
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="is_closed"
+                  checked={formData.is_closed}
+                  onChange={(e) => setFormData({ ...formData, is_closed: e.target.checked })}
+                  className="w-5 h-5 text-blue-600 border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
+                />
+                <label htmlFor="is_closed" className="text-sm font-semibold text-slate-700 cursor-pointer">
+                  Case Closed
+                </label>
+              </div>
+
+              {/* Is In Progress */}
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="is_in_progress"
+                  checked={formData.is_in_progress}
+                  onChange={(e) => setFormData({ ...formData, is_in_progress: e.target.checked })}
+                  className="w-5 h-5 text-blue-600 border-slate-300 rounded focus:ring-2 focus:ring-blue-500"
+                />
+                <label htmlFor="is_in_progress" className="text-sm font-semibold text-slate-700 cursor-pointer">
+                  In Progress
+                </label>
+              </div>
+
+              {/* Completed Before Target */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Completed Before Target?
+                </label>
+                <select
+                  value={formData.completed_before_target === null ? 'null' : formData.completed_before_target.toString()}
+                  onChange={(e) => {
+                    const value = e.target.value === 'null' ? null : e.target.value === 'true';
+                    setFormData({ ...formData, completed_before_target: value });
+                  }}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="null">Not Set</option>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           {/* Findings */}
@@ -583,12 +851,12 @@ export default function AddServiceModal({ isOpen, onClose, onSuccess, customerId
             {isSaving ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                Saving...
+                {serviceToEdit ? 'Updating...' : 'Saving...'}
               </>
             ) : (
               <>
                 <Save className="w-5 h-5" />
-                Save Service
+                {serviceToEdit ? 'Update Service' : 'Save Service'}
               </>
             )}
           </button>
