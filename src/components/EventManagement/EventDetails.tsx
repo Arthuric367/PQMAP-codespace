@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Clock, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Upload, FileDown, Wrench, Eye, EyeOff } from 'lucide-react';
-import { PQEvent, Substation, EventCustomerImpact, IDRRecord, PQServiceRecord, PQMeter, Customer } from '../../types/database';
+import { Clock, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Upload, FileDown, Wrench, Eye, EyeOff, Filter } from 'lucide-react';
+import { PQEvent, Substation, EventCustomerImpact, IDRRecord, PQServiceRecord, PQMeter, Customer, EventAuditLog, EventOperationType } from '../../types/database';
 import { supabase } from '../../lib/supabase';
 import WaveformViewer from './WaveformViewer';
 import { MotherEventGroupingService } from '../../services/mother-event-grouping';
 import { ExportService } from '../../services/exportService';
 import CustomerEventHistoryPanel from './CustomerEventHistoryPanel';
 import PSBGConfigModal from './PSBGConfigModal';
+import { EventAuditService } from '../../services/eventAuditService';
 
 type TabType = 'overview' | 'technical' | 'impact' | 'services' | 'children' | 'timeline' | 'idr';
 
@@ -109,6 +110,11 @@ export default function EventDetails({ event: initialEvent, substation: initialS
   const [loadingServices, setLoadingServices] = useState(false);
   const [servicesDetailView, setServicesDetailView] = useState(false); // Toggle between simple and detail view
 
+  // Timeline/Audit Log state
+  const [auditLogs, setAuditLogs] = useState<EventAuditLog[]>([]);
+  const [loadingAuditLogs, setLoadingAuditLogs] = useState(false);
+  const [auditLogFilter, setAuditLogFilter] = useState<EventOperationType | 'all'>('all');
+
   // Customer event history panel state
   const [showCustomerHistory, setShowCustomerHistory] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -167,6 +173,20 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     }
   };
 
+  const loadAuditLogs = async (eventId: string) => {
+    try {
+      setLoadingAuditLogs(true);
+      const logs = await EventAuditService.getEventAuditLogs(eventId);
+      setAuditLogs(logs);
+      console.log(`✅ Loaded ${logs.length} audit log entries for event ${eventId}`);
+    } catch (error) {
+      console.error('❌ Error loading audit logs:', error);
+      setAuditLogs([]);
+    } finally {
+      setLoadingAuditLogs(false);
+    }
+  };
+
   const loadMeter = async (meterId: string | null) => {
     if (!meterId) {
       setCurrentMeter(null);
@@ -195,6 +215,11 @@ export default function EventDetails({ event: initialEvent, substation: initialS
   // Load PQ services for current event
   useEffect(() => {
     loadServices(currentEvent.id);
+  }, [currentEvent.id]);
+
+  // Load audit logs for current event
+  useEffect(() => {
+    loadAuditLogs(currentEvent.id);
   }, [currentEvent.id]);
 
   // Load meter for current event
@@ -2747,152 +2772,188 @@ export default function EventDetails({ event: initialEvent, substation: initialS
 
         {activeTab === 'timeline' && (
           <div className="space-y-6 animate-fadeIn">
-            <div className="p-6 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg">
-              <h4 className="font-semibold text-slate-900 mb-6">Event Lifecycle Timeline</h4>
-              
-              <div className="space-y-6 relative">
-                {/* Timeline line */}
-                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-purple-200" />
-                
-                {/* Created */}
-                <div className="flex items-start gap-4 relative">
-                  <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold text-sm z-10">
-                    1
-                  </div>
-                  <div className="flex-1 pt-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-slate-900">📅 Record Created</span>
-                      <span className="text-sm text-slate-600">
-                        {new Date(currentEvent.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-600 mt-1">Event entered into system</p>
-                  </div>
-                </div>
-
-                {/* Detected */}
-                <div className="flex items-start gap-4 relative">
-                  <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold text-sm z-10">
-                    2
-                  </div>
-                  <div className="flex-1 pt-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-slate-900">👁️ Event Detected</span>
-                      <span className="text-sm text-slate-600">
-                        {new Date(currentEvent.timestamp).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-600 mt-1">
-                      Duration: {currentEvent.duration_ms && currentEvent.duration_ms < 1000
-                        ? `${currentEvent.duration_ms}ms`
-                        : `${((currentEvent.duration_ms || 0) / 1000).toFixed(2)}s`
-                      }
-                    </p>
-                  </div>
-                </div>
-
-                {/* Grouped (if applicable) */}
-                {currentEvent.grouped_at && (
-                  <div className="flex items-start gap-4 relative">
-                    <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold text-sm z-10">
-                      3
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-900">🔗 Event Grouped</span>
-                        <span className="text-sm text-slate-600">
-                          {new Date(currentEvent.grouped_at).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="text-sm text-slate-600 mt-1">
-                        {currentEvent.grouping_type === 'automatic' ? '🤖 Automatically grouped' : '👤 Manually grouped'}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* False Event Detection (if applicable) */}
-                {currentEvent.false_event && currentEvent.remarks?.includes('[Marked as false event') && (
-                  <div className="flex items-start gap-4 relative">
-                    <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center text-white font-bold text-sm z-10">
-                      <XCircle className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-900">🚫 Marked as False Event</span>
-                        <span className="text-sm text-slate-600">
-                          {currentEvent.remarks.match(/\[Marked as false event.*?(\d{4}-\d{2}-\d{2})/)?.[1] || 'Unknown date'}
-                        </span>
-                      </div>
-                      <p className="text-sm text-slate-600 mt-1">Event validated as false detection</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Converted from False Event (if applicable) */}
-                {!currentEvent.false_event && currentEvent.remarks?.includes('[Converted from false event') && (
-                  <div className="flex items-start gap-4 relative">
-                    <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-sm z-10">
-                      <CheckCircle className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-900">✅ Converted from False Event</span>
-                        <span className="text-sm text-slate-600">
-                          {currentEvent.remarks.match(/\[Converted from false event.*?(\d{4}-\d{2}-\d{2})/)?.[1] || 'Unknown date'}
-                        </span>
-                      </div>
-                      <p className="text-sm text-slate-600 mt-1">Re-validated as real event</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Resolved (if applicable) */}
-                {currentEvent.resolved_at && (
-                  <div className="flex items-start gap-4 relative">
-                    <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-sm z-10">
-                      ✓
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-900">✅ Event Resolved</span>
-                        <span className="text-sm text-slate-600">
-                          {new Date(currentEvent.resolved_at).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="text-sm text-slate-600 mt-1">Event marked as resolved</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Current Status (if not resolved) */}
-                {!currentEvent.resolved_at && (
-                  <div className="flex items-start gap-4 relative">
-                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm z-10 animate-pulse">
-                      ●
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <span className="font-semibold text-blue-700 capitalize">
-                        Current Status: {currentEvent.status}
-                      </span>
-                      <p className="text-sm text-slate-600 mt-1">Event is being monitored</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Total Duration */}
-              <div className="mt-8 pt-6 border-t border-purple-200">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600">Total Lifecycle Duration:</span>
-                  <span className="font-bold text-purple-900">
-                    {currentEvent.resolved_at
-                      ? `${Math.round((new Date(currentEvent.resolved_at).getTime() - new Date(currentEvent.created_at).getTime()) / 1000 / 60)} minutes`
-                      : 'Ongoing'
+            {/* Filter Header */}
+            <div className="bg-white rounded-lg border border-slate-200 p-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-slate-900 flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
+                  Event Timeline & Audit Log
+                </h4>
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-slate-600" />
+                  <select
+                    value={auditLogFilter}
+                    onChange={(e) => setAuditLogFilter(e.target.value)}
+                    className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  >
+                    <option value="all">All Operations</option>
+                    <option value="false_event">False Event</option>
+                    <option value="group">Group</option>
+                    <option value="idr">IDR</option>
+                    <option value="status_update">Status Update</option>
+                  </select>
+                  <span className="text-sm text-slate-600">
+                    {auditLogFilter === 'all' 
+                      ? `${auditLogs.length} total operations`
+                      : `${auditLogs.filter(log => {
+                          const categoryMap: Record<string, EventOperationType[]> = {
+                            'false_event': ['marked_false', 'converted_from_false', 'batch_marked_false'],
+                            'group': ['grouped_automatic', 'grouped_manual', 'ungrouped_full', 'ungrouped_partial'],
+                            'idr': ['idr_created', 'idr_updated'],
+                            'status_update': ['event_created', 'event_detected', 'status_changed', 'severity_changed', 'cause_updated', 'psbg_cause_updated', 'event_modified', 'event_resolved', 'event_deleted']
+                          };
+                          return categoryMap[auditLogFilter]?.includes(log.operation_type) || false;
+                        }).length} operations`
                     }
                   </span>
                 </div>
               </div>
+            </div>
+
+            {/* Timeline Content */}
+            <div className="p-6 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg">
+              {loadingAuditLogs ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                  <span className="ml-3 text-slate-600">Loading timeline...</span>
+                </div>
+              ) : auditLogs.length === 0 ? (
+                <div className="text-center py-12">
+                  <Clock className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                  <p className="text-slate-600 font-medium">No Timeline Data</p>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Event history will appear here as operations are performed
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-6 relative">
+                    {/* Timeline line */}
+                    <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-purple-200" />
+                    
+                    {/* Filter and display audit logs */}
+                    {auditLogs
+                      .filter(log => {
+                        if (auditLogFilter === 'all') return true;
+                        
+                        // Map categories to operation types
+                        const categoryMap: Record<string, EventOperationType[]> = {
+                          'false_event': ['marked_false', 'converted_from_false', 'batch_marked_false'],
+                          'group': ['grouped_automatic', 'grouped_manual', 'ungrouped_full', 'ungrouped_partial'],
+                          'idr': ['idr_created', 'idr_updated'],
+                          'status_update': ['event_created', 'event_detected', 'status_changed', 'severity_changed', 'cause_updated', 'psbg_cause_updated', 'event_modified', 'event_resolved', 'event_deleted']
+                        };
+                        
+                        return categoryMap[auditLogFilter]?.includes(log.operation_type) || false;
+                      })
+                      .map((log, index) => {
+                        const color = EventAuditService.getOperationTypeColor(log.operation_type);
+                        const icon = EventAuditService.getOperationTypeIcon(log.operation_type);
+                        const label = EventAuditService.getOperationTypeLabel(log.operation_type);
+                        
+                        return (
+                          <div key={log.id} className="flex items-start gap-4 relative">
+                            <div 
+                              className={`w-8 h-8 rounded-full bg-${color}-500 flex items-center justify-center text-white font-bold text-sm z-10 shadow-md`}
+                              style={{
+                                backgroundColor: 
+                                  color === 'purple' ? '#9333ea' :
+                                  color === 'red' ? '#ef4444' :
+                                  color === 'green' ? '#10b981' :
+                                  color === 'blue' ? '#3b82f6' :
+                                  color === 'indigo' ? '#6366f1' :
+                                  color === 'orange' ? '#f97316' :
+                                  color === 'teal' ? '#14b8a6' :
+                                  color === 'cyan' ? '#06b6d4' :
+                                  color === 'yellow' ? '#eab308' :
+                                  color === 'slate' ? '#64748b' :
+                                  '#9ca3af'
+                              }}
+                            >
+                              <span className="text-xs">{icon}</span>
+                            </div>
+                            <div className="flex-1 pt-1">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-semibold text-slate-900">{label}</span>
+                                <span className="text-sm text-slate-600">
+                                  {new Date(log.created_at).toLocaleString()}
+                                </span>
+                              </div>
+                              
+                              {/* Operation Details */}
+                              {log.operation_details?.note && (
+                                <p className="text-sm text-slate-600">{log.operation_details.note}</p>
+                              )}
+                              
+                              {/* Affected Fields for IDR/Event updates */}
+                              {log.operation_details?.affected_fields && (
+                                <p className="text-xs text-slate-500 mt-1">
+                                  <span className="font-medium">Fields:</span> {log.operation_details.affected_fields.join(', ')}
+                                </p>
+                              )}
+                              
+                              {/* Child Events for grouping/ungrouping */}
+                              {log.operation_details?.child_event_ids && (
+                                <p className="text-xs text-slate-500 mt-1">
+                                  <span className="font-medium">Affected Events:</span> {log.operation_details.child_event_ids.length}
+                                </p>
+                              )}
+                              
+                              {/* Status/Severity changes */}
+                              {(log.operation_details?.from || log.operation_details?.to) && (
+                                <p className="text-xs text-slate-500 mt-1">
+                                  <span className="font-medium">Changed:</span>{' '}
+                                  {log.operation_details.from || 'None'} → {log.operation_details.to || 'None'}
+                                </p>
+                              )}
+                              
+                              {/* User Information */}
+                              {log.user_id && log.user && (
+                                <p className="text-xs text-purple-600 mt-1 flex items-center gap-1">
+                                  <Users className="w-3 h-3" />
+                                  {log.user.full_name || log.user.email}
+                                </p>
+                              )}
+                              
+                              {!log.user_id && (
+                                <p className="text-xs text-slate-400 mt-1 italic">System operation</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+
+                  {/* Total Duration */}
+                  {auditLogs.length > 0 && (
+                    <div className="mt-8 pt-6 border-t border-purple-200">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-600">Event Lifecycle Duration:</span>
+                        <span className="font-bold text-purple-900">
+                          {(() => {
+                            const firstLog = auditLogs[0];
+                            const lastLog = auditLogs[auditLogs.length - 1];
+                            const durationMs = new Date(lastLog.created_at).getTime() - new Date(firstLog.created_at).getTime();
+                            const minutes = Math.round(durationMs / 1000 / 60);
+                            
+                            if (minutes < 60) {
+                              return `${minutes} minutes`;
+                            } else if (minutes < 1440) {
+                              const hours = Math.floor(minutes / 60);
+                              const remainingMinutes = minutes % 60;
+                              return `${hours}h ${remainingMinutes}m`;
+                            } else {
+                              const days = Math.floor(minutes / 1440);
+                              const hours = Math.floor((minutes % 1440) / 60);
+                              return `${days}d ${hours}h`;
+                            }
+                          })()}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         )}
@@ -3051,6 +3112,51 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                             alert('Failed to save IDR changes. Please try again.');
                           } else {
                             console.log('✅ IDR record saved successfully:', data);
+                            
+                            // Log audit trail
+                            try {
+                              // Determine if this is a create or update
+                              const isCreate = !idrRecord?.id;
+                              
+                              if (isCreate) {
+                                // Log IDR creation
+                                await EventAuditService.logIDRCreated(
+                                  currentEvent.id,
+                                  idrFormData.idr_no || 'N/A',
+                                  true // manual create
+                                );
+                              } else {
+                                // Detect changed fields for update
+                                const affectedFields: string[] = [];
+                                const fieldNames = [
+                                  'idr_no', 'status', 'voltage_level', 'address', 'duration_ms',
+                                  'v1', 'v2', 'v3', 'equipment_type', 'cause_group', 'cause',
+                                  'remarks', 'object_part_group', 'object_part_code', 'damage_group',
+                                  'damage_code', 'fault_type', 'outage_type', 'weather', 
+                                  'weather_condition', 'responsible_oc', 'total_cmi',
+                                  'equipment_affected', 'restoration_actions', 'notes'
+                                ];
+                                
+                                fieldNames.forEach(field => {
+                                  const oldVal = idrRecord?.[field as keyof typeof idrRecord];
+                                  const newVal = idrFormData[field as keyof typeof idrFormData];
+                                  if (oldVal !== newVal) {
+                                    affectedFields.push(field);
+                                  }
+                                });
+                                
+                                if (affectedFields.length > 0) {
+                                  await EventAuditService.logIDRUpdated(currentEvent.id, affectedFields);
+                                }
+                              }
+                              
+                              // Reload audit logs to show the new entry
+                              await loadAuditLogs(currentEvent.id);
+                            } catch (auditError) {
+                              console.error('❌ Error logging audit trail:', auditError);
+                              // Don't block the save, just log the error
+                            }
+                            
                             setIDRRecord(data);
                             setIsEditingIDR(false);
                             if (onEventUpdated) onEventUpdated();

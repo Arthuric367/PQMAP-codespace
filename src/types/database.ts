@@ -13,6 +13,27 @@ export type ReportStatus = 'generating' | 'completed' | 'failed';
 export type SystemStatus = 'healthy' | 'degraded' | 'down';
 export type LoadType = 'DC' | 'EV' | 'others' | 'RE-PV' | 'RES' | 'RES-HRB' | 'RES-NOC';
 
+// Event Audit Log Types
+export type EventOperationType = 
+  | 'event_created'
+  | 'event_detected'
+  | 'marked_false'
+  | 'converted_from_false'
+  | 'grouped_automatic'
+  | 'grouped_manual'
+  | 'ungrouped_full'
+  | 'ungrouped_partial'
+  | 'idr_created'
+  | 'idr_updated'
+  | 'status_changed'
+  | 'severity_changed'
+  | 'cause_updated'
+  | 'psbg_cause_updated'
+  | 'event_modified'
+  | 'batch_marked_false'
+  | 'event_resolved'
+  | 'event_deleted';
+
 // UAM (User Access Management) Types
 export type SystemRole = 'system_admin' | 'system_owner' | 'manual_implementator' | 'watcher';
 export type PermissionAction = 'create' | 'read' | 'update' | 'delete';
@@ -809,3 +830,28 @@ export interface NotificationSystemConfig {
   updated_by: string | null;
 }
 
+export interface EventAuditLog {
+  id: string;
+  event_id: string;
+  operation_type: EventOperationType;
+  operation_details: {
+    source?: string;
+    note?: string;
+    affected_fields?: string[];
+    child_event_ids?: string[];
+    field_changes?: Record<string, { from: any; to: any }>;
+    is_mother_event?: boolean;
+    parent_event_id?: string | null;
+    event_type?: string;
+    duration_ms?: number;
+    severity?: string;
+    idr_no?: string;
+    manual_create?: boolean;
+    final_status?: string;
+    [key: string]: any;
+  };
+  user_id: string | null;
+  created_at: string;
+  // Joined relations
+  user?: Profile;
+}
