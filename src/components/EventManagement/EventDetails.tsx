@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Clock, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Upload, FileDown, Wrench } from 'lucide-react';
+import { Clock, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Upload, FileDown, Wrench, Eye, EyeOff } from 'lucide-react';
 import { PQEvent, Substation, EventCustomerImpact, IDRRecord, PQServiceRecord, PQMeter, Customer } from '../../types/database';
 import { supabase } from '../../lib/supabase';
 import WaveformViewer from './WaveformViewer';
@@ -107,6 +107,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
   // PQ Services state
   const [services, setServices] = useState<PQServiceRecord[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
+  const [servicesDetailView, setServicesDetailView] = useState(false); // Toggle between simple and detail view
 
   // Customer event history panel state
   const [showCustomerHistory, setShowCustomerHistory] = useState(false);
@@ -2405,8 +2406,26 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                 <Wrench className="w-5 h-5 text-blue-600" />
                 PQ Service Records
               </h3>
-              <div className="text-sm text-slate-600">
-                {services.length} service{services.length !== 1 ? 's' : ''} logged for this event
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setServicesDetailView(!servicesDetailView)}
+                  className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors text-sm font-medium text-slate-700"
+                >
+                  {servicesDetailView ? (
+                    <>
+                      <EyeOff className="w-4 h-4" />
+                      Simple View
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-4 h-4" />
+                      Detail View
+                    </>
+                  )}
+                </button>
+                <div className="text-sm text-slate-600">
+                  {services.length} service{services.length !== 1 ? 's' : ''} logged for this event
+                </div>
               </div>
             </div>
 
@@ -2421,25 +2440,229 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                 <p className="font-medium text-lg">No PQ services found</p>
                 <p className="text-sm mt-1">No service records have been logged for this event yet</p>
               </div>
+            ) : servicesDetailView ? (
+              // DETAIL VIEW: 2-column card layout with all fields
+              <div className="space-y-4">
+                {services.map((service) => {
+                  const serviceTypeLabels: Record<string, string> = {
+                    site_survey: 'Site Survey',
+                    harmonic_analysis: 'Harmonic Analysis',
+                    consultation: 'Consultation',
+                    on_site_study: 'On-site Study',
+                    power_quality_audit: 'Power Quality Audit',
+                    installation_support: 'Installation Support',
+                  };
+
+                  return (
+                    <div key={service.id} className="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-lg transition-shadow">
+                      {/* Header */}
+                      <div className="flex items-start justify-between mb-4 pb-4 border-b border-slate-200">
+                        <div>
+                          <h4 className="text-lg font-bold text-slate-900">
+                            Case #{service.case_number || 'N/A'}
+                          </h4>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                              {serviceTypeLabels[service.service_type] || service.service_type}
+                            </span>
+                            {service.is_closed ? (
+                              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                                Closed
+                              </span>
+                            ) : service.is_in_progress ? (
+                              <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-medium">
+                                In Progress
+                              </span>
+                            ) : null}
+                            {service.completed_before_target !== null && (
+                              service.completed_before_target ? (
+                                <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-medium">
+                                  ✓ On Time
+                                </span>
+                              ) : (
+                                <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">
+                                  ⚠ Late
+                                </span>
+                              )
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-slate-500">Request Date</p>
+                          <p className="font-semibold text-slate-900">
+                            {new Date(service.service_date).toLocaleDateString('en-GB')}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* 2-Column Layout */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                        {/* Customer Information */}
+                        <div className="space-y-3">
+                          <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                            Customer Information
+                          </h5>
+                          <div>
+                            <p className="text-xs text-slate-500">Customer Premises Location</p>
+                            {service.customer ? (
+                              <div>
+                                <p className="font-medium text-slate-900">{service.customer.name}</p>
+                                <p className="text-sm text-slate-600">{service.customer.address || 'N/A'}</p>
+                                <p className="text-xs text-slate-500 mt-1">Acc: {service.customer.account_number}</p>
+                              </div>
+                            ) : (
+                              <p className="text-slate-400">N/A</p>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Tariff Group</p>
+                            <p className="font-medium text-slate-900">{service.tariff_group || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Business Nature</p>
+                            <p className="font-medium text-slate-900">{service.business_nature || 'N/A'}</p>
+                          </div>
+                        </div>
+
+                        {/* Service Details */}
+                        <div className="space-y-3">
+                          <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                            Service Details
+                          </h5>
+                          <div>
+                            <p className="text-xs text-slate-500">Service</p>
+                            <p className="font-medium text-slate-900 text-sm whitespace-pre-wrap">
+                              {service.content 
+                                ? service.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)
+                                : 'No description'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Engineer</p>
+                            <p className="font-medium text-slate-900">
+                              {service.engineer?.full_name || 'Not assigned'}
+                            </p>
+                          </div>
+                          {service.participant_count && (
+                            <div>
+                              <p className="text-xs text-slate-500">No. of Participants</p>
+                              <p className="font-medium text-slate-900">{service.participant_count}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Financial Information */}
+                        <div className="space-y-3">
+                          <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                            Financial
+                          </h5>
+                          <div>
+                            <p className="text-xs text-slate-500">Service Charging (HKD)</p>
+                            <p className="font-medium text-slate-900">
+                              {service.service_charge_amount 
+                                ? `$${service.service_charge_amount.toLocaleString()}k` 
+                                : 'N/A'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Party To Be Charged</p>
+                            <p className="font-medium text-slate-900">{service.party_charged || 'N/A'}</p>
+                          </div>
+                        </div>
+
+                        {/* Dates */}
+                        <div className="space-y-3">
+                          <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                            Key Dates
+                          </h5>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <p className="text-slate-500">Planned Reply</p>
+                              <p className="font-medium text-slate-900">
+                                {service.planned_reply_date 
+                                  ? new Date(service.planned_reply_date).toLocaleDateString('en-GB')
+                                  : 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500">Actual Reply</p>
+                              <p className="font-medium text-slate-900">
+                                {service.actual_reply_date 
+                                  ? new Date(service.actual_reply_date).toLocaleDateString('en-GB')
+                                  : 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500">Planned Report</p>
+                              <p className="font-medium text-slate-900">
+                                {service.planned_report_issue_date 
+                                  ? new Date(service.planned_report_issue_date).toLocaleDateString('en-GB')
+                                  : 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500">Actual Report</p>
+                              <p className="font-medium text-slate-900">
+                                {service.actual_report_issue_date 
+                                  ? new Date(service.actual_report_issue_date).toLocaleDateString('en-GB')
+                                  : 'N/A'}
+                              </p>
+                            </div>
+                            <div className="col-span-2">
+                              <p className="text-slate-500">Service Completion</p>
+                              <p className="font-medium text-slate-900">
+                                {service.completion_date 
+                                  ? new Date(service.completion_date).toLocaleDateString('en-GB')
+                                  : 'Not completed'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Substation/Circuit Info */}
+                        <div className="space-y-3 md:col-span-2">
+                          <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                            Substation / Circuit Information
+                          </h5>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <p className="text-xs text-slate-500">132kV Primary S/S Name & Txn No.</p>
+                              <p className="font-medium text-slate-900">{service.ss132_info || 'N/A'}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-500">11kV Customer S/S Code & Txn No.</p>
+                              <p className="font-medium text-slate-900">{service.ss011_info || 'N/A'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
+              // SIMPLE VIEW: Table with crucial columns only
               <div className="border border-slate-200 rounded-lg overflow-hidden">
                 <table className="w-full">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                        Service Date
+                        Case No.
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Customer Premises
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Request Date
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                         Service Type
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                        Customer
+                        Status
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                        Content
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                        Engineer
+                        Completion Date
                       </th>
                     </tr>
                   </thead>
@@ -2456,6 +2679,21 @@ export default function EventDetails({ event: initialEvent, substation: initialS
 
                       return (
                         <tr key={service.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-slate-900">
+                            #{service.case_number || 'N/A'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-900">
+                            {service.customer ? (
+                              <div>
+                                <div className="font-medium">{service.customer.name}</div>
+                                <div className="text-xs text-slate-500 truncate max-w-xs">
+                                  {service.customer.address || 'N/A'}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">N/A</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-900">
                             {new Date(service.service_date).toLocaleDateString('en-GB')}
                           </td>
@@ -2464,29 +2702,24 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                               {serviceTypeLabels[service.service_type] || service.service_type}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-slate-900">
-                            {service.customer ? (
-                              <div>
-                                <div className="font-medium">{service.customer.name}</div>
-                                <div className="text-xs text-slate-500">{service.customer.account_number}</div>
-                              </div>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm">
+                            {service.is_closed ? (
+                              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                                ✓ Closed
+                              </span>
+                            ) : service.is_in_progress ? (
+                              <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-medium">
+                                ⏳ In Progress
+                              </span>
                             ) : (
                               <span className="text-slate-400">N/A</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-sm text-slate-700">
-                            {service.content ? (
-                              <div className="max-w-md truncate" title={service.content}>
-                                {service.content}
-                              </div>
-                            ) : (
-                              <span className="text-slate-400">No content</span>
-                            )}
-                          </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-900">
-                            {service.engineer?.full_name || (
-                              <span className="text-slate-400">Not assigned</span>
-                            )}
+                            {service.completion_date 
+                              ? new Date(service.completion_date).toLocaleDateString('en-GB')
+                              : <span className="text-slate-400">Pending</span>
+                            }
                           </td>
                         </tr>
                       );

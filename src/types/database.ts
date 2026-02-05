@@ -394,6 +394,24 @@ export interface PQServiceRecord {
   content: string | null;
   created_at: string;
   updated_at: string;
+  // New fields (Migration 20260205000001)
+  case_number?: number; // Auto-generated sequential case number
+  tariff_group?: string | null; // Customer premises tariff group (e.g., BT, HT, LT)
+  service_charge_amount?: number | null; // Service charging amount in HKD (thousands)
+  party_charged?: string | null; // Party to be charged (e.g., AMD, CLP, Customer)
+  completion_date?: string | null; // Service completion date
+  planned_reply_date?: string | null; // Planned reply date
+  actual_reply_date?: string | null; // Actual reply date
+  planned_report_issue_date?: string | null; // Planned report issue date
+  actual_report_issue_date?: string | null; // Actual report issue date
+  is_closed?: boolean; // Case closed status
+  is_in_progress?: boolean; // Case in-progress status
+  completed_before_target?: boolean | null; // Completed before target date
+  business_nature?: string | null; // Business nature (e.g., Shopping Centre, Factory)
+  participant_count?: number | null; // Number of participants (for education service type)
+  ss132_info?: string | null; // 132kV Primary S/S Name & Txn No.
+  ss011_info?: string | null; // 11kV Customer S/S Code & Txn No.
+  // Joined relations
   customer?: Customer;
   engineer?: Profile;
   event?: Pick<PQEvent, 'id' | 'idr_no'>;

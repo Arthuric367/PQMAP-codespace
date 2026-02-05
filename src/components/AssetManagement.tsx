@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { PQMeter, Substation, PQEvent, EventType, EventStatus, PQServiceRecord, RealtimePQData } from '../types/database';
+import { PQMeter, Substation, PQEvent, EventType, EventStatus, PQServiceRecord, RealtimePQData, ServiceType } from '../types/database';
 import { getLatestMeterReading } from '../services/meterReadingsService';
-import { Database, Activity, X, Check, Info, Filter, Download, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BarChart3, Clock, Zap, AlertCircle, Wrench, Radio, Network } from 'lucide-react';
+import { Database, Activity, X, Check, Info, Filter, Download, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BarChart3, Clock, Zap, AlertCircle, Wrench, Radio, Network, FileSpreadsheet, User, FileText, DollarSign, Calendar, MapPin } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import TreeViewModal from './MeterHierarchy/TreeViewModal';
 import { calculateAvailabilityPercent, getExpectedCount, getTimeRangeDates } from '../utils/availability';
@@ -90,6 +90,13 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
   // PQ Services states
   const [meterServices, setMeterServices] = useState<PQServiceRecord[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
+  const [servicesDetailView, setServicesDetailView] = useState(false); // Toggle between simple and detail view
+  const [serviceTypeFilter, setServiceTypeFilter] = useState<ServiceType | 'all'>('all');
+  const [serviceDateRangeFilter, setServiceDateRangeFilter] = useState<'7days' | '30days' | 'custom' | 'all'>('all');
+  const [serviceCustomerFilter, setServiceCustomerFilter] = useState<string>('all');
+  const [serviceEventFilter, setServiceEventFilter] = useState<string>('all');
+  const [showServiceExportDropdown, setShowServiceExportDropdown] = useState(false);
+  const [showServiceFilters, setShowServiceFilters] = useState(false);
   
   // Realtime PQ data states
   const [realtimeData, setRealtimeData] = useState<RealtimePQData | null>(null);
@@ -199,6 +206,13 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
     }
   }, [selectedMeter?.id]);
 
+  // Load realtime data when realtime tab is active
+  useEffect(() => {
+    if (selectedMeter && activeTab === 'realtime') {
+      loadRealtimeData();
+    }
+  }, [selectedMeter?.id, activeTab]);
+
   const loadData = async () => {
     try {
       const [metersRes, substationsRes] = await Promise.all([
@@ -295,6 +309,54 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
     } finally {
       setLoadingServices(false);
     }
+  };
+
+  // Filter services for selected meter
+  const getFilteredMeterServices = () => {
+    let filtered = [...meterServices];
+
+    // Service type filter
+    if (serviceTypeFilter !== 'all') {
+      filtered = filtered.filter(s => s.service_type === serviceTypeFilter);
+    }
+
+    // Date range filter
+    if (serviceDateRangeFilter === '7days') {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      filtered = filtered.filter(s => new Date(s.service_date) >= sevenDaysAgo);
+    } else if (serviceDateRangeFilter === '30days') {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      filtered = filtered.filter(s => new Date(s.service_date) >= thirtyDaysAgo);
+    }
+
+    // Customer filter
+    if (serviceCustomerFilter !== 'all') {
+      filtered = filtered.filter(s => s.customer_id === serviceCustomerFilter);
+    }
+
+    // Event filter
+    if (serviceEventFilter !== 'all') {
+      filtered = filtered.filter(s => s.event_id === serviceEventFilter);
+    }
+
+    return filtered;
+  };
+
+  // Get unique customers from meter services
+  const getUniqueCustomersFromServices = () => {
+    const customerIds = Array.from(new Set(meterServices.map(s => s.customer_id).filter(Boolean)));
+    return meterServices
+      .filter((s, index, self) => s.customer && customerIds.includes(s.customer_id) && 
+        index === self.findIndex(t => t.customer_id === s.customer_id))
+      .map(s => s.customer)
+      .filter(Boolean);
+  };
+
+  // Get unique events from meter services
+  const getUniqueEventsFromServices = () => {
+    return Array.from(new Set(meterServices.map(s => s.event_id).filter((id): id is string => id !== null)));
   };
 
   // Generate mock realtime PQ data
@@ -619,7 +681,9 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
   // Get unique values for filter dropdowns
   const uniqueBrands = Array.from(new Set(meters.map(m => m.brand).filter(Boolean))).sort();
   const uniqueModels = Array.from(new Set(meters.map(m => m.model).filter(Boolean))).sort();
-  const uniqueVoltageLevels = Array.from(new Set(meters.map(m => m.voltage_level).filter(Boolean))).sort();
+  const uniqueVoltageLevels = Array.from(
+    new Set(meters.map(m => m.voltage_level).filter((v): v is string => Boolean(v)))
+  ).sort();
   const uniqueAreas = Array.from(new Set(meters.map(m => m.area).filter(Boolean))).sort();
 
   // Apply all filters (AND logic)
@@ -935,6 +999,47 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
     } finally {
       setIsExporting(false);
     }
+  };
+
+  // Export meter services
+  const handleExportMeterServices = async () => {
+    if (!selectedMeter) return;
+
+    const filteredServices = getFilteredMeterServices();
+    
+    const exportData = filteredServices.map(service => ({
+      'Case No.': service.case_number || 'N/A',
+      'Customer': service.customer?.name || 'Unknown',
+      'Account No.': service.customer?.account_number || 'N/A',
+      'Event ID': service.event_id || 'N/A',
+      'Service Date': new Date(service.service_date).toLocaleDateString('en-GB'),
+      'Service Type': service.service_type.replace(/_/g, ' ').toUpperCase(),
+      'Status': service.is_closed ? 'CLOSED' : service.is_in_progress ? 'IN PROGRESS' : 'N/A',
+      'Completion Date': service.completion_date ? new Date(service.completion_date).toLocaleDateString('en-GB') : 'Not completed',
+      'Benchmark Standard': service.benchmark_standard || 'None',
+      'Engineer': service.engineer?.full_name || 'Not assigned',
+      'Business Nature': service.business_nature || 'N/A',
+      'Service Charge': service.service_charge_amount || 0,
+      'Created': new Date(service.created_at).toLocaleDateString('en-GB'),
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Services');
+
+    // Add header with meter context
+    const header = [
+      [`PQ Services Report - Meter ${selectedMeter.meter_id}`],
+      [`Site ID: ${selectedMeter.site_id || 'N/A'}`],
+      [`Substation: ${substationMap[selectedMeter.substation_id]?.name || 'Unknown'}`],
+      [`Export Date: ${new Date().toLocaleDateString('en-GB')}`],
+      [`Total Services: ${filteredServices.length}`],
+      [],
+    ];
+    XLSX.utils.sheet_add_aoa(ws, header, { origin: 'A1' });
+
+    XLSX.writeFile(wb, `PQ_Services_Meter_${selectedMeter.meter_id}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    setShowServiceExportDropdown(false);
   };
 
   // Click outside handlers
@@ -2374,85 +2479,469 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
               {/* PQ Services Tab */}
               {activeTab === 'services' && (
                 <div className="p-6">
-                  <div className="mb-4">
-                    <h3 className="text-lg font-bold text-slate-900">PQ Service History</h3>
-                    <p className="text-sm text-slate-600 mt-1">
-                      Services performed related to events from this meter
-                    </p>
+                  {/* Header with View Toggle and Actions */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">PQ Service History</h3>
+                      <p className="text-sm text-slate-600 mt-1">
+                        Services performed related to events from this meter
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {/* View Toggle */}
+                      <div className="flex items-center bg-slate-100 rounded-lg p-1">
+                        <button
+                          onClick={() => setServicesDetailView(false)}
+                          className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                            !servicesDetailView
+                              ? 'bg-white text-slate-900 shadow-sm'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Simple
+                        </button>
+                        <button
+                          onClick={() => setServicesDetailView(true)}
+                          className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                            servicesDetailView
+                              ? 'bg-white text-slate-900 shadow-sm'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Detail
+                        </button>
+                      </div>
+
+                      {/* Filters Toggle */}
+                      <button
+                        onClick={() => setShowServiceFilters(!showServiceFilters)}
+                        className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                      >
+                        <Filter className="w-4 h-4" />
+                        Filters
+                        {(serviceTypeFilter !== 'all' || serviceDateRangeFilter !== 'all' || serviceCustomerFilter !== 'all' || serviceEventFilter !== 'all') && (
+                          <span className="bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full">
+                            {[serviceTypeFilter !== 'all', serviceDateRangeFilter !== 'all', serviceCustomerFilter !== 'all', serviceEventFilter !== 'all'].filter(Boolean).length}
+                          </span>
+                        )}
+                      </button>
+
+                      {/* Export Dropdown */}
+                      {meterServices.length > 0 && (
+                        <div className="relative">
+                          <button
+                            onClick={() => setShowServiceExportDropdown(!showServiceExportDropdown)}
+                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                          >
+                            <Download className="w-4 h-4" />
+                            Export
+                          </button>
+                          {showServiceExportDropdown && (
+                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-10">
+                              <button
+                                onClick={handleExportMeterServices}
+                                className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center gap-2"
+                              >
+                                <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                                Export to Excel
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
+                  {/* Filter Panel */}
+                  {showServiceFilters && (
+                    <div className="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200 grid grid-cols-1 md:grid-cols-4 gap-4">
+                      {/* Service Type Filter */}
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Service Type</label>
+                        <select
+                          value={serviceTypeFilter}
+                          onChange={(e) => setServiceTypeFilter(e.target.value as ServiceType | 'all')}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        >
+                          <option value="all">All Types</option>
+                          <option value="site_survey">Site Survey</option>
+                          <option value="harmonic_analysis">Harmonic Analysis</option>
+                          <option value="consultation">Consultation</option>
+                          <option value="on_site_study">On-site Study</option>
+                          <option value="power_quality_audit">Power Quality Audit</option>
+                          <option value="installation_support">Installation Support</option>
+                        </select>
+                      </div>
+
+                      {/* Date Range Filter */}
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Date Range</label>
+                        <select
+                          value={serviceDateRangeFilter}
+                          onChange={(e) => setServiceDateRangeFilter(e.target.value as '7days' | '30days' | 'custom' | 'all')}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        >
+                          <option value="all">All Time</option>
+                          <option value="7days">Last 7 Days</option>
+                          <option value="30days">Last 30 Days</option>
+                        </select>
+                      </div>
+
+                      {/* Customer Filter */}
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Customer</label>
+                        <select
+                          value={serviceCustomerFilter}
+                          onChange={(e) => setServiceCustomerFilter(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        >
+                          <option value="all">All Customers</option>
+                          {getUniqueCustomersFromServices().map((customer: any) => (
+                            <option key={customer.id} value={customer.id}>
+                              {customer.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Event Filter */}
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Event</label>
+                        <select
+                          value={serviceEventFilter}
+                          onChange={(e) => setServiceEventFilter(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        >
+                          <option value="all">All Events</option>
+                          {getUniqueEventsFromServices().map((eventId) => (
+                            <option key={eventId} value={eventId}>
+                              {eventId.slice(0, 8)}...
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Clear Filters Button */}
+                      {(serviceTypeFilter !== 'all' || serviceDateRangeFilter !== 'all' || serviceCustomerFilter !== 'all' || serviceEventFilter !== 'all') && (
+                        <div className="md:col-span-4 flex justify-end">
+                          <button
+                            onClick={() => {
+                              setServiceTypeFilter('all');
+                              setServiceDateRangeFilter('all');
+                              setServiceCustomerFilter('all');
+                              setServiceEventFilter('all');
+                            }}
+                            className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 font-medium"
+                          >
+                            Clear All Filters
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Services Content */}
                   {loadingServices ? (
                     <div className="flex items-center justify-center py-12">
                       <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                     </div>
-                  ) : meterServices.length > 0 ? (
+                  ) : getFilteredMeterServices().length > 0 ? (
                     <div className="space-y-4">
-                      {meterServices.map((service) => (
-                        <div key={service.id} className="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded">
-                                  {service.service_type.replace(/_/g, ' ').toUpperCase()}
-                                </span>
-                                <span className="text-sm text-slate-600">
-                                  {new Date(service.service_date).toLocaleDateString('en-GB')}
-                                </span>
-                              </div>
-                              {service.customer && (
-                                <p className="text-sm font-medium text-slate-700">
-                                  Customer: {service.customer.name}
-                                </p>
-                              )}
-                            </div>
-                            {service.engineer && (
-                              <div className="text-right">
-                                <p className="text-xs text-slate-500">Engineer</p>
-                                <p className="text-sm font-medium text-slate-700">{service.engineer.full_name}</p>
-                              </div>
-                            )}
-                          </div>
-
-                          {service.benchmark_standard && (
-                            <div className="mb-2">
-                              <span className="text-xs font-medium text-slate-600">Benchmark: </span>
-                              <span className="text-xs text-slate-700">{service.benchmark_standard}</span>
-                            </div>
-                          )}
-
-                          {service.findings && (
-                            <div className="mb-2">
-                              <p className="text-xs font-medium text-slate-600 mb-1">Findings:</p>
-                              <p className="text-sm text-slate-700 bg-slate-50 p-2 rounded">
-                                {service.findings}
-                              </p>
-                            </div>
-                          )}
-
-                          {service.recommendations && (
-                            <div className="mb-2">
-                              <p className="text-xs font-medium text-slate-600 mb-1">Recommendations:</p>
-                              <p className="text-sm text-slate-700 bg-slate-50 p-2 rounded">
-                                {service.recommendations}
-                              </p>
-                            </div>
-                          )}
-
-                          {service.event_id && (
-                            <div className="mt-2 pt-2 border-t border-slate-100">
-                              <span className="text-xs text-slate-500">Related Event ID: </span>
-                              <span className="text-xs font-mono text-slate-700">{service.event_id.slice(0, 8)}...</span>
-                            </div>
-                          )}
+                      {!servicesDetailView ? (
+                        /* Simple View - Table */
+                        <div className="overflow-x-auto">
+                          <table className="w-full border border-slate-200 rounded-lg overflow-hidden">
+                            <thead className="bg-slate-50">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">Case No.</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">Customer</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">Event</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">Request Date</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">Type</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">Status</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">Completion</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                              {getFilteredMeterServices().map((service) => (
+                                <tr key={service.id} className="hover:bg-slate-50">
+                                  <td className="px-4 py-3 text-sm text-slate-900">{service.case_number || 'N/A'}</td>
+                                  <td className="px-4 py-3 text-sm text-slate-900">
+                                    {service.customer ? (
+                                      <div>
+                                        <div className="font-medium">{service.customer.name}</div>
+                                        <div className="text-xs text-slate-500">{service.customer.account_number}</div>
+                                      </div>
+                                    ) : (
+                                      'Unknown'
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm">
+                                    {service.event_id ? (
+                                      <span className="font-mono text-xs text-blue-600">
+                                        {service.event_id.slice(0, 8)}...
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-400">N/A</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-slate-900">
+                                    {new Date(service.service_date).toLocaleDateString('en-GB')}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded">
+                                      {service.service_type.replace(/_/g, ' ').toUpperCase()}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                                      service.is_closed
+                                        ? 'bg-green-100 text-green-700'
+                                        : service.is_in_progress
+                                        ? 'bg-yellow-100 text-yellow-700'
+                                        : 'bg-slate-100 text-slate-700'
+                                    }`}>
+                                      {service.is_closed ? 'CLOSED' : service.is_in_progress ? 'IN PROGRESS' : 'N/A'}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-slate-900">
+                                    {service.completion_date
+                                      ? new Date(service.completion_date).toLocaleDateString('en-GB')
+                                      : 'Not completed'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
-                      ))}
+                      ) : (
+                        /* Detail View - Cards */
+                        <div className="space-y-6">
+                          {getFilteredMeterServices().map((service) => (
+                            <div key={service.id} className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+                              {/* Service Header */}
+                              <div className="bg-gradient-to-r from-slate-700 to-slate-900 text-white p-4">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <Wrench className="w-6 h-6" />
+                                    <div>
+                                      <h4 className="font-bold text-lg">
+                                        {service.service_type.replace(/_/g, ' ').toUpperCase()}
+                                      </h4>
+                                      <p className="text-sm text-slate-300">
+                                        Case No: {service.case_number || 'N/A'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className={`px-3 py-1 text-xs font-semibold rounded ${
+                                      service.is_closed
+                                        ? 'bg-green-500 text-white'
+                                        : service.is_in_progress
+                                        ? 'bg-yellow-500 text-white'
+                                        : 'bg-slate-500 text-white'
+                                    }`}>
+                                      {service.is_closed ? 'CLOSED' : service.is_in_progress ? 'IN PROGRESS' : 'N/A'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Service Content - 2 Column Layout */}
+                              <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Column 1 */}
+                                <div className="space-y-6">
+                                  {/* Customer Info */}
+                                  {service.customer && (
+                                    <div className="bg-slate-50 rounded-lg p-4">
+                                      <h5 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                                        <User className="w-4 h-4" />
+                                        Customer Information
+                                      </h5>
+                                      <div className="space-y-2 text-sm">
+                                        <div>
+                                          <span className="text-slate-600">Name:</span>
+                                          <span className="ml-2 font-medium text-slate-900">{service.customer.name}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-600">Account No:</span>
+                                          <span className="ml-2 font-medium text-slate-900">{service.customer.account_number}</span>
+                                        </div>
+                                        {service.customer.address && (
+                                          <div>
+                                            <span className="text-slate-600">Address:</span>
+                                            <span className="ml-2 text-slate-900">{service.customer.address}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Service Details */}
+                                  <div className="bg-slate-50 rounded-lg p-4">
+                                    <h5 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                                      <FileText className="w-4 h-4" />
+                                      Service Details
+                                    </h5>
+                                    <div className="space-y-2 text-sm">
+                                      {service.event_id && (
+                                        <div>
+                                          <span className="text-slate-600">Event ID:</span>
+                                          <span className="ml-2 font-mono text-xs text-blue-600">{service.event_id}</span>
+                                        </div>
+                                      )}
+                                      {service.idr_no && (
+                                        <div>
+                                          <span className="text-slate-600">IDR No:</span>
+                                          <span className="ml-2 font-medium text-slate-900">{service.idr_no}</span>
+                                        </div>
+                                      )}
+                                      {service.benchmark_standard && (
+                                        <div>
+                                          <span className="text-slate-600">Benchmark:</span>
+                                          <span className="ml-2 font-medium text-slate-900">{service.benchmark_standard}</span>
+                                        </div>
+                                      )}
+                                      {service.business_nature && (
+                                        <div>
+                                          <span className="text-slate-600">Business Nature:</span>
+                                          <span className="ml-2 text-slate-900">{service.business_nature}</span>
+                                        </div>
+                                      )}
+                                      {service.content && (
+                                        <div>
+                                          <span className="text-slate-600">Description:</span>
+                                          <p className="mt-1 text-slate-900 bg-white p-2 rounded border border-slate-200">
+                                            {service.content}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Financial */}
+                                  {(service.service_charge_amount || service.party_charged) && (
+                                    <div className="bg-slate-50 rounded-lg p-4">
+                                      <h5 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                                        <DollarSign className="w-4 h-4" />
+                                        Financial Details
+                                      </h5>
+                                      <div className="space-y-2 text-sm">
+                                        {service.service_charge_amount && (
+                                          <div className="flex justify-between">
+                                            <span className="text-slate-600">Service Charge:</span>
+                                            <span className="font-medium text-slate-900">${service.service_charge_amount.toFixed(2)}k</span>
+                                          </div>
+                                        )}
+                                        {service.party_charged && (
+                                          <div className="flex justify-between">
+                                            <span className="text-slate-600">Party Charged:</span>
+                                            <span className="font-medium text-slate-900">{service.party_charged}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Column 2 */}
+                                <div className="space-y-6">
+                                  {/* Key Dates */}
+                                  <div className="bg-slate-50 rounded-lg p-4">
+                                    <h5 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                                      <Calendar className="w-4 h-4" />
+                                      Key Dates
+                                    </h5>
+                                    <div className="space-y-2 text-sm">
+                                      <div>
+                                        <span className="text-slate-600">Service Date:</span>
+                                        <span className="ml-2 font-medium text-slate-900">
+                                          {new Date(service.service_date).toLocaleDateString('en-GB')}
+                                        </span>
+                                      </div>
+                                      {service.completion_date && (
+                                        <div>
+                                          <span className="text-slate-600">Completion Date:</span>
+                                          <span className="ml-2 font-medium text-slate-900">
+                                            {new Date(service.completion_date).toLocaleDateString('en-GB')}
+                                          </span>
+                                        </div>
+                                      )}
+                                      <div>
+                                        <span className="text-slate-600">Created:</span>
+                                        <span className="ml-2 text-slate-900">
+                                          {new Date(service.created_at).toLocaleDateString('en-GB')}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Engineer */}
+                                  {service.engineer && (
+                                    <div className="bg-slate-50 rounded-lg p-4">
+                                      <h5 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                                        <User className="w-4 h-4" />
+                                        Assigned Engineer
+                                      </h5>
+                                      <div className="space-y-2 text-sm">
+                                        <div>
+                                          <span className="text-slate-600">Name:</span>
+                                          <span className="ml-2 font-medium text-slate-900">{service.engineer.full_name}</span>
+                                        </div>
+                                        {service.engineer.email && (
+                                          <div>
+                                            <span className="text-slate-600">Email:</span>
+                                            <span className="ml-2 text-slate-900">{service.engineer.email}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Substation (from selectedMeter) */}
+                                  {selectedMeter && substationMap[selectedMeter.substation_id] && (
+                                    <div className="bg-slate-50 rounded-lg p-4">
+                                      <h5 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                                        <MapPin className="w-4 h-4" />
+                                        Meter Substation
+                                      </h5>
+                                      <div className="space-y-2 text-sm">
+                                        <div>
+                                          <span className="text-slate-600">Name:</span>
+                                          <span className="ml-2 font-medium text-slate-900">
+                                            {substationMap[selectedMeter.substation_id].name}
+                                          </span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-600">Code:</span>
+                                          <span className="ml-2 font-medium text-slate-900">
+                                            {substationMap[selectedMeter.substation_id].code}
+                                          </span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-600">Voltage:</span>
+                                          <span className="ml-2 text-slate-900">
+                                            {substationMap[selectedMeter.substation_id].voltage_level}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="text-center py-12">
                       <Wrench className="w-12 h-12 text-slate-400 mx-auto mb-3" />
                       <p className="text-slate-600 font-medium">No PQ Services Found</p>
                       <p className="text-sm text-slate-500 mt-1">
-                        No services have been recorded for events from this meter
+                        {(serviceTypeFilter !== 'all' || serviceDateRangeFilter !== 'all' || serviceCustomerFilter !== 'all' || serviceEventFilter !== 'all')
+                          ? 'Try adjusting your filters'
+                          : 'No services have been recorded for events from this meter'}
                       </p>
                     </div>
                   )}
@@ -2463,7 +2952,192 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
               {activeTab === 'realtime' && (
                 <div className="p-6">
                   {!selectedEnergyReport ? (
-                    <div className="space-y-4">
+                    <div className="space-y-6">
+                      {/* Realtime PQ Data Dashboard */}
+                      {realtimeData && (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-slate-900">Realtime Power Quality Data</h3>
+                            <span className="text-xs text-slate-500">Mock Data</span>
+                          </div>
+
+                          {/* 2-Column Grid Layout */}
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            {/* VLN (L-N Voltage) */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">VLN (L-N Voltage)</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.vln.phaseA.toFixed(1)} V</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.vln.phaseB.toFixed(1)} V</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.vln.phaseC.toFixed(1)} V</span></div>
+                                <div><span className="text-slate-600">Avg:</span> <span className="font-semibold text-blue-600">{realtimeData.vln.avg.toFixed(1)} V</span></div>
+                              </div>
+                            </div>
+
+                            {/* VLL (L-L Voltage) */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">VLL (L-L Voltage)</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.vll.phaseA.toFixed(1)} V</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.vll.phaseB.toFixed(1)} V</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.vll.phaseC.toFixed(1)} V</span></div>
+                                <div><span className="text-slate-600">Avg:</span> <span className="font-semibold text-blue-600">{realtimeData.vll.avg.toFixed(1)} V</span></div>
+                              </div>
+                            </div>
+
+                            {/* Current */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">Current</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.current.phaseA.toFixed(1)} A</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.current.phaseB.toFixed(1)} A</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.current.phaseC.toFixed(1)} A</span></div>
+                                <div><span className="text-slate-600">Total:</span> <span className="font-semibold text-blue-600">{realtimeData.current.total.toFixed(1)} A</span></div>
+                              </div>
+                            </div>
+
+                            {/* Frequency */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">Frequency</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.frequency.phaseA.toFixed(2)} Hz</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.frequency.phaseB.toFixed(2)} Hz</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.frequency.phaseC.toFixed(2)} Hz</span></div>
+                                <div><span className="text-slate-600">Avg:</span> <span className="font-semibold text-blue-600">{realtimeData.frequency.avg.toFixed(2)} Hz</span></div>
+                              </div>
+                            </div>
+
+                            {/* Active Power */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">Active Power</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.activePower.phaseA.toFixed(1)} kW</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.activePower.phaseB.toFixed(1)} kW</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.activePower.phaseC.toFixed(1)} kW</span></div>
+                                <div><span className="text-slate-600">Total:</span> <span className="font-semibold text-blue-600">{realtimeData.activePower.total.toFixed(1)} kW</span></div>
+                              </div>
+                            </div>
+
+                            {/* Reactive Power */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">Reactive Power</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.reactivePower.phaseA.toFixed(1)} kVAR</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.reactivePower.phaseB.toFixed(1)} kVAR</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.reactivePower.phaseC.toFixed(1)} kVAR</span></div>
+                                <div><span className="text-slate-600">Total:</span> <span className="font-semibold text-blue-600">{realtimeData.reactivePower.total.toFixed(1)} kVAR</span></div>
+                              </div>
+                            </div>
+
+                            {/* Apparent Power */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">Apparent Power</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.apparentPower.phaseA.toFixed(1)} kVA</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.apparentPower.phaseB.toFixed(1)} kVA</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.apparentPower.phaseC.toFixed(1)} kVA</span></div>
+                                <div><span className="text-slate-600">Total:</span> <span className="font-semibold text-blue-600">{realtimeData.apparentPower.total.toFixed(1)} kVA</span></div>
+                              </div>
+                            </div>
+
+                            {/* Power Factor */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">Power Factor</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.powerFactor.phaseA.toFixed(2)}</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.powerFactor.phaseB.toFixed(2)}</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.powerFactor.phaseC.toFixed(2)}</span></div>
+                                <div><span className="text-slate-600">Avg:</span> <span className="font-semibold text-blue-600">{realtimeData.powerFactor.avg.toFixed(2)}</span></div>
+                              </div>
+                            </div>
+
+                            {/* V2 Unbalance */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">V2 Unbalance</div>
+                              <div className="text-sm font-semibold text-slate-900">{realtimeData.v2Unb.toFixed(2)}%</div>
+                            </div>
+
+                            {/* V THD */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">V THD</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.vThd.phaseA.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.vThd.phaseB.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.vThd.phaseC.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">Avg:</span> <span className="font-semibold text-blue-600">{realtimeData.vThd.avg.toFixed(2)}%</span></div>
+                              </div>
+                            </div>
+
+                            {/* I THF */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">I THF</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.iThf.phaseA.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.iThf.phaseB.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.iThf.phaseC.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">Avg:</span> <span className="font-semibold text-blue-600">{realtimeData.iThf.avg.toFixed(2)}%</span></div>
+                              </div>
+                            </div>
+
+                            {/* I THD Odd */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">I THD Odd</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.iThdOdd.phaseA.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.iThdOdd.phaseB.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.iThdOdd.phaseC.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">Avg:</span> <span className="font-semibold text-blue-600">{realtimeData.iThdOdd.avg.toFixed(2)}%</span></div>
+                              </div>
+                            </div>
+
+                            {/* I TDD */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">I TDD</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.iTdd.phaseA.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.iTdd.phaseB.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.iTdd.phaseC.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">Avg:</span> <span className="font-semibold text-blue-600">{realtimeData.iTdd.avg.toFixed(2)}%</span></div>
+                              </div>
+                            </div>
+
+                            {/* I TDD Odd */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">I TDD Odd</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.iTddOdd.phaseA.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.iTddOdd.phaseB.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.iTddOdd.phaseC.toFixed(2)}%</span></div>
+                                <div><span className="text-slate-600">Avg:</span> <span className="font-semibold text-blue-600">{realtimeData.iTddOdd.avg.toFixed(2)}%</span></div>
+                              </div>
+                            </div>
+
+                            {/* PST (Short-term Flicker) */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">PST (Flicker)</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.pst.phaseA.toFixed(2)}</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.pst.phaseB.toFixed(2)}</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.pst.phaseC.toFixed(2)}</span></div>
+                                <div><span className="text-slate-600">Avg:</span> <span className="font-semibold text-blue-600">{realtimeData.pst.avg.toFixed(2)}</span></div>
+                              </div>
+                            </div>
+
+                            {/* PLT (Long-term Flicker) */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">PLT (Flicker)</div>
+                              <div className="grid grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-600">A:</span> <span className="font-semibold text-slate-900">{realtimeData.plt.phaseA.toFixed(2)}</span></div>
+                                <div><span className="text-slate-600">B:</span> <span className="font-semibold text-slate-900">{realtimeData.plt.phaseB.toFixed(2)}</span></div>
+                                <div><span className="text-slate-600">C:</span> <span className="font-semibold text-slate-900">{realtimeData.plt.phaseC.toFixed(2)}</span></div>
+                                <div><span className="text-slate-600">Avg:</span> <span className="font-semibold text-blue-600">{realtimeData.plt.avg.toFixed(2)}</span></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Energy Profile Report Buttons */}
                       <div>
                         <h3 className="text-lg font-bold text-slate-900">Energy Profile</h3>
                         <p className="text-sm text-slate-600 mt-1">
