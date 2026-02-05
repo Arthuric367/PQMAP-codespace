@@ -40,16 +40,33 @@ export default function TemplateList({ onEdit, onNew, refreshKey }: TemplateList
   const loadTemplates = async () => {
     setLoading(true);
     
-    // Load from localStorage (JSON file simulation)
+    // Load from localStorage first
     const storedTemplates = localStorage.getItem('notificationTemplates');
+    let templates: any[] = [];
+    
     if (storedTemplates) {
       const parsedTemplates = JSON.parse(storedTemplates);
-      setTemplates(parsedTemplates);
+      templates = parsedTemplates;
     } else {
-      // Initialize with sample templates if localStorage is empty
+      // Initialize with sample templates from JSON file
+      templates = sampleTemplates as any;
       localStorage.setItem('notificationTemplates', JSON.stringify(sampleTemplates));
-      setTemplates(sampleTemplates as any);
     }
+    
+    // Merge with JSON file templates (prioritize localStorage but ensure JSON templates exist)
+    const jsonTemplateIds = sampleTemplates.map((t: any) => t.id);
+    const localTemplateIds = templates.map(t => t.id);
+    
+    // Add any JSON templates that don't exist in localStorage
+    sampleTemplates.forEach((jsonTemplate: any) => {
+      if (!localTemplateIds.includes(jsonTemplate.id)) {
+        templates.push(jsonTemplate);
+      }
+    });
+    
+    // Update localStorage with merged data
+    localStorage.setItem('notificationTemplates', JSON.stringify(templates));
+    setTemplates(templates);
     
     setLoading(false);
   };
@@ -308,9 +325,6 @@ export default function TemplateList({ onEdit, onNew, refreshKey }: TemplateList
                   Channels
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                  Version
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
                   Updated
                 </th>
                 <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">
@@ -321,7 +335,7 @@ export default function TemplateList({ onEdit, onNew, refreshKey }: TemplateList
             <tbody className="divide-y divide-slate-100">
               {filteredTemplates.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                     <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                     <p className="font-medium">No templates found</p>
                     <p className="text-sm mt-1">Create your first template to get started</p>
@@ -348,9 +362,6 @@ export default function TemplateList({ onEdit, onNew, refreshKey }: TemplateList
                       <div className="flex flex-wrap gap-1">
                         {getChannelBadges(template.applicable_channels)}
                       </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-slate-600">v{template.version}</span>
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-sm text-slate-600">
