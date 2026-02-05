@@ -4,8 +4,10 @@ import {
   BarChart3,
   Calendar,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Copy,
   Database,
   Download,
@@ -113,6 +115,24 @@ type PQSISRecord = {
   idrNumber?: string; // Optional link to IDR
 };
 
+type PQSISColumn = 
+  | 'Customer Group'
+  | 'Request Date'
+  | 'Service Type'
+  | 'Service'
+  | 'Service Charging'
+  | 'Charged Dept'
+  | 'Completion Date'
+  | 'Closed Case'
+  | 'In-Progress'
+  | 'Before Target'
+  | 'Business Type'
+  | 'Planned Reply'
+  | 'Actual Reply'
+  | 'Planned Report'
+  | 'Actual Report'
+  | 'IDR Number';
+
 type PQSISServiceType = 'Harmonics' | 'Supply Enquiry' | 'Site Survey' | 'Technical Services' | 'PQ Site Investigation' | 'Enquiry' | 'All';
 
 type ComplianceSummaryReportView = 'pqStandards' | 'voltageDipBenchmarking' | 'individualHarmonics' | 'en50160';
@@ -120,18 +140,49 @@ type ComplianceSummaryReportView = 'pqStandards' | 'voltageDipBenchmarking' | 'i
 type HarmonicType = 'V1_HD' | 'V2_HD' | 'V3_HD' | 'I1_HD' | 'I2_HD' | 'I3_HD';
 
 type HarmonicDataRecord = {
-  timestamp: string;
-  order: number; // 3rd, 5th, 7th, etc.
-  magnitude: number;
-  angle: number;
-  thd: number;
+  harmonicOrder: number; // 3rd, 5th, 7th, 9th, 11th, 13th, etc.
+  limit: string; // EN50160 limit
+  percentile95th: string; // Weekly 95th percentile
+  dailyMax: string;
+  dailyMin: string;
+  monthlyMax: string;
+  monthlyMin: string;
+  compliance: 'Pass' | 'Fail';
+};
+
+type HarmonicReport = {
+  reportId: string;
+  reportingYear: string; // YYYY format
+  voltageLevel: '400kV' | '132kV' | '11kV' | '380V';
+  areaGroup: string; // e.g., Kowloon, New Territories
+  meterName: string;
+  sourceSubstation: string;
+  generatedDate: string;
+  overallCompliance: 'Pass' | 'Fail';
+  failedHarmonics: number;
 };
 
 type EN50160Parameter = {
   parameter: string;
   limit: string;
-  actualValue: string;
-  result: 'Pass' | 'Fail';
+  percentile95th: string; // Weekly 95th percentile
+  dailyMax: string;
+  dailyMin: string;
+  monthlyMax: string;
+  monthlyMin: string;
+  compliance: 'Pass' | 'Fail';
+};
+
+type EN50160Report = {
+  reportId: string;
+  reportingYear: string; // YYYY format
+  voltageLevel: '400kV' | '132kV' | '11kV' | '380V';
+  areaGroup: string; // e.g., Kowloon, New Territories
+  meterName: string;
+  sourceSubstation: string;
+  generatedDate: string;
+  overallCompliance: 'Pass' | 'Fail';
+  failedParameters: number;
 };
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -504,7 +555,7 @@ function ComplianceSummaryTab({ selectedReportView }: { selectedReportView: Comp
   }
 
   if (selectedReportView === 'voltageDipBenchmarking') {
-    return <VoltageDipBenchmarkingView standards={standards} />;
+    return <VoltageDipBenchmarkingView standards={standards} setStandards={setStandards} />;
   }
 
   if (selectedReportView === 'individualHarmonics') {
@@ -986,11 +1037,175 @@ function PQStandardsView({
 }
 
 // Voltage Dip Benchmarking View (from old Benchmarking tab)
-function VoltageDipBenchmarkingView({ standards }: { standards: PQBenchmarkStandardMock[] }) {
+function VoltageDipBenchmarkingView({ 
+  standards, 
+  setStandards 
+}: { 
+  standards: PQBenchmarkStandardMock[]; 
+  setStandards: React.Dispatch<React.SetStateAction<PQBenchmarkStandardMock[]>>;
+}) {
   const voltageDipStandards = useMemo(
     () => standards.filter((s) => s.parameter === 'Voltage Dip'),
     [standards]
   );
+
+  // PQ Standard Modal state
+  const [showPQStandardModal, setShowPQStandardModal] = useState(false);
+  const [showAddNewStandard, setShowAddNewStandard] = useState(false);
+  const [showEditStandardModal, setShowEditStandardModal] = useState(false);
+  const [editingStandardId, setEditingStandardId] = useState<string | null>(null);
+  
+  // Form state for add/edit standard
+  const [formStandardName, setFormStandardName] = useState('');
+  const [formFamily, setFormFamily] = useState('IEC');
+  const [formVersion, setFormVersion] = useState('');
+  const [formLevel, setFormLevel] = useState('All');
+  const [formMin, setFormMin] = useState('N/A');
+  const [formMax, setFormMax] = useState('N/A');
+  const [formUnit, setFormUnit] = useState('%');
+  const [formRemarks, setFormRemarks] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formCurvePoints, setFormCurvePoints] = useState<Array<{ durationSec: string; minVoltagePct: string }>>([{ durationSec: '0', minVoltagePct: '0' }]);
+
+  const resetForm = () => {
+    setFormStandardName('');
+    setFormFamily('IEC');
+    setFormVersion('');
+    setFormLevel('All');
+    setFormMin('N/A');
+    setFormMax('N/A');
+    setFormUnit('%');
+    setFormRemarks('');
+    setFormDescription('');
+    setFormCurvePoints([{ durationSec: '0', minVoltagePct: '0' }]);
+    setEditingStandardId(null);
+  };
+
+  const openAddNewStandard = () => {
+    resetForm();
+    setShowAddNewStandard(true);
+  };
+
+  const openEditStandard = (standard: PQBenchmarkStandardMock) => {
+    setFormStandardName(standard.name);
+    setFormFamily(standard.family);
+    setFormVersion(standard.version || '');
+    setFormLevel(standard.level || 'All');
+    setFormMin(standard.min || 'N/A');
+    setFormMax(standard.max || 'N/A');
+    setFormUnit(standard.unit || '%');
+    setFormRemarks(standard.remarks || '');
+    setFormDescription(standard.description || '');
+    setFormCurvePoints(standard.curvePoints.map(pt => ({
+      durationSec: String(pt.durationSec),
+      minVoltagePct: String(pt.minVoltagePct)
+    })));
+    setEditingStandardId(standard.id);
+    setShowEditStandardModal(true);
+  };
+
+  const handleSaveStandard = () => {
+    const name = formStandardName.trim();
+    if (!name) {
+      alert('Standard Name is required');
+      return;
+    }
+
+    // Check for duplicates (except when editing)
+    const duplicate = standards.find(s => 
+      s.name.toLowerCase() === name.toLowerCase() && 
+      s.id !== editingStandardId
+    );
+    if (duplicate) {
+      alert('A standard with this name already exists');
+      return;
+    }
+
+    // Validate curve points
+    const curvePoints = formCurvePoints
+      .filter(pt => pt.durationSec.trim() && pt.minVoltagePct.trim())
+      .map(pt => ({
+        durationSec: parseFloat(pt.durationSec),
+        minVoltagePct: parseFloat(pt.minVoltagePct)
+      }))
+      .filter(pt => !isNaN(pt.durationSec) && !isNaN(pt.minVoltagePct));
+
+    if (curvePoints.length < 2) {
+      alert('At least 2 valid curve points are required');
+      return;
+    }
+
+    if (editingStandardId) {
+      // Edit existing
+      setStandards(prev => prev.map(s => 
+        s.id === editingStandardId
+          ? {
+              ...s,
+              name,
+              family: formFamily,
+              version: formVersion,
+              level: formLevel,
+              min: formMin,
+              max: formMax,
+              unit: formUnit,
+              remarks: formRemarks,
+              description: formDescription,
+              updatedAt: new Date().getFullYear().toString(),
+              curvePoints
+            }
+          : s
+      ));
+      alert('Standard updated successfully');
+    } else {
+      // Add new
+      const newStandard: PQBenchmarkStandardMock = {
+        id: `std-vd-${Date.now()}`,
+        name,
+        family: formFamily,
+        parameter: 'Voltage Dip',
+        description: formDescription,
+        updatedAt: new Date().getFullYear().toString(),
+        version: formVersion,
+        level: formLevel,
+        min: formMin,
+        max: formMax,
+        unit: formUnit,
+        remarks: formRemarks,
+        curvePoints
+      };
+      setStandards(prev => [...prev, newStandard]);
+      alert('Standard added successfully');
+    }
+
+    resetForm();
+    setShowAddNewStandard(false);
+    setShowEditStandardModal(false);
+  };
+
+  const handleDeleteStandard = (standardId: string) => {
+    const standard = standards.find(s => s.id === standardId);
+    if (!standard) return;
+    
+    const confirmMessage = `Are you sure you want to delete this PQ standard?\n\nStandard: ${standard.name}\n\nThis action cannot be undone.`;
+    if (!confirm(confirmMessage)) return;
+    
+    setStandards(prev => prev.filter(s => s.id !== standardId));
+    alert('Standard deleted successfully');
+  };
+
+  const addCurvePoint = () => {
+    setFormCurvePoints(prev => [...prev, { durationSec: '', minVoltagePct: '' }]);
+  };
+
+  const removeCurvePoint = (index: number) => {
+    setFormCurvePoints(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateCurvePoint = (index: number, field: 'durationSec' | 'minVoltagePct', value: string) => {
+    setFormCurvePoints(prev => prev.map((pt, i) => 
+      i === index ? { ...pt, [field]: value } : pt
+    ));
+  };
 
   const [selectedStandardId, setSelectedStandardId] = useState<string>(() => voltageDipStandards[0]?.id ?? '');
   useEffect(() => {
@@ -1167,12 +1382,21 @@ function VoltageDipBenchmarkingView({ standards }: { standards: PQBenchmarkStand
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <BarChart3 className="w-6 h-6 text-slate-700" />
-        <div>
-          <h2 className="text-xl font-bold text-slate-900">Voltage Dip Benchmarking</h2>
-          <p className="text-sm text-slate-600 mt-1">Compare voltage dip events against compliance curves</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <BarChart3 className="w-6 h-6 text-slate-700" />
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">Voltage Dip Benchmarking</h2>
+            <p className="text-sm text-slate-600 mt-1">Compare voltage dip events against compliance curves</p>
+          </div>
         </div>
+        <button
+          onClick={() => setShowPQStandardModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <FileText className="w-4 h-4" />
+          PQ Standard
+        </button>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
@@ -1553,255 +1777,684 @@ function VoltageDipBenchmarkingView({ standards }: { standards: PQBenchmarkStand
           )}
         </div>
       </div>
+
+      {/* PQ Standard Management Modal */}
+      {showPQStandardModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <h2 className="text-xl font-bold text-slate-900">PQ Standards Management</h2>
+              <button
+                onClick={() => {
+                  setShowPQStandardModal(false);
+                  setShowAddNewStandard(false);
+                  resetForm();
+                }}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+              {/* Existing Standards Table */}
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 mb-3">Existing Voltage Dip Standards</h3>
+                <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                  <table className="w-full">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Standard Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Version</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Level</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Min</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Max</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Unit</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Remarks</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {voltageDipStandards.map((standard) => (
+                        <tr key={standard.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 text-sm text-slate-900">{standard.name}</td>
+                          <td className="px-4 py-3 text-sm text-slate-700">{standard.version || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-700">{standard.level || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-700">{standard.min || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-700">{standard.max || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-700">{standard.unit || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-700">{standard.remarks || '-'}</td>
+                          <td className="px-4 py-3 text-sm space-x-2">
+                            <button
+                              onClick={() => openEditStandard(standard)}
+                              className="text-blue-600 hover:text-blue-700 font-semibold"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteStandard(standard.id)}
+                              className="text-red-600 hover:text-red-700 font-semibold"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Add New Standard Section */}
+              <div className="border border-slate-200 rounded-lg">
+                <button
+                  onClick={() => {
+                    if (showAddNewStandard) {
+                      setShowAddNewStandard(false);
+                      resetForm();
+                    } else {
+                      openAddNewStandard();
+                    }
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors rounded-t-lg"
+                >
+                  <span className="text-lg font-semibold text-slate-900">Add New Standard</span>
+                  {showAddNewStandard ? (<ChevronUp className="w-5 h-5" />) : (<ChevronDown className="w-5 h-5" />)}
+                </button>
+
+                {showAddNewStandard && (
+                  <div className="p-6 space-y-6">
+                    {/* Form Grid */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Standard Name *</label>
+                        <input
+                          type="text"
+                          value={formStandardName}
+                          onChange={(e) => setFormStandardName(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          placeholder="e.g., IEC61000-4-34/11"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Version</label>
+                        <input
+                          type="text"
+                          value={formVersion}
+                          onChange={(e) => setFormVersion(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          placeholder="e.g., 2011"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Level</label>
+                        <input
+                          type="text"
+                          value={formLevel}
+                          onChange={(e) => setFormLevel(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          placeholder="e.g., All, 11kV"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Min</label>
+                        <input
+                          type="text"
+                          value={formMin}
+                          onChange={(e) => setFormMin(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          placeholder="N/A"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Max</label>
+                        <input
+                          type="text"
+                          value={formMax}
+                          onChange={(e) => setFormMax(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          placeholder="N/A"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Unit</label>
+                        <input
+                          type="text"
+                          value={formUnit}
+                          onChange={(e) => setFormUnit(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          placeholder="%"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Remarks</label>
+                        <input
+                          type="text"
+                          value={formRemarks}
+                          onChange={(e) => setFormRemarks(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          placeholder="Optional"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Description</label>
+                      <textarea
+                        value={formDescription}
+                        onChange={(e) => setFormDescription(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                        rows={2}
+                        placeholder="Optional description"
+                      />
+                    </div>
+
+                    {/* Curve Points Table */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-semibold text-slate-700">Curve Points (Duration vs Min Voltage) *</label>
+                        <button
+                          onClick={addCurvePoint}
+                          className="flex items-center gap-1 px-3 py-1 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add Point
+                        </button>
+                      </div>
+                      <div className="border border-slate-200 rounded-lg overflow-hidden">
+                        <table className="w-full">
+                          <thead className="bg-slate-50 border-b border-slate-200">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-slate-700">Duration (s)</th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-slate-700">Min Voltage (%)</th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-slate-700">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {formCurvePoints.map((pt, index) => (
+                              <tr key={index}>
+                                <td className="px-4 py-2">
+                                  <input
+                                    type="text"
+                                    value={pt.durationSec}
+                                    onChange={(e) => updateCurvePoint(index, 'durationSec', e.target.value)}
+                                    className="w-full px-2 py-1 border border-slate-300 rounded text-sm"
+                                    placeholder="0.0"
+                                  />
+                                </td>
+                                <td className="px-4 py-2">
+                                  <input
+                                    type="text"
+                                    value={pt.minVoltagePct}
+                                    onChange={(e) => updateCurvePoint(index, 'minVoltagePct', e.target.value)}
+                                    className="w-full px-2 py-1 border border-slate-300 rounded text-sm"
+                                    placeholder="0"
+                                  />
+                                </td>
+                                <td className="px-4 py-2">
+                                  <button
+                                    onClick={() => removeCurvePoint(index)}
+                                    disabled={formCurvePoints.length <= 1}
+                                    className="text-red-600 hover:text-red-700 disabled:text-slate-400 disabled:cursor-not-allowed"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">* At least 2 curve points required. Values will be sorted by duration automatically.</p>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+                      <button
+                        onClick={() => {
+                          setShowAddNewStandard(false);
+                          resetForm();
+                        }}
+                        className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSaveStandard}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      >
+                        {editingStandardId ? 'Update Standard' : 'Save Standard'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit PQ Standard Modal */}
+      {showEditStandardModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-cyan-50">
+              <h2 className="text-xl font-bold text-slate-900">Edit PQ Standard</h2>
+              <button
+                onClick={() => {
+                  setShowEditStandardModal(false);
+                  resetForm();
+                }}
+                className="p-2 hover:bg-white/50 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              <div className="space-y-6">
+                {/* Form Grid */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Standard Name *</label>
+                    <input
+                      type="text"
+                      value={formStandardName}
+                      onChange={(e) => setFormStandardName(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="e.g., IEC61000-4-34/11"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Version</label>
+                    <input
+                      type="text"
+                      value={formVersion}
+                      onChange={(e) => setFormVersion(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="e.g., 2011"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Level</label>
+                    <input
+                      type="text"
+                      value={formLevel}
+                      onChange={(e) => setFormLevel(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="e.g., All, 11kV"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Min</label>
+                    <input
+                      type="text"
+                      value={formMin}
+                      onChange={(e) => setFormMin(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="N/A"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Max</label>
+                    <input
+                      type="text"
+                      value={formMax}
+                      onChange={(e) => setFormMax(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="N/A"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Unit</label>
+                    <input
+                      type="text"
+                      value={formUnit}
+                      onChange={(e) => setFormUnit(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="%"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Remarks</label>
+                    <input
+                      type="text"
+                      value={formRemarks}
+                      onChange={(e) => setFormRemarks(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Optional"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Description</label>
+                  <textarea
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    rows={2}
+                    placeholder="Optional description"
+                  />
+                </div>
+
+                {/* Curve Points Table */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-semibold text-slate-700">Curve Points (Duration vs Min Voltage) *</label>
+                    <button
+                      onClick={addCurvePoint}
+                      className="flex items-center gap-1 px-3 py-1 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Point
+                    </button>
+                  </div>
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-slate-700">Duration (s)</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-slate-700">Min Voltage (%)</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-slate-700">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {formCurvePoints.map((pt, index) => (
+                          <tr key={index}>
+                            <td className="px-4 py-2">
+                              <input
+                                type="text"
+                                value={pt.durationSec}
+                                onChange={(e) => updateCurvePoint(index, 'durationSec', e.target.value)}
+                                className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="0.0"
+                              />
+                            </td>
+                            <td className="px-4 py-2">
+                              <input
+                                type="text"
+                                value={pt.minVoltagePct}
+                                onChange={(e) => updateCurvePoint(index, 'minVoltagePct', e.target.value)}
+                                className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="0"
+                              />
+                            </td>
+                            <td className="px-4 py-2">
+                              <button
+                                onClick={() => removeCurvePoint(index)}
+                                disabled={formCurvePoints.length <= 1}
+                                className="text-red-600 hover:text-red-700 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">* At least 2 curve points required. Values will be sorted by duration automatically.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowEditStandardModal(false);
+                  resetForm();
+                }}
+                className="px-5 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-white transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveStandard}
+                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
+              >
+                Update Standard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // Individual Harmonic Reports View
 function IndividualHarmonicsView() {
-  const [selectedMeter, setSelectedMeter] = useState('');
-  const [selectedHarmonicType, setSelectedHarmonicType] = useState<HarmonicType>('V1_HD');
-  const [dateFrom, setDateFrom] = useState('2025/01/01');
-  const [dateTo, setDateTo] = useState('2025/12/31');
-  const [hasData, setHasData] = useState(false);
+  const [filterYear, setFilterYear] = useState('2025');
+  const [filterVoltageLevel, setFilterVoltageLevel] = useState<string>('All');
+  const [filterAreaGroup, setFilterAreaGroup] = useState<string>('All');
+  const [selectedReport, setSelectedReport] = useState<HarmonicReport | null>(null);
+  const [view, setView] = useState<'list' | 'detail' | 'sevenday'>('list');
 
-  const harmonicTypes: Array<{ type: HarmonicType; label: string }> = [
-    { type: 'V1_HD', label: 'V1 HD' },
-    { type: 'V2_HD', label: 'V2 HD' },
-    { type: 'V3_HD', label: 'V3 HD' },
-    { type: 'I1_HD', label: 'I1 HD' },
-    { type: 'I2_HD', label: 'I2 HD' },
-    { type: 'I3_HD', label: 'I3 HD' }
-  ];
+  // Mock harmonic annual reports
+  const mockHarmonicReports = useMemo<HarmonicReport[]>(() => [
+    {
+      reportId: 'HAR2025-400-KLN-001',
+      reportingYear: '2025',
+      voltageLevel: '400kV',
+      areaGroup: 'Kowloon',
+      meterName: 'PQMS_400KV_BKP0227',
+      sourceSubstation: 'Beacon Hill Primary Substation',
+      generatedDate: '2025-01-15',
+      overallCompliance: 'Pass',
+      failedHarmonics: 0
+    },
+    {
+      reportId: 'HAR2025-132-NT-002',
+      reportingYear: '2025',
+      voltageLevel: '132kV',
+      areaGroup: 'New Territories',
+      meterName: 'PQMS_132KV_CPK0256',
+      sourceSubstation: 'Castle Peak Switching Station',
+      generatedDate: '2025-01-15',
+      overallCompliance: 'Fail',
+      failedHarmonics: 1
+    },
+    {
+      reportId: 'HAR2025-11-KLN-003',
+      reportingYear: '2025',
+      voltageLevel: '11kV',
+      areaGroup: 'Kowloon',
+      meterName: 'PQMS_11KV_TST0015',
+      sourceSubstation: 'Tsim Sha Tsui Distribution Substation',
+      generatedDate: '2025-01-16',
+      overallCompliance: 'Pass',
+      failedHarmonics: 0
+    },
+    {
+      reportId: 'HAR2025-380-NT-004',
+      reportingYear: '2025',
+      voltageLevel: '380V',
+      areaGroup: 'New Territories',
+      meterName: 'PQMS_380V_TW0088',
+      sourceSubstation: 'Tsuen Wan Industrial Zone',
+      generatedDate: '2025-01-17',
+      overallCompliance: 'Pass',
+      failedHarmonics: 0
+    }
+  ], []);
 
-  // Mock harmonic data
+  // Mock detailed harmonic compliance data
   const mockHarmonicData = useMemo<HarmonicDataRecord[]>(() => [
-    { timestamp: '2025-01-15 10:00:00', order: 3, magnitude: 2.5, angle: 120.3, thd: 3.2 },
-    { timestamp: '2025-01-15 10:15:00', order: 5, magnitude: 1.8, angle: 95.7, thd: 2.9 },
-    { timestamp: '2025-01-15 10:30:00', order: 7, magnitude: 1.2, angle: 78.4, thd: 2.5 },
-    { timestamp: '2025-01-15 10:45:00', order: 9, magnitude: 0.9, angle: 62.1, thd: 2.3 },
-    { timestamp: '2025-01-15 11:00:00', order: 11, magnitude: 0.7, angle: 45.8, thd: 2.1 },
-    { timestamp: '2025-01-15 11:15:00', order: 13, magnitude: 0.5, angle: 30.2, thd: 1.9 }
+    {
+      harmonicOrder: 3,
+      limit: '<5%',
+      percentile95th: '2.8%',
+      dailyMax: '3.2%',
+      dailyMin: '1.5%',
+      monthlyMax: '3.2%',
+      monthlyMin: '1.5%',
+      compliance: 'Pass'
+    },
+    {
+      harmonicOrder: 5,
+      limit: '<6%',
+      percentile95th: '3.8%',
+      dailyMax: '4.5%',
+      dailyMin: '2.1%',
+      monthlyMax: '4.5%',
+      monthlyMin: '2.1%',
+      compliance: 'Pass'
+    },
+    {
+      harmonicOrder: 7,
+      limit: '<5%',
+      percentile95th: '2.9%',
+      dailyMax: '3.6%',
+      dailyMin: '1.8%',
+      monthlyMax: '3.6%',
+      monthlyMin: '1.8%',
+      compliance: 'Pass'
+    },
+    {
+      harmonicOrder: 9,
+      limit: '<1.5%',
+      percentile95th: '0.9%',
+      dailyMax: '1.2%',
+      dailyMin: '0.5%',
+      monthlyMax: '1.2%',
+      monthlyMin: '0.5%',
+      compliance: 'Pass'
+    },
+    {
+      harmonicOrder: 11,
+      limit: '<3.5%',
+      percentile95th: '1.8%',
+      dailyMax: '2.3%',
+      dailyMin: '0.9%',
+      monthlyMax: '2.3%',
+      monthlyMin: '0.9%',
+      compliance: 'Pass'
+    },
+    {
+      harmonicOrder: 13,
+      limit: '<3%',
+      percentile95th: '1.5%',
+      dailyMax: '2.0%',
+      dailyMin: '0.7%',
+      monthlyMax: '2.0%',
+      monthlyMin: '0.7%',
+      compliance: 'Pass'
+    },
+    {
+      harmonicOrder: 15,
+      limit: '<0.5%',
+      percentile95th: '0.3%',
+      dailyMax: '0.4%',
+      dailyMin: '0.1%',
+      monthlyMax: '0.4%',
+      monthlyMin: '0.1%',
+      compliance: 'Pass'
+    },
+    {
+      harmonicOrder: 17,
+      limit: '<2%',
+      percentile95th: '1.1%',
+      dailyMax: '1.5%',
+      dailyMin: '0.6%',
+      monthlyMax: '1.5%',
+      monthlyMin: '0.6%',
+      compliance: 'Pass'
+    },
+    {
+      harmonicOrder: 19,
+      limit: '<1.5%',
+      percentile95th: '0.8%',
+      dailyMax: '1.0%',
+      dailyMin: '0.4%',
+      monthlyMax: '1.0%',
+      monthlyMin: '0.4%',
+      compliance: 'Pass'
+    },
+    {
+      harmonicOrder: 21,
+      limit: '<0.5%',
+      percentile95th: '0.2%',
+      dailyMax: '0.3%',
+      dailyMin: '0.1%',
+      monthlyMax: '0.3%',
+      monthlyMin: '0.1%',
+      compliance: 'Pass'
+    }
   ], []);
 
-  const handleGenerate = () => {
-    if (!selectedMeter) {
-      alert('Please select a meter');
-      return;
-    }
-    setHasData(true);
+  const filteredReports = useMemo(() => {
+    return mockHarmonicReports.filter(r => {
+      if (filterYear !== 'All' && r.reportingYear !== filterYear) return false;
+      if (filterVoltageLevel !== 'All' && r.voltageLevel !== filterVoltageLevel) return false;
+      if (filterAreaGroup !== 'All' && r.areaGroup !== filterAreaGroup) return false;
+      return true;
+    });
+  }, [mockHarmonicReports, filterYear, filterVoltageLevel, filterAreaGroup]);
+
+  const handleViewDetail = (report: HarmonicReport) => {
+    setSelectedReport(report);
+    setView('detail');
   };
 
-  const handleExportCSV = () => {
-    try {
-      const exportData = mockHarmonicData.map(d => ({
-        'Timestamp': d.timestamp,
-        'Harmonic Order': `${d.order}th`,
-        'Magnitude': d.magnitude.toFixed(2),
-        'Angle (degrees)': d.angle.toFixed(1),
-        'THD (%)': d.thd.toFixed(1)
-      }));
-
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      XLSX.utils.book_append_sheet(wb, ws, selectedHarmonicType);
-
-      const fileName = `Individual_Harmonic_${selectedHarmonicType}_${new Date().toISOString().split('T')[0]}.xlsx`;
-      XLSX.writeFile(wb, fileName);
-    } catch (error) {
-      console.error('Export error:', error);
-      alert('Failed to export data');
-    }
+  const handleExportWord = () => {
+    alert('MS Word template export functionality will populate a .docx template with the harmonic report data.\n\nTemplate fields:\n- Report ID, Year, Voltage Level\n- Meter Name, Source Substation\n- All harmonic orders with compliance flags\n- Exclusion notes (Outage/Faulty Equipment)');
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <BarChart3 className="w-6 h-6 text-slate-700" />
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">Individual Harmonic Reports</h2>
-            <p className="text-sm text-slate-600 mt-1">Detailed harmonic analysis for voltage and current</p>
-          </div>
-        </div>
-
-        {hasData && (
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center gap-2"
-          >
-            <Download className="w-4 h-4" />
-            Export CSV
-          </button>
-        )}
-      </div>
-
-      {/* Meter Selection */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <h3 className="text-lg font-bold text-slate-900 mb-4">Select Meter</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Meter</label>
-            <select
-              value={selectedMeter}
-              onChange={(e) => setSelectedMeter(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-            >
-              <option value="">Select a meter...</option>
-              <option value="PQMS_400KV_BKP0227">PQMS_400KV_BKP0227</option>
-              <option value="PQMS_132KV_CPK0256">PQMS_132KV_CPK0256</option>
-              <option value="PQMS_11KV_TST0015">PQMS_11KV_TST0015</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Date From</label>
-            <input
-              type="text"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              placeholder="YYYY/MM/DD"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Date To</label>
-            <input
-              type="text"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              placeholder="YYYY/MM/DD"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-            />
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={handleGenerate}
-          className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
-        >
-          Generate Report
-        </button>
-      </div>
-
-      {/* Harmonic Type Selector */}
-      {hasData && (
-        <>
-          <div className="bg-white rounded-xl border border-slate-200 p-6">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Individual Harmonics</h3>
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-              {harmonicTypes.map((ht) => (
-                <button
-                  key={ht.type}
-                  type="button"
-                  onClick={() => setSelectedHarmonicType(ht.type)}
-                  className={classNames(
-                    'flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors',
-                    selectedHarmonicType === ht.type
-                      ? 'border-blue-600 bg-blue-50'
-                      : 'border-slate-200 bg-white hover:border-blue-300'
-                  )}
-                >
-                  <BarChart3 className={classNames(
-                    'w-8 h-8',
-                    selectedHarmonicType === ht.type ? 'text-blue-600' : 'text-slate-400'
-                  )} />
-                  <span className={classNames(
-                    'text-sm font-bold',
-                    selectedHarmonicType === ht.type ? 'text-blue-600' : 'text-slate-700'
-                  )}>
-                    {ht.label}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Harmonic Data Table */}
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div className="p-4 bg-slate-50 border-b border-slate-200">
-              <h3 className="text-lg font-bold text-slate-900">
-                {harmonicTypes.find(ht => ht.type === selectedHarmonicType)?.label} - Harmonic Data
-              </h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-900 text-white">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-bold">Timestamp</th>
-                    <th className="px-4 py-3 text-left font-bold">Harmonic Order</th>
-                    <th className="px-4 py-3 text-right font-bold">Magnitude</th>
-                    <th className="px-4 py-3 text-right font-bold">Angle (°)</th>
-                    <th className="px-4 py-3 text-right font-bold">THD (%)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {mockHarmonicData.map((record, idx) => (
-                    <tr key={idx} className="hover:bg-blue-50">
-                      <td className="px-4 py-3 text-sm text-slate-700">{record.timestamp}</td>
-                      <td className="px-4 py-3 text-sm text-slate-700">{record.order}th</td>
-                      <td className="px-4 py-3 text-sm text-slate-700 text-right">{record.magnitude.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-sm text-slate-700 text-right">{record.angle.toFixed(1)}</td>
-                      <td className="px-4 py-3 text-sm text-slate-700 text-right">{record.thd.toFixed(1)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// EN50160 Reports View
-function EN50160ReportsView() {
-  const [selectedMeter, setSelectedMeter] = useState('');
-  const [reportPeriod, setReportPeriod] = useState('week');
-  const [hasData, setHasData] = useState(false);
-
-  // Mock EN50160 compliance data
-  const mockEN50160Data = useMemo<EN50160Parameter[]>(() => [
-    { parameter: 'V-Magnitude (Supply Voltage Variations)', limit: '±10%', actualValue: '8.2%', result: 'Pass' },
-    { parameter: 'Frequency', limit: '50Hz ±1%', actualValue: '49.95Hz', result: 'Pass' },
-    { parameter: 'V-Unbalance (Negative Sequence)', limit: '<2%', actualValue: '0.8%', result: 'Pass' },
-    { parameter: 'Flicker (Pst - Short-term)', limit: '<1.0', actualValue: '0.7', result: 'Pass' },
-    { parameter: 'Flicker (Plt - Long-term)', limit: '<0.8', actualValue: '0.6', result: 'Pass' },
-    { parameter: 'Voltage THD (Total Harmonic Distortion)', limit: '<8%', actualValue: '4.2%', result: 'Pass' },
-    { parameter: 'Voltage TEHD (Total Even Harmonic)', limit: '<2%', actualValue: '0.5%', result: 'Pass' },
-    { parameter: 'Voltage TOHD (Total Odd Harmonic)', limit: '<5%', actualValue: '3.8%', result: 'Pass' }
-  ], []);
-
-  const handleGenerate = () => {
-    if (!selectedMeter) {
-      alert('Please select a meter');
-      return;
-    }
-    setHasData(true);
-  };
-
-  const handleExportCSV = () => {
+  const handleExportExcel = () => {
+    if (!selectedReport) return;
+    
     try {
       const wb = XLSX.utils.book_new();
       
-      // Summary header
       const summary = [
-        ['EN 50160 Compliance Report'],
-        ['Meter:', selectedMeter],
-        ['Report Period:', reportPeriod],
-        ['Generated:', new Date().toLocaleString()],
+        ['Individual Harmonic Annual Compliance Report'],
+        ['Report ID:', selectedReport.reportId],
+        ['Reporting Year:', selectedReport.reportingYear],
+        ['Voltage Level:', selectedReport.voltageLevel],
+        ['Area Group:', selectedReport.areaGroup],
+        ['Meter Name:', selectedReport.meterName],
+        ['Source Substation:', selectedReport.sourceSubstation],
+        ['Generated Date:', selectedReport.generatedDate],
+        ['Overall Compliance:', selectedReport.overallCompliance],
+        ['Failed Harmonics:', selectedReport.failedHarmonics.toString()],
         [],
-        ['Parameter', 'EN 50160 Limit', 'Actual Value', 'Result']
+        ['Harmonic Order', 'EN 50160 Limit', '95th Percentile', 'Daily Max', 'Daily Min', 'Monthly Max', 'Monthly Min', 'Compliance']
       ];
 
       const ws = XLSX.utils.aoa_to_sheet(summary);
-      const dataRows = mockEN50160Data.map(d => [d.parameter, d.limit, d.actualValue, d.result]);
+      const dataRows = mockHarmonicData.map(d => [
+        `${d.harmonicOrder}th`,
+        d.limit,
+        d.percentile95th,
+        d.dailyMax,
+        d.dailyMin,
+        d.monthlyMax,
+        d.monthlyMin,
+        d.compliance
+      ]);
       XLSX.utils.sheet_add_aoa(ws, dataRows, { origin: -1 });
       
-      XLSX.utils.book_append_sheet(wb, ws, 'EN50160 Report');
+      XLSX.utils.book_append_sheet(wb, ws, 'Harmonic Report');
 
-      const fileName = `EN50160_Compliance_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const fileName = `Harmonic_${selectedReport.reportId}_${new Date().toISOString().split('T')[0]}.xlsx`;
       XLSX.writeFile(wb, fileName);
     } catch (error) {
       console.error('Export error:', error);
@@ -1809,99 +2462,166 @@ function EN50160ReportsView() {
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <BarChart3 className="w-6 h-6 text-slate-700" />
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">EN 50160 Reports</h2>
-            <p className="text-sm text-slate-600 mt-1">European standard for voltage characteristics compliance</p>
+  const handleView7DayAnalysis = () => {
+    setView('sevenday');
+  };
+
+  if (view === 'sevenday' && selectedReport) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setView('detail')}
+              className="p-2 hover:bg-slate-100 rounded-lg"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">7-Day Harmonic Analysis</h2>
+              <p className="text-sm text-slate-600 mt-1">Continuous harmonic monitoring for EN 50160 evaluation</p>
+            </div>
           </div>
         </div>
 
-        {hasData && (
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center gap-2"
-          >
-            <Download className="w-4 h-4" />
-            Export CSV
-          </button>
-        )}
-      </div>
-
-      {/* Meter and Period Selection */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <h3 className="text-lg font-bold text-slate-900 mb-4">Generate EN 50160 Report</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Select Meter</label>
-            <select
-              value={selectedMeter}
-              onChange={(e) => setSelectedMeter(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-            >
-              <option value="">Choose a meter...</option>
-              <option value="PQMS_400KV_BKP0227">PQMS_400KV_BKP0227</option>
-              <option value="PQMS_132KV_CPK0256">PQMS_132KV_CPK0256</option>
-              <option value="PQMS_11KV_TST0015">PQMS_11KV_TST0015</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Report Period</label>
-            <select
-              value={reportPeriod}
-              onChange={(e) => setReportPeriod(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-            >
-              <option value="week">Last Week</option>
-              <option value="month">Last Month</option>
-              <option value="quarter">Last Quarter</option>
-              <option value="year">Last Year</option>
-            </select>
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <div className="text-center text-slate-600 py-12">
+            <BarChart3 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+            <p className="text-lg font-semibold">7-Day Harmonic Analysis View</p>
+            <p className="text-sm mt-2">Continuous 7-day harmonic charts for {selectedReport.meterName}</p>
+            <p className="text-xs text-slate-500 mt-4">This view provides detailed hourly/daily harmonic trends for all orders<br/>to support root-cause investigation and EN 50160 evaluation cycles.</p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleGenerate}
-          className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
-        >
-          Generate Report
-        </button>
       </div>
+    );
+  }
 
-      {/* EN50160 Compliance Table */}
-      {hasData && (
+  if (view === 'detail' && selectedReport) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setView('list');
+                setSelectedReport(null);
+              }}
+              className="p-2 hover:bg-slate-100 rounded-lg"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Individual Harmonic Report Detail</h2>
+              <p className="text-sm text-slate-600 mt-1">{selectedReport.reportId}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleView7DayAnalysis}
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold flex items-center gap-2"
+            >
+              <Calendar className="w-4 h-4" />
+              7-Day Analysis
+            </button>
+            <button
+              type="button"
+              onClick={handleExportWord}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              Export Word
+            </button>
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Export Excel
+            </button>
+          </div>
+        </div>
+
+        {/* Report Header Info */}
+        <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl p-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+            <div>
+              <p className="text-sm opacity-90">Reporting Year</p>
+              <p className="text-2xl font-bold mt-1">{selectedReport.reportingYear}</p>
+            </div>
+            <div>
+              <p className="text-sm opacity-90">Voltage Level</p>
+              <p className="text-2xl font-bold mt-1">{selectedReport.voltageLevel}</p>
+            </div>
+            <div>
+              <p className="text-sm opacity-90">Area Group</p>
+              <p className="text-2xl font-bold mt-1">{selectedReport.areaGroup}</p>
+            </div>
+            <div>
+              <p className="text-sm opacity-90">Meter Name</p>
+              <p className="text-lg font-semibold mt-1">{selectedReport.meterName}</p>
+            </div>
+            <div>
+              <p className="text-sm opacity-90">Source Substation</p>
+              <p className="text-lg font-semibold mt-1">{selectedReport.sourceSubstation}</p>
+            </div>
+            <div>
+              <p className="text-sm opacity-90">Overall Compliance</p>
+              <p className={classNames(
+                'text-2xl font-bold mt-1',
+                selectedReport.overallCompliance === 'Pass' ? 'text-white' : 'text-yellow-200'
+              )}>
+                {selectedReport.overallCompliance}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Harmonic Compliance Table */}
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div className="p-4 bg-slate-50 border-b border-slate-200">
-            <h3 className="text-lg font-bold text-slate-900">EN 50160 Compliance Summary</h3>
-            <p className="text-sm text-slate-600 mt-1">Meter: {selectedMeter} | Period: {reportPeriod}</p>
+            <h3 className="text-lg font-bold text-slate-900">Individual Harmonic Compliance (EN 50160)</h3>
+            <p className="text-sm text-slate-600 mt-1">95th percentile values calculated on weekly basis (Sunday to Saturday)</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full text-sm">
               <thead className="bg-slate-900 text-white">
                 <tr>
-                  <th className="px-4 py-3 text-left font-bold">Parameter</th>
-                  <th className="px-4 py-3 text-left font-bold">EN 50160 Limit</th>
-                  <th className="px-4 py-3 text-left font-bold">Actual Value</th>
-                  <th className="px-4 py-3 text-center font-bold">Result</th>
+                  <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Harmonic Order</th>
+                  <th className="px-4 py-3 text-left font-bold whitespace-nowrap">EN 50160 Limit</th>
+                  <th className="px-4 py-3 text-center font-bold whitespace-nowrap">95th Percentile</th>
+                  <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Daily Max</th>
+                  <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Daily Min</th>
+                  <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Monthly Max</th>
+                  <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Monthly Min</th>
+                  <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Compliance</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {mockEN50160Data.map((record, idx) => (
-                  <tr key={idx} className="hover:bg-blue-50">
-                    <td className="px-4 py-3 text-sm text-slate-900 font-medium">{record.parameter}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700">{record.limit}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700">{record.actualValue}</td>
+                {mockHarmonicData.map((record, idx) => (
+                  <tr key={idx} className={classNames(
+                    'hover:bg-blue-50',
+                    record.compliance === 'Fail' && 'bg-red-50'
+                  )}>
+                    <td className="px-4 py-3 text-center text-slate-900 font-bold">{record.harmonicOrder}th</td>
+                    <td className="px-4 py-3 text-slate-700">{record.limit}</td>
+                    <td className="px-4 py-3 text-center text-slate-700 font-semibold">{record.percentile95th}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">{record.dailyMax}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">{record.dailyMin}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">{record.monthlyMax}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">{record.monthlyMin}</td>
                     <td className="px-4 py-3 text-center">
-                      <span className={classNames(
-                        'inline-flex px-3 py-1 rounded-full text-xs font-bold',
-                        record.result === 'Pass' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      )}>
-                        {record.result}
-                      </span>
+                      {record.compliance === 'Fail' ? (
+                        <span className="inline-flex px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">
+                          F
+                        </span>
+                      ) : (
+                        <span className="inline-flex px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                          Pass
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1910,11 +2630,670 @@ function EN50160ReportsView() {
           </div>
           <div className="p-4 bg-slate-50 border-t border-slate-200">
             <p className="text-sm text-slate-600">
-              <strong>Overall Compliance:</strong> <span className="text-green-700 font-bold">All parameters passed</span>
+              <strong>Note:</strong> Time intervals marked as <span className="text-orange-600 font-semibold">Outage</span> or <span className="text-orange-600 font-semibold">Faulty Equipment</span> are automatically excluded from compliance calculations.
             </p>
           </div>
         </div>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <BarChart3 className="w-6 h-6 text-slate-700" />
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">Individual Harmonic Reports</h2>
+            <p className="text-sm text-slate-600 mt-1">Annual harmonic compliance reports per EN 50160 standard</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
+        <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+          <Filter className="w-4 h-4" />
+          Filter Reports
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Reporting Year</label>
+            <select
+              value={filterYear}
+              onChange={(e) => setFilterYear(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            >
+              <option value="All">All Years</option>
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+              <option value="2023">2023</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Voltage Level</label>
+            <select
+              value={filterVoltageLevel}
+              onChange={(e) => setFilterVoltageLevel(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            >
+              <option value="All">All Levels</option>
+              <option value="400kV">400kV</option>
+              <option value="132kV">132kV</option>
+              <option value="11kV">11kV</option>
+              <option value="380V">380V</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Area Group</label>
+            <select
+              value={filterAreaGroup}
+              onChange={(e) => setFilterAreaGroup(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            >
+              <option value="All">All Areas</option>
+              <option value="Kowloon">Kowloon</option>
+              <option value="New Territories">New Territories</option>
+              <option value="Hong Kong Island">Hong Kong Island</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Reports List */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="p-4 bg-slate-50 border-b border-slate-200">
+          <h3 className="text-lg font-bold text-slate-900">Individual Harmonic Annual Reports</h3>
+          <p className="text-sm text-slate-600 mt-1">Showing {filteredReports.length} report(s)</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-900 text-white">
+              <tr>
+                <th className="px-4 py-3 text-left font-bold whitespace-nowrap">Report ID</th>
+                <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Year</th>
+                <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Voltage Level</th>
+                <th className="px-4 py-3 text-left font-bold whitespace-nowrap">Area Group</th>
+                <th className="px-4 py-3 text-left font-bold whitespace-nowrap">Meter Name</th>
+                <th className="px-4 py-3 text-left font-bold whitespace-nowrap">Source Substation</th>
+                <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Generated Date</th>
+                <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Compliance</th>
+                <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredReports.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                    <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                    <p>No harmonic reports found matching the selected filters.</p>
+                  </td>
+                </tr>
+              ) : (
+                filteredReports.map((report) => (
+                  <tr key={report.reportId} className="hover:bg-blue-50">
+                    <td className="px-4 py-3 text-slate-900 font-mono text-xs font-semibold">{report.reportId}</td>
+                    <td className="px-4 py-3 text-center text-slate-700 font-bold">{report.reportingYear}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="inline-flex px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">
+                        {report.voltageLevel}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{report.areaGroup}</td>
+                    <td className="px-4 py-3 text-slate-900 font-medium">{report.meterName}</td>
+                    <td className="px-4 py-3 text-slate-700">{report.sourceSubstation}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">{report.generatedDate}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={classNames(
+                        'inline-flex px-3 py-1 rounded-full text-xs font-bold',
+                        report.overallCompliance === 'Pass' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                      )}>
+                        {report.overallCompliance}
+                        {report.failedHarmonics > 0 && (
+                          <span className="ml-1">({report.failedHarmonics}F)</span>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleViewDetail(report)}
+                        className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-semibold"
+                      >
+                        View Details
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// EN50160 Reports View
+function EN50160ReportsView() {
+  const [filterYear, setFilterYear] = useState('2025');
+  const [filterVoltageLevel, setFilterVoltageLevel] = useState<string>('All');
+  const [filterAreaGroup, setFilterAreaGroup] = useState<string>('All');
+  const [selectedReport, setSelectedReport] = useState<EN50160Report | null>(null);
+  const [view, setView] = useState<'list' | 'detail' | 'sevenday'>('list');
+
+  // Mock EN50160 annual reports
+  const mockReports = useMemo<EN50160Report[]>(() => [
+    {
+      reportId: 'EN2025-400-KLN-001',
+      reportingYear: '2025',
+      voltageLevel: '400kV',
+      areaGroup: 'Kowloon',
+      meterName: 'PQMS_400KV_BKP0227',
+      sourceSubstation: 'Beacon Hill Primary Substation',
+      generatedDate: '2025-01-15',
+      overallCompliance: 'Pass',
+      failedParameters: 0
+    },
+    {
+      reportId: 'EN2025-132-NT-002',
+      reportingYear: '2025',
+      voltageLevel: '132kV',
+      areaGroup: 'New Territories',
+      meterName: 'PQMS_132KV_CPK0256',
+      sourceSubstation: 'Castle Peak Switching Station',
+      generatedDate: '2025-01-15',
+      overallCompliance: 'Fail',
+      failedParameters: 2
+    },
+    {
+      reportId: 'EN2025-11-KLN-003',
+      reportingYear: '2025',
+      voltageLevel: '11kV',
+      areaGroup: 'Kowloon',
+      meterName: 'PQMS_11KV_TST0015',
+      sourceSubstation: 'Tsim Sha Tsui Distribution Substation',
+      generatedDate: '2025-01-16',
+      overallCompliance: 'Pass',
+      failedParameters: 0
+    },
+    {
+      reportId: 'EN2025-380-NT-004',
+      reportingYear: '2025',
+      voltageLevel: '380V',
+      areaGroup: 'New Territories',
+      meterName: 'PQMS_380V_TW0088',
+      sourceSubstation: 'Tsuen Wan Industrial Zone',
+      generatedDate: '2025-01-17',
+      overallCompliance: 'Pass',
+      failedParameters: 0
+    }
+  ], []);
+
+  // Mock detailed EN50160 parameters for selected report
+  const mockDetailedData = useMemo<EN50160Parameter[]>(() => [
+    {
+      parameter: 'Voltage Deviation - Maximum (%)',
+      limit: '+10%',
+      percentile95th: '+8.5%',
+      dailyMax: '+9.2%',
+      dailyMin: '+2.1%',
+      monthlyMax: '+9.2%',
+      monthlyMin: '+2.1%',
+      compliance: 'Pass'
+    },
+    {
+      parameter: 'Voltage Deviation - Minimum (%)',
+      limit: '-10%',
+      percentile95th: '-7.8%',
+      dailyMax: '-2.3%',
+      dailyMin: '-8.9%',
+      monthlyMax: '-2.3%',
+      monthlyMin: '-8.9%',
+      compliance: 'Pass'
+    },
+    {
+      parameter: 'THDv - Total Harmonic Distortion (%)',
+      limit: '<8%',
+      percentile95th: '4.2%',
+      dailyMax: '5.1%',
+      dailyMin: '2.8%',
+      monthlyMax: '5.1%',
+      monthlyMin: '2.8%',
+      compliance: 'Pass'
+    },
+    {
+      parameter: 'Individual Harmonic - 5th Order (%)',
+      limit: '<6%',
+      percentile95th: '3.8%',
+      dailyMax: '4.5%',
+      dailyMin: '2.1%',
+      monthlyMax: '4.5%',
+      monthlyMin: '2.1%',
+      compliance: 'Pass'
+    },
+    {
+      parameter: 'Individual Harmonic - 7th Order (%)',
+      limit: '<5%',
+      percentile95th: '2.9%',
+      dailyMax: '3.6%',
+      dailyMin: '1.8%',
+      monthlyMax: '3.6%',
+      monthlyMin: '1.8%',
+      compliance: 'Pass'
+    },
+    {
+      parameter: 'Pst - Short-term Flicker Severity',
+      limit: '<1.0',
+      percentile95th: '0.72',
+      dailyMax: '0.85',
+      dailyMin: '0.42',
+      monthlyMax: '0.85',
+      monthlyMin: '0.42',
+      compliance: 'Pass'
+    },
+    {
+      parameter: 'Plt - Long-term Flicker Severity',
+      limit: '<0.8',
+      percentile95th: '0.58',
+      dailyMax: '0.69',
+      dailyMin: '0.35',
+      monthlyMax: '0.69',
+      monthlyMin: '0.35',
+      compliance: 'Pass'
+    },
+    {
+      parameter: 'Voltage Unbalance - Negative Sequence (%)',
+      limit: '<2%',
+      percentile95th: '0.85%',
+      dailyMax: '1.2%',
+      dailyMin: '0.4%',
+      monthlyMax: '1.2%',
+      monthlyMin: '0.4%',
+      compliance: 'Pass'
+    },
+    {
+      parameter: 'Frequency Variation (Hz)',
+      limit: '50Hz ±1%',
+      percentile95th: '49.98Hz',
+      dailyMax: '50.15Hz',
+      dailyMin: '49.82Hz',
+      monthlyMax: '50.15Hz',
+      monthlyMin: '49.82Hz',
+      compliance: 'Pass'
+    }
+  ], []);
+
+  const filteredReports = useMemo(() => {
+    return mockReports.filter(r => {
+      if (filterYear !== 'All' && r.reportingYear !== filterYear) return false;
+      if (filterVoltageLevel !== 'All' && r.voltageLevel !== filterVoltageLevel) return false;
+      if (filterAreaGroup !== 'All' && r.areaGroup !== filterAreaGroup) return false;
+      return true;
+    });
+  }, [mockReports, filterYear, filterVoltageLevel, filterAreaGroup]);
+
+  const handleViewDetail = (report: EN50160Report) => {
+    setSelectedReport(report);
+    setView('detail');
+  };
+
+  const handleExportWord = () => {
+    alert('MS Word template export functionality will populate a .docx template with the report data.\n\nTemplate fields:\n- Report ID, Year, Voltage Level\n- Meter Name, Source Substation\n- All parameter tables with compliance flags\n- Exclusion notes (Outage/Faulty Equipment)');
+  };
+
+  const handleExportExcel = () => {
+    if (!selectedReport) return;
+    
+    try {
+      const wb = XLSX.utils.book_new();
+      
+      const summary = [
+        ['EN 50160 Annual Compliance Report'],
+        ['Report ID:', selectedReport.reportId],
+        ['Reporting Year:', selectedReport.reportingYear],
+        ['Voltage Level:', selectedReport.voltageLevel],
+        ['Area Group:', selectedReport.areaGroup],
+        ['Meter Name:', selectedReport.meterName],
+        ['Source Substation:', selectedReport.sourceSubstation],
+        ['Generated Date:', selectedReport.generatedDate],
+        ['Overall Compliance:', selectedReport.overallCompliance],
+        ['Failed Parameters:', selectedReport.failedParameters.toString()],
+        [],
+        ['Parameter', 'EN 50160 Limit', '95th Percentile', 'Daily Max', 'Daily Min', 'Monthly Max', 'Monthly Min', 'Compliance']
+      ];
+
+      const ws = XLSX.utils.aoa_to_sheet(summary);
+      const dataRows = mockDetailedData.map(d => [
+        d.parameter,
+        d.limit,
+        d.percentile95th,
+        d.dailyMax,
+        d.dailyMin,
+        d.monthlyMax,
+        d.monthlyMin,
+        d.compliance
+      ]);
+      XLSX.utils.sheet_add_aoa(ws, dataRows, { origin: -1 });
+      
+      XLSX.utils.book_append_sheet(wb, ws, 'EN50160 Report');
+
+      const fileName = `EN50160_${selectedReport.reportId}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to export report');
+    }
+  };
+
+  const handleView7DayAnalysis = () => {
+    setView('sevenday');
+  };
+
+  if (view === 'sevenday' && selectedReport) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setView('detail')}
+              className="p-2 hover:bg-slate-100 rounded-lg"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">7-Day Continuous Analysis</h2>
+              <p className="text-sm text-slate-600 mt-1">Detailed continuous monitoring for EN 50160 evaluation</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <div className="text-center text-slate-600 py-12">
+            <BarChart3 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+            <p className="text-lg font-semibold">7-Day Analysis View</p>
+            <p className="text-sm mt-2">Continuous 7-day analysis charts for {selectedReport.meterName}</p>
+            <p className="text-xs text-slate-500 mt-4">This view provides detailed hourly/daily trends for all EN 50160 parameters<br/>to support root-cause investigation and evaluation cycles.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'detail' && selectedReport) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setView('list');
+                setSelectedReport(null);
+              }}
+              className="p-2 hover:bg-slate-100 rounded-lg"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">EN 50160 Report Detail</h2>
+              <p className="text-sm text-slate-600 mt-1">{selectedReport.reportId}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleView7DayAnalysis}
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold flex items-center gap-2"
+            >
+              <Calendar className="w-4 h-4" />
+              7-Day Analysis
+            </button>
+            <button
+              type="button"
+              onClick={handleExportWord}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              Export Word
+            </button>
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Export Excel
+            </button>
+          </div>
+        </div>
+
+        {/* Report Header Info */}
+        <div className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl p-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+            <div>
+              <p className="text-sm opacity-90">Reporting Year</p>
+              <p className="text-2xl font-bold mt-1">{selectedReport.reportingYear}</p>
+            </div>
+            <div>
+              <p className="text-sm opacity-90">Voltage Level</p>
+              <p className="text-2xl font-bold mt-1">{selectedReport.voltageLevel}</p>
+            </div>
+            <div>
+              <p className="text-sm opacity-90">Area Group</p>
+              <p className="text-2xl font-bold mt-1">{selectedReport.areaGroup}</p>
+            </div>
+            <div>
+              <p className="text-sm opacity-90">Meter Name</p>
+              <p className="text-lg font-semibold mt-1">{selectedReport.meterName}</p>
+            </div>
+            <div>
+              <p className="text-sm opacity-90">Source Substation</p>
+              <p className="text-lg font-semibold mt-1">{selectedReport.sourceSubstation}</p>
+            </div>
+            <div>
+              <p className="text-sm opacity-90">Overall Compliance</p>
+              <p className={classNames(
+                'text-2xl font-bold mt-1',
+                selectedReport.overallCompliance === 'Pass' ? 'text-white' : 'text-yellow-200'
+              )}>
+                {selectedReport.overallCompliance}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Compliance Table */}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="p-4 bg-slate-50 border-b border-slate-200">
+            <h3 className="text-lg font-bold text-slate-900">EN 50160 Parameter Compliance</h3>
+            <p className="text-sm text-slate-600 mt-1">95th percentile values calculated on weekly basis (Sunday to Saturday)</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-900 text-white">
+                <tr>
+                  <th className="px-4 py-3 text-left font-bold whitespace-nowrap">Parameter</th>
+                  <th className="px-4 py-3 text-left font-bold whitespace-nowrap">EN 50160 Limit</th>
+                  <th className="px-4 py-3 text-center font-bold whitespace-nowrap">95th Percentile</th>
+                  <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Daily Max</th>
+                  <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Daily Min</th>
+                  <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Monthly Max</th>
+                  <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Monthly Min</th>
+                  <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Compliance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {mockDetailedData.map((record, idx) => (
+                  <tr key={idx} className={classNames(
+                    'hover:bg-blue-50',
+                    record.compliance === 'Fail' && 'bg-red-50'
+                  )}>
+                    <td className="px-4 py-3 text-slate-900 font-medium">{record.parameter}</td>
+                    <td className="px-4 py-3 text-slate-700">{record.limit}</td>
+                    <td className="px-4 py-3 text-center text-slate-700 font-semibold">{record.percentile95th}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">{record.dailyMax}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">{record.dailyMin}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">{record.monthlyMax}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">{record.monthlyMin}</td>
+                    <td className="px-4 py-3 text-center">
+                      {record.compliance === 'Fail' ? (
+                        <span className="inline-flex px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">
+                          F
+                        </span>
+                      ) : (
+                        <span className="inline-flex px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                          Pass
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="p-4 bg-slate-50 border-t border-slate-200">
+            <p className="text-sm text-slate-600">
+              <strong>Note:</strong> Time intervals marked as <span className="text-orange-600 font-semibold">Outage</span> or <span className="text-orange-600 font-semibold">Faulty Equipment</span> are automatically excluded from compliance calculations.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <BarChart3 className="w-6 h-6 text-slate-700" />
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">EN 50160 Reports</h2>
+            <p className="text-sm text-slate-600 mt-1">Annual compliance reports for voltage characteristics per EN 50160 standard</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
+        <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+          <Filter className="w-4 h-4" />
+          Filter Reports
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Reporting Year</label>
+            <select
+              value={filterYear}
+              onChange={(e) => setFilterYear(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            >
+              <option value="All">All Years</option>
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+              <option value="2023">2023</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Voltage Level</label>
+            <select
+              value={filterVoltageLevel}
+              onChange={(e) => setFilterVoltageLevel(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            >
+              <option value="All">All Levels</option>
+              <option value="400kV">400kV</option>
+              <option value="132kV">132kV</option>
+              <option value="11kV">11kV</option>
+              <option value="380V">380V</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Area Group</label>
+            <select
+              value={filterAreaGroup}
+              onChange={(e) => setFilterAreaGroup(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            >
+              <option value="All">All Areas</option>
+              <option value="Kowloon">Kowloon</option>
+              <option value="New Territories">New Territories</option>
+              <option value="Hong Kong Island">Hong Kong Island</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Reports List */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="p-4 bg-slate-50 border-b border-slate-200">
+          <h3 className="text-lg font-bold text-slate-900">EN 50160 Annual Reports</h3>
+          <p className="text-sm text-slate-600 mt-1">Showing {filteredReports.length} report(s)</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-900 text-white">
+              <tr>
+                <th className="px-4 py-3 text-left font-bold whitespace-nowrap">Report ID</th>
+                <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Year</th>
+                <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Voltage Level</th>
+                <th className="px-4 py-3 text-left font-bold whitespace-nowrap">Area Group</th>
+                <th className="px-4 py-3 text-left font-bold whitespace-nowrap">Meter Name</th>
+                <th className="px-4 py-3 text-left font-bold whitespace-nowrap">Source Substation</th>
+                <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Generated Date</th>
+                <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Compliance</th>
+                <th className="px-4 py-3 text-center font-bold whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredReports.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                    <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                    <p>No EN 50160 reports found matching the selected filters.</p>
+                  </td>
+                </tr>
+              ) : (
+                filteredReports.map((report) => (
+                  <tr key={report.reportId} className="hover:bg-blue-50">
+                    <td className="px-4 py-3 text-slate-900 font-mono text-xs font-semibold">{report.reportId}</td>
+                    <td className="px-4 py-3 text-center text-slate-700 font-bold">{report.reportingYear}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="inline-flex px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">
+                        {report.voltageLevel}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{report.areaGroup}</td>
+                    <td className="px-4 py-3 text-slate-900 font-medium">{report.meterName}</td>
+                    <td className="px-4 py-3 text-slate-700">{report.sourceSubstation}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">{report.generatedDate}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={classNames(
+                        'inline-flex px-3 py-1 rounded-full text-xs font-bold',
+                        report.overallCompliance === 'Pass' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                      )}>
+                        {report.overallCompliance}
+                        {report.failedParameters > 0 && (
+                          <span className="ml-1">({report.failedParameters}F)</span>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleViewDetail(report)}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold"
+                      >
+                        View Details
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -3289,6 +4668,18 @@ type PQSummaryReportView = 'voltageDipSummary' | 'customerPowerDisturbance';
 function PQSISMaintenanceTab() {
   const [pqsisRecords, setPqsisRecords] = useState<PQSISRecord[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<PQSISRecord[]>([]);
+  const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
+  const [editingRecord, setEditingRecord] = useState<PQSISRecord | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedColumns, setSelectedColumns] = useState<Set<PQSISColumn>>(new Set([
+    'Request Date',
+    'Service Type',
+    'Service',
+    'Service Charging',
+    'Completion Date',
+    'Closed Case',
+    'IDR Number'
+  ]));
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSummary, setUploadSummary] = useState<{
     total: number;
@@ -3424,6 +4815,38 @@ function PQSISMaintenanceTab() {
   }, [filteredRecords, currentPage]);
 
   const totalPages = Math.ceil(filteredRecords.length / itemsPerPage);
+
+  // Column visibility management
+  const allColumns: PQSISColumn[] = [
+    'Customer Group',
+    'Request Date',
+    'Service Type',
+    'Service',
+    'Service Charging',
+    'Charged Dept',
+    'Completion Date',
+    'Closed Case',
+    'In-Progress',
+    'Before Target',
+    'Business Type',
+    'Planned Reply',
+    'Actual Reply',
+    'Planned Report',
+    'Actual Report',
+    'IDR Number'
+  ];
+
+  const toggleColumn = (column: PQSISColumn) => {
+    setSelectedColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(column)) {
+        next.delete(column);
+      } else {
+        next.add(column);
+      }
+      return next;
+    });
+  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -3562,6 +4985,101 @@ function PQSISMaintenanceTab() {
     }
   };
 
+  // Selection handlers
+  const toggleSelectRecord = (caseNo: string) => {
+    setSelectedRecords(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(caseNo)) {
+        newSet.delete(caseNo);
+      } else {
+        newSet.add(caseNo);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedRecords.size === paginatedRecords.length) {
+      setSelectedRecords(new Set());
+    } else {
+      setSelectedRecords(new Set(paginatedRecords.map(r => r.caseNo)));
+    }
+  };
+
+  // Edit handlers
+  const handleEditRecord = (record: PQSISRecord) => {
+    setEditingRecord(record);
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingRecord) return;
+    
+    setPqsisRecords(prev => prev.map(r => 
+      r.caseNo === editingRecord.caseNo ? editingRecord : r
+    ));
+    setShowEditModal(false);
+    setEditingRecord(null);
+  };
+
+  // Delete handler
+  const handleDeleteRecord = (caseNo: string) => {
+    if (window.confirm(`Are you sure you want to delete record ${caseNo}?`)) {
+      setPqsisRecords(prev => prev.filter(r => r.caseNo !== caseNo));
+      setSelectedRecords(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(caseNo);
+        return newSet;
+      });
+    }
+  };
+
+  // Export selected records
+  const handleExportSelected = () => {
+    try {
+      const selectedData = pqsisRecords.filter(r => selectedRecords.has(r.caseNo));
+      const exportData = selectedData.map(r => ({
+        'Case No.': r.caseNo,
+        'Customer Name': r.customerName,
+        'Customer Group': r.customerGroup,
+        'Request Date': r.requestDate,
+        'Service Type': r.serviceType,
+        'Service': r.service,
+        'Service Charging (k)': r.serviceCharging,
+        'Charged Department': r.chargedDepartment,
+        'Service Completion Date': r.serviceCompletionDate,
+        'Closed Case': r.closedCase,
+        'In-Progress Case': r.inProgressCase,
+        'Completed before Target Date': r.completedBeforeTargetDate,
+        'Business Type': r.businessType,
+        'Planned Reply Date': r.plannedReplyDate,
+        'Actual Reply Date': r.actualReplyDate,
+        'Planned Report Issue Date': r.plannedReportIssueDate,
+        'Actual Report Issue Date': r.actualReportIssueDate,
+        'IDR Number': r.idrNumber || ''
+      }));
+
+      const wb = XLSX.utils.book_new();
+      
+      const summary = [
+        ['PQSIS Selected Records Export'],
+        ['Export Date:', new Date().toLocaleDateString()],
+        ['Selected Records:', selectedData.length.toString()],
+        [], // Empty row
+      ];
+
+      const ws = XLSX.utils.aoa_to_sheet(summary);
+      XLSX.utils.sheet_add_json(ws, exportData, { origin: -1 });
+      XLSX.utils.book_append_sheet(wb, ws, 'Selected Records');
+
+      const fileName = `PQSIS_Selected_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to export selected data');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -3591,6 +5109,16 @@ function PQSISMaintenanceTab() {
             onChange={handleFileUpload}
             className="hidden"
           />
+          {selectedRecords.size > 0 && (
+            <button
+              type="button"
+              onClick={handleExportSelected}
+              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Export Selected ({selectedRecords.size})
+            </button>
+          )}
           <button
             type="button"
             onClick={handleExport}
@@ -3598,7 +5126,7 @@ function PQSISMaintenanceTab() {
             className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
-            Export to Excel
+            Export All
           </button>
         </div>
       </div>
@@ -3635,6 +5163,30 @@ function PQSISMaintenanceTab() {
           </div>
         </div>
       )}
+
+      {/* Select Columns Section */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
+        <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+          <Database className="w-4 h-4" />
+          Select Columns to Display:
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+          {allColumns.map((column) => (
+            <label
+              key={column}
+              className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg hover:bg-blue-50 cursor-pointer transition-colors"
+            >
+              <input
+                type="checkbox"
+                checked={selectedColumns.has(column)}
+                onChange={() => toggleColumn(column)}
+                className="w-4 h-4 text-blue-600 rounded"
+              />
+              <span className="text-xs font-medium text-slate-700">{column}</span>
+            </label>
+          ))}
+        </div>
+      </div>
 
       {/* Filters */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
@@ -3757,30 +5309,39 @@ function PQSISMaintenanceTab() {
           <table className="w-full text-xs">
             <thead className="bg-slate-900 text-white">
               <tr>
+                <th className="px-3 py-3 text-center font-bold whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={paginatedRecords.length > 0 && selectedRecords.size === paginatedRecords.length}
+                    onChange={toggleSelectAll}
+                    className="cursor-pointer"
+                  />
+                </th>
                 <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Case No.</th>
                 <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Customer Name</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Customer Group</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Request Date</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Service Type</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Service</th>
-                <th className="px-3 py-3 text-right font-bold whitespace-nowrap">Service Charging (k)</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Charged Dept</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Completion Date</th>
-                <th className="px-3 py-3 text-center font-bold whitespace-nowrap">Closed Case</th>
-                <th className="px-3 py-3 text-center font-bold whitespace-nowrap">In-Progress</th>
-                <th className="px-3 py-3 text-center font-bold whitespace-nowrap">Before Target</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Business Type</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Planned Reply</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Actual Reply</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Planned Report</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Actual Report</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">IDR Number</th>
+                {selectedColumns.has('Customer Group') && <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Customer Group</th>}
+                {selectedColumns.has('Request Date') && <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Request Date</th>}
+                {selectedColumns.has('Service Type') && <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Service Type</th>}
+                {selectedColumns.has('Service') && <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Service</th>}
+                {selectedColumns.has('Service Charging') && <th className="px-3 py-3 text-right font-bold whitespace-nowrap">Service Charging (k)</th>}
+                {selectedColumns.has('Charged Dept') && <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Charged Dept</th>}
+                {selectedColumns.has('Completion Date') && <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Completion Date</th>}
+                {selectedColumns.has('Closed Case') && <th className="px-3 py-3 text-center font-bold whitespace-nowrap">Closed Case</th>}
+                {selectedColumns.has('In-Progress') && <th className="px-3 py-3 text-center font-bold whitespace-nowrap">In-Progress</th>}
+                {selectedColumns.has('Before Target') && <th className="px-3 py-3 text-center font-bold whitespace-nowrap">Before Target</th>}
+                {selectedColumns.has('Business Type') && <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Business Type</th>}
+                {selectedColumns.has('Planned Reply') && <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Planned Reply</th>}
+                {selectedColumns.has('Actual Reply') && <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Actual Reply</th>}
+                {selectedColumns.has('Planned Report') && <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Planned Report</th>}
+                {selectedColumns.has('Actual Report') && <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Actual Report</th>}
+                {selectedColumns.has('IDR Number') && <th className="px-3 py-3 text-left font-bold whitespace-nowrap">IDR Number</th>}
+                <th className="px-3 py-3 text-center font-bold whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {paginatedRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={18} className="px-3 py-8 text-center text-slate-500">
+                  <td colSpan={3 + selectedColumns.size + 1} className="px-3 py-8 text-center text-slate-500">
                     <Database className="w-12 h-12 text-slate-300 mx-auto mb-2" />
                     <p>No PQSIS records found. Upload a CSV file to get started.</p>
                   </td>
@@ -3788,45 +5349,79 @@ function PQSISMaintenanceTab() {
               ) : (
                 paginatedRecords.map((record, idx) => (
                   <tr key={idx} className="hover:bg-blue-50">
+                    <td className="px-3 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedRecords.has(record.caseNo)}
+                        onChange={() => toggleSelectRecord(record.caseNo)}
+                        className="cursor-pointer"
+                      />
+                    </td>
                     <td className="px-3 py-2 text-slate-700 font-semibold">{record.caseNo}</td>
                     <td className="px-3 py-2 text-slate-700">{record.customerName}</td>
-                    <td className="px-3 py-2 text-slate-700">{record.customerGroup}</td>
-                    <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.requestDate}</td>
-                    <td className="px-3 py-2 text-slate-700">{record.serviceType}</td>
-                    <td className="px-3 py-2 text-slate-700">{record.service}</td>
-                    <td className="px-3 py-2 text-slate-700 text-right">{record.serviceCharging.toFixed(1)}</td>
-                    <td className="px-3 py-2 text-slate-700">{record.chargedDepartment}</td>
-                    <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.serviceCompletionDate}</td>
+                    {selectedColumns.has('Customer Group') && <td className="px-3 py-2 text-slate-700">{record.customerGroup}</td>}
+                    {selectedColumns.has('Request Date') && <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.requestDate}</td>}
+                    {selectedColumns.has('Service Type') && <td className="px-3 py-2 text-slate-700">{record.serviceType}</td>}
+                    {selectedColumns.has('Service') && <td className="px-3 py-2 text-slate-700">{record.service}</td>}
+                    {selectedColumns.has('Service Charging') && <td className="px-3 py-2 text-slate-700 text-right">{record.serviceCharging.toFixed(1)}</td>}
+                    {selectedColumns.has('Charged Dept') && <td className="px-3 py-2 text-slate-700">{record.chargedDepartment}</td>}
+                    {selectedColumns.has('Completion Date') && <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.serviceCompletionDate}</td>}
+                    {selectedColumns.has('Closed Case') && (
+                      <td className="px-3 py-2 text-center">
+                        <span className={classNames(
+                          'px-2 py-1 rounded-full text-xs font-semibold',
+                          record.closedCase === 'Yes' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'
+                        )}>
+                          {record.closedCase}
+                        </span>
+                      </td>
+                    )}
+                    {selectedColumns.has('In-Progress') && (
+                      <td className="px-3 py-2 text-center">
+                        <span className={classNames(
+                          'px-2 py-1 rounded-full text-xs font-semibold',
+                          record.inProgressCase === 'Yes' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
+                        )}>
+                          {record.inProgressCase}
+                        </span>
+                      </td>
+                    )}
+                    {selectedColumns.has('Before Target') && (
+                      <td className="px-3 py-2 text-center">
+                        <span className={classNames(
+                          'px-2 py-1 rounded-full text-xs font-semibold',
+                          record.completedBeforeTargetDate === 'Yes' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        )}>
+                          {record.completedBeforeTargetDate}
+                        </span>
+                      </td>
+                    )}
+                    {selectedColumns.has('Business Type') && <td className="px-3 py-2 text-slate-700">{record.businessType}</td>}
+                    {selectedColumns.has('Planned Reply') && <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.plannedReplyDate}</td>}
+                    {selectedColumns.has('Actual Reply') && <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.actualReplyDate}</td>}
+                    {selectedColumns.has('Planned Report') && <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.plannedReportIssueDate}</td>}
+                    {selectedColumns.has('Actual Report') && <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.actualReportIssueDate}</td>}
+                    {selectedColumns.has('IDR Number') && <td className="px-3 py-2 text-slate-700 font-mono text-xs">{record.idrNumber || '-'}</td>}
                     <td className="px-3 py-2 text-center">
-                      <span className={classNames(
-                        'px-2 py-1 rounded-full text-xs font-semibold',
-                        record.closedCase === 'Yes' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'
-                      )}>
-                        {record.closedCase}
-                      </span>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditRecord(record)}
+                          className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                          title="Edit"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRecord(record.caseNo)}
+                          className="p-1 text-red-600 hover:bg-red-50 rounded"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
-                    <td className="px-3 py-2 text-center">
-                      <span className={classNames(
-                        'px-2 py-1 rounded-full text-xs font-semibold',
-                        record.inProgressCase === 'Yes' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
-                      )}>
-                        {record.inProgressCase}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <span className={classNames(
-                        'px-2 py-1 rounded-full text-xs font-semibold',
-                        record.completedBeforeTargetDate === 'Yes' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      )}>
-                        {record.completedBeforeTargetDate}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-slate-700">{record.businessType}</td>
-                    <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.plannedReplyDate}</td>
-                    <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.actualReplyDate}</td>
-                    <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.plannedReportIssueDate}</td>
-                    <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.actualReportIssueDate}</td>
-                    <td className="px-3 py-2 text-slate-700 font-mono text-xs">{record.idrNumber || '-'}</td>
                   </tr>
                 ))
               )}
@@ -3861,6 +5456,64 @@ function PQSISMaintenanceTab() {
           </div>
         )}
       </div>
+
+      {/* Edit Modal */}
+      {showEditModal && editingRecord && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <h2 className="text-xl font-bold text-slate-900">Edit PQSIS Record</h2>
+              <button onClick={() => setShowEditModal(false)} className="p-2 hover:bg-slate-100 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Case No.</label>
+                  <input type="text" value={editingRecord.caseNo} disabled className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-slate-50" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Customer Name</label>
+                  <input type="text" value={editingRecord.customerName} onChange={(e) => setEditingRecord({...editingRecord, customerName: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Customer Group</label>
+                  <input type="text" value={editingRecord.customerGroup} onChange={(e) => setEditingRecord({...editingRecord, customerGroup: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Service Type</label>
+                  <input type="text" value={editingRecord.serviceType} onChange={(e) => setEditingRecord({...editingRecord, serviceType: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Service</label>
+                  <input type="text" value={editingRecord.service} onChange={(e) => setEditingRecord({...editingRecord, service: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Service Charging (k)</label>
+                  <input type="number" step="0.1" value={editingRecord.serviceCharging} onChange={(e) => setEditingRecord({...editingRecord, serviceCharging: parseFloat(e.target.value)})} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Charged Department</label>
+                  <input type="text" value={editingRecord.chargedDepartment} onChange={(e) => setEditingRecord({...editingRecord, chargedDepartment: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Business Type</label>
+                  <input type="text" value={editingRecord.businessType} onChange={(e) => setEditingRecord({...editingRecord, businessType: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">IDR Number</label>
+                  <input type="text" value={editingRecord.idrNumber || ''} onChange={(e) => setEditingRecord({...editingRecord, idrNumber: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
+              <button onClick={() => setShowEditModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50">Cancel</button>
+              <button onClick={handleSaveEdit} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4922,7 +6575,6 @@ export default function Reporting() {
   ];
 
   const complianceOptions = [
-    { value: 'pqStandards', label: 'PQ Standards Report' },
     { value: 'voltageDipBenchmarking', label: 'Voltage Dip Benchmarking' },
     { value: 'individualHarmonics', label: 'Individual Harmonic Reports' },
     { value: 'en50160', label: 'EN50160 Reports' }
