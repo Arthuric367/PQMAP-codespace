@@ -92,7 +92,9 @@ type VoltageDipBenchmarkEventMock = {
 
 
 
-type ReportingTab = 'pqSummary' | 'complianceSummary' | 'voltageCurrentProfile' | 'meterCommunication' | 'dynamicReport' | 'pqsisMaintenance';
+type ReportingTab = 'pqSummary' | 'complianceSummary' | 'voltageCurrentProfile' | 'meterCommunication' | 'dynamicReport' | 'pqsisMaintenance' | 'meterRawData';
+
+type MeterRawDataView = 'raw' | 'daily' | 'weekly';
 
 type PQSISRecord = {
   caseNo: string; // e.g., "5337.2"
@@ -6550,12 +6552,365 @@ function PQSummaryTab({ selectedReportView }: { selectedReportView: PQSummaryRep
   );
 }
 
+// Meter Raw Data Tab Component
+function MeterRawDataTab({ selectedView }: { selectedView: MeterRawDataView }) {
+  // Mock meter data
+  const allMeters = useMemo(() => {
+    const meters: Array<{ id: string; name: string; voltageLevel: string }> = [];
+    const voltageLevels = ['400KV', '132KV', '33KV', '11KV', '380V'];
+    const areas = ['APA', 'APB', 'AUS', 'AWR', 'BCH', 'BOU', 'CAN', 'CCN', 'CCS', 'CHI', 'CHY'];
+    
+    voltageLevels.forEach(vl => {
+      areas.forEach(area => {
+        for (let i = 1; i <= 5; i++) {
+          const meterNum = String(i).padStart(4, '0');
+          const harmonic = `H${i}`;
+          meters.push({
+            id: `PQMS_${vl}.${area}${meterNum}_${harmonic}`,
+            name: `PQMS_${vl}.${area}${meterNum}_${harmonic}`,
+            voltageLevel: vl
+          });
+        }
+      });
+    });
+    return meters;
+  }, []);
+
+  const [searchText, setSearchText] = useState('');
+  const [selectedVoltageLevel, setSelectedVoltageLevel] = useState<string>('All');
+  const [selectedMeter, setSelectedMeter] = useState<string | null>(null);
+  const [selectedParameter, setSelectedParameter] = useState<string>('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [timeFromHour, setTimeFromHour] = useState('00');
+  const [timeFromMin, setTimeFromMin] = useState('00');
+  const [timeToHour, setTimeToHour] = useState('23');
+  const [timeToMin, setTimeToMin] = useState('59');
+
+  const filteredMeters = useMemo(() => {
+    let filtered = allMeters;
+    
+    if (selectedVoltageLevel !== 'All') {
+      filtered = filtered.filter(m => m.voltageLevel === selectedVoltageLevel);
+    }
+    
+    if (searchText.trim()) {
+      const search = searchText.toLowerCase();
+      filtered = filtered.filter(m => m.name.toLowerCase().includes(search));
+    }
+    
+    return filtered;
+  }, [allMeters, selectedVoltageLevel, searchText]);
+
+  const handleExportData = () => {
+    if (!selectedMeter) {
+      alert('Please select a meter');
+      return;
+    }
+    if (!selectedParameter) {
+      alert('Please select a parameter');
+      return;
+    }
+    if (!dateFrom || !dateTo) {
+      alert('Please set the time range');
+      return;
+    }
+
+    // Create mock data for export
+    const viewLabel = selectedView === 'raw' ? 'Raw' : selectedView === 'daily' ? 'Daily' : 'Weekly';
+    const data = [
+      ['Meter', selectedMeter],
+      ['Parameter', selectedParameter],
+      ['From', `${dateFrom} ${timeFromHour}:${timeFromMin}`],
+      ['To', `${dateTo} ${timeToHour}:${timeToMin}`],
+      ['Data Type', `${viewLabel} Data`],
+      [],
+      ['Timestamp', 'Value', 'Unit'],
+      [`${dateFrom} ${timeFromHour}:${timeFromMin}:00`, '230.5', 'V'],
+      [`${dateFrom} ${timeFromHour}:${timeFromMin}:30`, '229.8', 'V'],
+      // Add more mock rows...
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `${viewLabel} Data`);
+    XLSX.writeFile(wb, `Meter_${viewLabel}_Data_${selectedMeter}_${dateFrom}_${dateTo}.csv`);
+  };
+
+  const rawDataParameters = [
+    'Voltage',
+    'Frequency',
+    'Voltage Unbalance',
+    'Power Factor',
+    'Voltage THD',
+    '5th Harmonics',
+    '7th Harmonics',
+    'Voltage Flickering'
+  ];
+
+  const dailyDataParameters = [
+    'Voltage',
+    'Frequency',
+    'Voltage Unbalance',
+    'Power Factor',
+    'Voltage Flickering'
+  ];
+
+  const weeklyDataParameters = [
+    'Voltage THD',
+    '5th Harmonics',
+    '7th Harmonics'
+  ];
+
+  const parameters = selectedView === 'raw' 
+    ? rawDataParameters 
+    : selectedView === 'daily'
+    ? dailyDataParameters
+    : weeklyDataParameters;
+
+  const maxTimeRange = selectedView === 'raw' ? '1 month' : '1 year';
+  const buttonLabel = selectedView === 'raw' 
+    ? 'Get Raw Data' 
+    : selectedView === 'daily'
+    ? 'Get Daily Data'
+    : 'Get Weekly Data';
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3 pb-4 border-b border-slate-200">
+        <Database className="w-6 h-6 text-blue-600" />
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">
+            {selectedView === 'raw' && 'Raw Data'}
+            {selectedView === 'daily' && 'Daily Data'}
+            {selectedView === 'weekly' && 'Weekly Data'}
+          </h2>
+          <p className="text-sm text-slate-600">
+            Export meter data for analysis
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Panel - Configuration */}
+        <div className="space-y-4">
+          {/* Step 1: Select Meter */}
+          <div className="bg-slate-50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-bold">1</span>
+              <h3 className="text-sm font-semibold text-blue-900">
+                {selectedView === 'raw' ? 'Select one meter from the list:' : 'Select meter(s) from the list:'}
+              </h3>
+            </div>
+          </div>
+
+          {/* Step 2: Select Parameter */}
+          <div className="bg-slate-50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-bold">2</span>
+              <h3 className="text-sm font-semibold text-blue-900">Select parameter:</h3>
+            </div>
+            <select
+              value={selectedParameter}
+              onChange={(e) => setSelectedParameter(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Select parameter</option>
+              {parameters.map(param => (
+                <option key={param} value={param}>{param}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Step 3: Set Time Range */}
+          <div className="bg-slate-50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-bold">3</span>
+              <h3 className="text-sm font-semibold text-blue-900">Set time range: (Max. of {maxTimeRange})</h3>
+            </div>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">From:</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="flex-1 px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="YYYY-MM-DD"
+                  />
+                  <select
+                    value={timeFromHour}
+                    onChange={(e) => setTimeFromHour(e.target.value)}
+                    className="w-16 px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => {
+                      const h = String(i).padStart(2, '0');
+                      return <option key={h} value={h}>{h}</option>;
+                    })}
+                  </select>
+                  <span className="text-slate-600">:</span>
+                  <select
+                    value={timeFromMin}
+                    onChange={(e) => setTimeFromMin(e.target.value)}
+                    className="w-16 px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {Array.from({ length: 60 }, (_, i) => {
+                      const m = String(i).padStart(2, '0');
+                      return <option key={m} value={m}>{m}</option>;
+                    })}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">To:</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="flex-1 px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="YYYY-MM-DD"
+                  />
+                  <select
+                    value={timeToHour}
+                    onChange={(e) => setTimeToHour(e.target.value)}
+                    className="w-16 px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => {
+                      const h = String(i).padStart(2, '0');
+                      return <option key={h} value={h}>{h}</option>;
+                    })}
+                  </select>
+                  <span className="text-slate-600">:</span>
+                  <select
+                    value={timeToMin}
+                    onChange={(e) => setTimeToMin(e.target.value)}
+                    className="w-16 px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {Array.from({ length: 60 }, (_, i) => {
+                      const m = String(i).padStart(2, '0');
+                      return <option key={m} value={m}>{m}</option>;
+                    })}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Export Button */}
+          <button
+            onClick={handleExportData}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold shadow-sm"
+          >
+            <Download className="w-5 h-5" />
+            {buttonLabel}
+          </button>
+        </div>
+
+        {/* Right Panel - Meter List */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Meter Count and Selected Meter */}
+          <div className="flex items-center justify-between">
+            <div className="text-2xl font-bold text-slate-900">{filteredMeters.length}</div>
+            {selectedMeter && (
+              <div className="bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
+                <div className="text-xs font-semibold text-blue-700 mb-1">Selected Meter:</div>
+                <div className="text-sm font-mono text-blue-900">{selectedMeter}</div>
+              </div>
+            )}
+          </div>
+
+          {/* Available List Panel */}
+          <div className="bg-white border border-slate-200 rounded-lg">
+            <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 text-center">
+              <h3 className="text-sm font-semibold text-slate-700">Available List</h3>
+            </div>
+
+            {/* Search Bar */}
+            {selectedView === 'raw' && (
+              <div className="p-3 border-b border-slate-200">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder="Search"
+                    className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Voltage Level Filter */}
+            <div className="p-4 border-b border-slate-200 bg-cyan-50">
+              <h4 className="text-sm font-semibold text-slate-700 mb-3">Voltage Level:</h4>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="voltageLevel"
+                    checked={selectedVoltageLevel === 'All'}
+                    onChange={() => setSelectedVoltageLevel('All')}
+                    className="w-4 h-4 text-blue-600"
+                  />
+                  <span className="text-sm text-slate-700">All</span>
+                </label>
+                {['400KV', '132KV', '33KV', '11KV', '380V'].map(vl => (
+                  <label key={vl} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="voltageLevel"
+                      checked={selectedVoltageLevel === vl}
+                      onChange={() => setSelectedVoltageLevel(vl)}
+                      className="w-4 h-4 text-blue-600"
+                    />
+                    <span className="text-sm text-slate-700">{vl}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Meter List */}
+            <div className="max-h-96 overflow-y-auto">
+              <div className="p-4 space-y-2">
+                {filteredMeters.slice(0, 50).map(meter => (
+                  <label key={meter.id} className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-2 py-1 rounded transition-colors">
+                    <input
+                      type="radio"
+                      name="meter"
+                      checked={selectedMeter === meter.name}
+                      onChange={() => setSelectedMeter(meter.name)}
+                      className="w-4 h-4 text-blue-600"
+                    />
+                    <span className="text-sm text-slate-700 font-mono">{meter.name}</span>
+                  </label>
+                ))}
+                {filteredMeters.length > 50 && (
+                  <div className="text-xs text-slate-500 italic pt-2 border-t border-slate-200">
+                    Showing first 50 of {filteredMeters.length} meters. Use search to narrow results.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Reporting() {
   const [activeTab, setActiveTab] = useState<ReportingTab>('pqSummary');
   const [pqSummaryReportView, setPqSummaryReportView] = useState<PQSummaryReportView>('voltageDipSummary');
   const [showPqSummaryDropdown, setShowPqSummaryDropdown] = useState(false);
   const [complianceReportView, setComplianceReportView] = useState<ComplianceSummaryReportView>('pqStandards');
   const [showComplianceDropdown, setShowComplianceDropdown] = useState(false);
+  const [meterRawDataView, setMeterRawDataView] = useState<MeterRawDataView>('raw');
+  const [showMeterRawDataDropdown, setShowMeterRawDataDropdown] = useState(false);
 
   const tabs = useMemo(
     () =>
@@ -6564,7 +6919,8 @@ export default function Reporting() {
         { id: 'complianceSummary', label: 'Compliance Summary' },
         { id: 'meterCommunication', label: 'Meter Communication' },
         { id: 'dynamicReport', label: 'Dynamic Report' },
-        { id: 'pqsisMaintenance', label: 'PQSIS Maintenance' }
+        { id: 'pqsisMaintenance', label: 'PQSIS Maintenance' },
+        { id: 'meterRawData', label: 'Meter Raw Data' }
       ] as const,
     []
   );
@@ -6578,6 +6934,12 @@ export default function Reporting() {
     { value: 'voltageDipBenchmarking', label: 'Voltage Dip Benchmarking' },
     { value: 'individualHarmonics', label: 'Individual Harmonic Reports' },
     { value: 'en50160', label: 'EN50160 Reports' }
+  ];
+
+  const meterRawDataOptions = [
+    { value: 'raw', label: 'Raw Data' },
+    { value: 'daily', label: 'Daily Data' },
+    { value: 'weekly', label: 'Weekly Data' }
   ];
 
   return (
@@ -6694,6 +7056,54 @@ export default function Reporting() {
                   </div>
                 );
               }
+              if (t.id === 'meterRawData') {
+                return (
+                  <div key={t.id} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab(t.id);
+                        setShowMeterRawDataDropdown(!showMeterRawDataDropdown);
+                      }}
+                      className={classNames(
+                        'py-3 px-2 text-sm font-semibold transition-colors flex items-center gap-2',
+                        activeTab === t.id
+                          ? 'text-blue-600 border-b-2 border-blue-600'
+                          : 'text-slate-600 hover:text-slate-900'
+                      )}
+                    >
+                      {t.label}
+                      <ChevronRight className={classNames(
+                        'w-4 h-4 transition-transform',
+                        showMeterRawDataDropdown && activeTab === t.id ? 'rotate-90' : ''
+                      )} />
+                    </button>
+                    {showMeterRawDataDropdown && activeTab === t.id && (
+                      <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-50">
+                        {meterRawDataOptions.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => {
+                              setMeterRawDataView(opt.value as MeterRawDataView);
+                              setShowMeterRawDataDropdown(false);
+                            }}
+                            className={classNames(
+                              'w-full text-left px-4 py-3 text-sm transition-colors hover:bg-blue-50',
+                              meterRawDataView === opt.value ? 'bg-blue-100 text-blue-700 font-semibold' : 'text-slate-700'
+                            )}
+                          >
+                            {opt.value === meterRawDataView && (
+                              <Check className="w-4 h-4 inline mr-2" />
+                            )}
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
               return (
                 <button
                   key={t.id}
@@ -6724,6 +7134,8 @@ export default function Reporting() {
         {activeTab === 'dynamicReport' && <ReportBuilder events={[]} substations={[]} />}
 
         {activeTab === 'pqsisMaintenance' && <PQSISMaintenanceTab />}
+
+        {activeTab === 'meterRawData' && <MeterRawDataTab selectedView={meterRawDataView} />}
       </div>
     </div>
   );
