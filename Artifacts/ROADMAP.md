@@ -1,7 +1,7 @@
 # Product Roadmap
 
 **Document Purpose:** Capture planned features and future development initiatives  
-**Last Updated:** January 7, 2026  
+**Last Updated:** January 27, 2026  
 **Status:** In Progress
 
 ---
@@ -164,6 +164,241 @@
    - Export filtered data to Excel with formatting
    - PDF reports with charts
    - Scheduled email reports
+
+5. **Event Management Module Restructure** (Week 4)
+   - **Purpose:** Restructure event management to focus on voltage dip/swell events
+   - **Key Changes:**
+     - Event Management module shows only voltage_dip and voltage_swell events
+     - Other PQ event types (harmonic, interruption, transient) moved to AssetManagement.tsx
+     - Users select specific PQ meter in AssetManagement to view related events
+   - **UI Updates:**
+     - EventManagement.tsx: Filter to show only voltage dip/swell
+     - AssetManagement.tsx: Add event viewing capability for selected meter
+   - **Estimated Effort:** 1 week
+
+6. **Advanced Filter Button in Event Management** ✅ **COMPLETED** (Jan 28, 2026)
+   - **Purpose:** Add comprehensive filtering for voltage dip/swell events
+   - **Completed Features:**
+     - ✅ "Advanced Filter" button next to "Reset All" in EventManagement module
+     - ✅ Comprehensive filter modal with VL1/VL2/VL3 voltage range inputs
+     - ✅ Substation multi-select dropdown with checkbox list
+     - ✅ Transformer number multi-select (H1, H2, H3 from customer_transformer_matching)
+     - ✅ IDR No. text input with partial match search
+     - ✅ Ring Number text input for circuit ring filtering
+     - ✅ Date range inputs in modal
+     - ✅ Apply + Clear All buttons
+     - ✅ Integration with existing filter profiles system (saveable)
+   - **UI Components:**
+     - AdvancedFilterModal component (380+ lines) with scrollable content
+     - Integrated with EventManagement.tsx filter logic
+     - Gradient blue header matching PQMAP design system
+   - **Implementation Notes:**
+     - V1/V2/V3 filters use min/max range inputs for remaining voltage %
+     - Transformer filtering ready (requires backend join implementation)
+     - Ring number filtering ready (requires ring_number field in pq_meters table)
+     - IDR partial match implemented using existing idr_no field
+   - **Estimated Effort:** 3 days → **Actual: 1 day**
+
+6.1. **Event Details - Overview Tab Update** ✅ **COMPLETED** (Jan 28, 2026)
+   - **Purpose:** Restructure Event Details Overview tab with standardized data presentation
+   - **Completed Features:**
+     - ✅ AC1 - Core Event Data card: Incident Time (DD/MM/YYYY HH:mm:ss), Voltage Level, Source Substation, Transformer No. & Ring Number
+     - ✅ AC2 - Magnitude & Duration card: VL1/VL2/VL3 phase percentages with large display, Duration with units
+     - ✅ AC3 - Binary Indicators row: Min Volt (<70% threshold), False Alarm status (2 indicators)
+     - ✅ AC4 - Classification & Workflow card: Event Type, Severity badges, Status (New/Investigating/Closed mapping)
+     - ✅ Icon design: Green checkmark ✅ / Red X ❌ with color-coded badges
+     - ✅ Additional info: Magnitude, Affected Phases, Customer Count, Region, OC
+   - **UI Components:**
+     - 4 main cards with gradient headers (blue, purple, orange, slate)
+     - Grid layouts for organized data presentation
+     - Status badges with color coding (yellow=New, blue=Investigating, green=Closed)
+     - Purple-themed phase percentage displays with centered values
+   - **Implementation Notes:**
+     - Transformer No. displays circuit_id from pq_meters table
+     - Ring Number uses "TTNR0003" placeholder (pending database field)
+     - Min Volt checks any phase (v1, v2, v3) < 70%
+     - False Alarm uses false_event boolean field
+     - Status mapping: open→New, investigating→Investigating, closed/resolved→Closed
+   - **Estimated Effort:** 0.5 day → **Actual: 0.5 day**
+
+6.2. **Waveform Analysis Viewer in Technical Tab** ✅ **COMPLETED** (Jan 28, 2026)
+   - **Purpose:** Add interactive waveform visualization for voltage event analysis
+   - **Completed Features:**
+     - ✅ CSV-based waveform data parsing (Timestamp, V1, V2, V3 format)
+     - ✅ Combined view: All 3 voltage phases (Red V1, Green V2, Blue V3) in single chart
+     - ✅ Individual phase views: Separate charts for V1, V2, V3 with phase-specific colors
+     - ✅ Interactive tooltip: Mouse hover shows exact voltage values at each timestamp
+     - ✅ Zoom functionality: Mouse wheel zoom (50%-200%), Reset to 100% button
+     - ✅ Statistics display: Min/Max/RMS values for each phase
+     - ✅ Performance optimization: Downsampling for display (max 1000 points) while preserving full data for tooltips
+     - ✅ Fallback message: "No waveform data available" when CSV data is missing
+   - **UI Components:**
+     - `WaveformViewer.tsx` (450+ lines) - Main component with Recharts integration
+     - View selector buttons: Combined | V1 | V2 | V3
+     - Zoom controls: Zoom In/Out buttons + percentage display + Reset button
+     - Statistics summary bar with color-coded phase indicators
+     - Gradient header (indigo-purple theme)
+   - **Technical Implementation:**
+     - **Chart Library:** Recharts for React-based line charts
+     - **Data Flow:** CSV → Parse → Downsample → Display → Tooltip (full data)
+     - **Database:** Added `waveform_csv` TEXT field to `pq_events` table (stores CSV content)
+     - **Demo Mode:** Currently loads sample CSV for all events (pending PQMS integration)
+     - **Timestamp Format:** HH:mm:ss.SSS (24-hour with milliseconds)
+     - **X-Axis:** Timestamp from CSV data
+     - **Y-Axis:** Voltage in Volts (V)
+   - **Chart Configuration:**
+     - Combined view: 3 lines (Red/Green/Blue) with CartesianGrid, Legend, responsive container (400px height)
+     - Individual views: Single-phase charts (250px height each) with phase-specific grid colors
+     - Tooltip: White background, 2px border, displays all phases at selected timestamp
+     - Line styling: strokeWidth 1.5-2, no dots (for performance), monotone curve
+   - **Performance Features:**
+     - Sample CSV: 3586 rows → downsampled to ~1000 points for rendering
+     - Zoom adjusts sample rate dynamically (higher zoom = more points)
+     - useEffect for CSV loading (async fetch from public folder)
+     - useMemo for parsed data and statistics calculation
+   - **Future Enhancements:**
+     - Real CSV upload from PQMS system (replace demo data)
+     - Waveform capture trigger marking (orange dashed line)
+     - Export waveform chart as PNG image
+     - Compare multiple waveforms (overlay)
+   - **Reference Image:** `Artifacts/From Users/System Images/image.png` (PQMS waveform viewer UI design)
+   - **Sample Data:** `Artifacts/From Users/System Images/BKP0227_20260126 101655_973.csv` (3586 rows, 4 columns)
+   - **Estimated Effort:** 1 day → **Actual: 1 day**
+
+7. **Special IDR Upload Feature** (Week 4-5)
+   - **Purpose:** Automated mapping of IDR records to PQ events using timestamp and substation
+   - **Key Features:**
+     - Excel upload with multiple IDR records
+     - Automatic mapping using timestamp ± tolerance (e.g., ±5 minutes) and substation
+     - Mapping results table for user confirmation before import
+     - Handle timestamp differences between ADMS (IDR) and PQMS/CPDIS (PQ events)
+     - Manual override: Remove IDR from event_detail, manually add IDR from database
+   - **Technical Implementation:**
+     - IDR upload modal with Excel parsing
+     - Fuzzy matching algorithm for timestamp/substation correlation
+     - Preview table showing matched/unmatched records
+     - Database updates with audit trail
+   - **UI Components:**
+     - IDRUploadModal with file upload and mapping preview
+     - Event detail page with IDR management (add/remove)
+   - **Estimated Effort:** 1 week
+
+8. **Erxi-Reporting Merge Plan** (Jan 20) ⭐ **NEW**
+  - **Purpose:** Safely migrate reporting features from #Erxi-Reporting into the main PQMAP application
+  - **Current Status:** Phase 4 completed (Jan 23)
+  - **Known Conflicts (from initial review):**
+    - **New reporting tables:** Erxi-Reporting adds `voltage_profiles` + `meter_voltage_readings` (migration `20251229000000_create_voltage_profiles.sql`) not present in main
+    - **Report UI divergence:** Erxi-Reporting replaces Reports page with a 4,000-line, multi-tab UI (PQ Summary, Benchmarking, Profiles, Data Maintenance, Meter Communication)
+    - **Overlap with existing modules:**
+      - Benchmarking overlaps with existing `pq_benchmark_standards`/`pq_benchmark_thresholds`
+      - Meter Communication overlaps with Meter Availability module
+    - **Mock-heavy implementation:** Many report tabs use mock datasets and placeholders (service logs, affected customers, benchmarking scatter, verification data)
+    - **Report Builder gap:** Erxi-Reporting lacks the interactive Report Builder widget and saved report flow (`saved_reports` table)
+  - **Merge Approach:**
+      - **Phase 1 — Inventory + Scaffolding (1 day)**
+        - Diff `src/components`, `src/services`, `src/types`, and `supabase/migrations` between main and #Erxi-Reporting
+        - Decide which Erxi tabs are truly unique (candidate list) vs. duplicates of existing PQMAP modules
+        - Add minimal scaffolding in main app for the target reporting pages (routes/navigation/permission entry) without changing production data paths
+        - Define acceptance criteria per chosen tab (data source, filters, export outputs)
+        - **Test/Checkpoint:**
+          - App builds and runs; navigation loads the new scaffolding page(s)
+          - Permissions enforce access via `userManagementService`
+          - No database migration required yet; no regressions to existing Report Builder
+
+      - **Phase 2 — Database Decision + Ingestion Spike (1 day)**
+        - Make an explicit go/no-go decision on adopting `meter_voltage_readings` + `voltage_profiles`
+        - If adopted: port the migration into main app (including RLS policies) and document the intended ingestion strategy (batch backfill, scheduled job, upstream feed)
+        - Source AssetManagement realtime readings from `meter_voltage_readings` (keep mock fallback until ingestion is live)
+        - Implement a thin service layer in main app that can read the new tables (no UI dependence on mock data)
+        - **Test/Checkpoint:**
+          - Migration applies cleanly in a dev environment
+          - Basic read queries work under expected roles (viewer/operator/admin) per RLS
+          - Service functions return data and handle empty-state gracefully
+
+      - **Phase 3 — Migrate 1–2 High-Value Tabs End-to-End (2–3 days)**
+        - Cherry-pick only the selected, unique tab logic from #Erxi-Reporting (start with the most data-backed tab, e.g., Meter Communication)
+        - Refactor the monolithic Erxi `Reports.tsx` into smaller components aligned with PQMAP patterns (modal/layout/export/dropdowns)
+        - Replace mock datasets with real Supabase queries or existing services in main app
+        - Keep the existing Report Builder as-is (do not downgrade `saved_reports` workflows)
+        - **Test/Checkpoint:**
+          - Each migrated tab loads real data (or clearly-defined empty state)
+          - Filters and export (CSV/Excel/PDF if applicable) work and match expected columns
+          - TypeScript check passes; basic smoke test around Reports + Report Builder
+
+      - **Phase 4 — Expand, QA, and De-duplication (1–2 days)**
+        - Migrate remaining agreed tabs (or explicitly drop them if redundant)
+        - Consolidate overlaps with existing modules (Benchmarking / Meter Availability) instead of duplicating logic
+        - Run regression checks focused on reporting, exports, and permissions
+        - Archive/remove #Erxi-Reporting after approval, and update documentation to reflect the new reporting architecture
+        - **Test/Checkpoint:**
+          - Full reporting area passes regression (Report Builder save/share + new tabs)
+          - No duplicated navigation/modules; permissions remain consistent
+          - Documentation updated; merge is ready for stakeholder sign-off
+
+    - **Remaining Items:** Deferred by request (server-side aggregation, profiles CRUD, ingestion spec)
+    - **Estimated Effort:** 5–7 working days (4 phases, testable checkpoints)
+
+9. **Dashboard Enhancements Phase 1** (Week 5-6) ⭐ **NEW** (Jan 27)
+   - **Purpose:** Enhance existing dashboard components with new analysis capabilities and data visualization options
+   - **Scope:**
+     - **9.1 AffectedCustomerChart Tab System**
+       - Add tab selector in upper left corner
+       - Tab 1: Voltage Dip Events per Customer (existing functionality)
+       - Tab 2: PQ Services Provided to Customers (new)
+       - Show sum of PQ services from `pq_service_records` table
+       - Maintain same TreeMap visualization style for consistency
+     
+     - **9.2 RootCauseChart Logic Update**
+       - Add new "Cause" column populated by regional staff
+       - Fallback hierarchy: Use regional staff "Cause" first, if empty use IDR "Cause"
+       - Database update: Add `cause_regional` column to `pq_events` table
+       - Update chart calculation to implement prioritization logic
+     
+     - **9.3 AffectedEquipmentChart (NEW)**
+       - New dashboard component for equipment failure analysis
+       - Data source: IDR → EquipmentCategory field
+       - Visualization: Bar chart showing equipment types vs voltage dip count
+       - Integration: Add to Dashboard.tsx layout
+     
+     - **9.4 InsightChart Year Comparison**
+       - Upper chart: Add configuration modal to select 3+ years for comparison
+       - Allow custom year selection (not limited to current-2, current-1, current)
+       - Dynamic legend generation based on selected years
+     
+     - **9.5 InsightChart Fragile Circuit Analysis**
+       - Lower chart: Replace substation analysis with circuit analysis
+       - Data source: IDR → Circuit field
+       - Parse circuit code from brackets: "(ST10) Yuen Long - Au Tau" → "ST10"
+       - Aggregate voltage dips by circuit code
+       - Show circuits with > 10 voltage dip events
+     
+     - **9.6 SARFI70Monitor Display Mode Toggle**
+       - Add toggle button: "Single" vs "Accumulative"
+       - Single mode: Show monthly SARFI-70 scores (current behavior)
+       - Accumulative mode: Show cumulative sum (Jan=1.1, Feb=1.1+0.9=2.0, Mar=2.0+0.8=2.8)
+       - Save preference to localStorage
+   
+   - **Technical Implementation:**
+     - Add `idr_circuit`, `idr_equipment_category` columns to `idr_records` table
+     - Create `AffectedEquipmentChart.tsx` component (300+ lines)
+     - Update `AffectedCustomerChart.tsx` with tab system (150 lines)
+     - Update `RootCauseChart.tsx` with fallback logic (50 lines)
+     - Update `InsightChart.tsx` with year selector and circuit parsing (200 lines)
+     - Update `SARFI70Monitor.tsx` with accumulative mode (100 lines)
+   
+   - **Database Changes:**
+     ```sql
+     ALTER TABLE pq_events ADD COLUMN cause_regional text;
+     ALTER TABLE idr_records ADD COLUMN circuit text;
+     ALTER TABLE idr_records ADD COLUMN equipment_category text;
+     ```
+   
+   - **UI Components:**
+     - InsightYearConfigModal (for year selection)
+     - Tab system in AffectedCustomerChart
+     - Mode toggle button in SARFI70Monitor
+   
+   - **Estimated Effort:** 2 weeks
 
 ---
 
@@ -640,6 +875,9 @@ Real Notification Integrations ⭐ **NEW**
 | 2026-01-07 | In Progress | Added Weighting Factors, PQ Benchmarking (completed) | System |
 | 2026-01-07 | Power BI | Consolidated QA document, added decision criteria | System |
 | 2026-01-08 | Q1 2026 Planned | Added System Parameters module with placeholder UI | System |
+| 2026-01-19 | Q1 2026 Planned | Added Event Management restructure, Advanced Filter button, and Special IDR Upload features after requirement workshop | System |
+| 2026-01-23 | Q1 2026 Planned | Updated Erxi-Reporting Merge Plan to Phase 4 completed and deferred remaining items | System |
+| 2026-01-27 | Q1 2026 Planned | **Added Dashboard Enhancements Phase 1** - AffectedCustomerChart tabs, RootCauseChart fallback logic, AffectedEquipmentChart (new), InsightChart year comparison & circuit analysis, SARFI70Monitor accumulative mode | System |
 
 ---
 

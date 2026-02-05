@@ -100,6 +100,160 @@ src/
 
 ### January 2026
 
+#### Waveform Analysis Viewer in Technical Tab (Jan 28, 2026)
+**Features Added:**
+- **Interactive Waveform Visualization Component**
+  - Purpose: Visual analysis of voltage waveform data captured during power quality events
+  - Component: `WaveformViewer.tsx` (450+ lines) using Recharts library
+  - Chart Library: Recharts for React-based interactive line charts with zoom and tooltip support
+  - Location: Event Details → Technical Tab (below SARFI Analysis)
+
+- **Multi-View Display Modes**
+  - **Combined View**: All 3 voltage phases (V1/V2/V3) overlaid in single chart
+    - Color scheme: Red (V1), Green (V2), Blue (V3)
+    - Chart height: 400px with responsive container
+    - Simultaneous phase comparison for voltage balance analysis
+  - **Individual Phase Views**: Separate charts for each phase (V1, V2, V3)
+    - Dedicated phase colors with matching grid backgrounds
+    - Chart height: 250px per phase
+    - Phase-specific Y-axis scaling for detailed analysis
+  - **View Selector**: Toggle buttons (Combined | V1 | V2 | V3) in header
+
+- **Interactive Features**
+  - **Hover Tooltips**: Shows exact voltage values for all phases at cursor position
+    - Displays timestamp with millisecond precision (HH:mm:ss.SSS format)
+    - White background with 2px border, auto-positions near cursor
+    - Full data accuracy (not downsampled)
+  - **Mouse Wheel Zoom**: Zoom range 50% to 200% with dynamic resampling
+    - 50% zoom: ~500 points (wider view)
+    - 100% zoom: ~1000 points (default)
+    - 200% zoom: ~2000 points (detailed view)
+  - **Zoom Controls**: Zoom In/Out buttons, percentage display, Reset to 100% button
+    - Integrated in purple-indigo gradient header
+    - Disabled states at min/max zoom levels
+
+- **Statistics Display**
+  - Real-time calculation of Min/Max/RMS values for each phase
+  - Color-coded phase indicators (circular dots matching phase colors)
+  - Horizontal statistics bar with 3-column grid layout
+  - Sample count information (total samples vs displayed points)
+
+- **Performance Optimization**
+  - **Downsampling Algorithm**: 3586 CSV rows → ~1000 display points (6x reduction)
+  - useMemo for expensive calculations (parsing, statistics, downsampling)
+  - Full data preserved in memory for tooltip accuracy
+  - Dynamic sample rate adjusts with zoom level
+  - Smooth 300ms chart animations
+  - No dots on lines (better performance for high-density data)
+
+- **Data Structure & Storage**
+  - **CSV Format**: Timestamp, V1, V2, V3 (4 columns)
+  - **Database Field**: Added `waveform_csv` TEXT field to `pq_events` table
+  - **Example Row**: `2026-01-26 10:16:55.923,-131839.296875,297632.875,-163805.046875`
+  - **Sample Data**: 3586 rows from BKP0227_20260126 101655_973.csv
+  - **Storage Strategy**: CSV content stored directly in database (Option A for demo)
+
+- **Demo Mode Implementation**
+  - Currently loads sample CSV for all events (pending PQMS integration)
+  - Async fetch from public folder: `/Artifacts/From Users/System Images/BKP0227_20260126 101655_973.csv`
+  - Graceful fallback if CSV not found
+  - Easy migration path to real PQMS data
+
+- **Chart Configuration Details**
+  - **X-Axis**: Timestamp with HH:mm:ss.SSS format, gray tick labels (11px font)
+  - **Y-Axis**: Voltage in Volts (V), left-side label with rotation, gray tick labels
+  - **CartesianGrid**: Dashed 3-3 pattern, light slate color (#e2e8f0)
+  - **Line Styling**: strokeWidth 1.5-2, monotone curve type, no dots
+  - **Legend**: Bottom position with 20px padding, line icons
+  - **Margins**: top: 5, right: 30, left: 20, bottom: 5
+
+- **Fallback UI**
+  - Empty state when no waveform data available
+  - Activity icon (gray, 12x12) with centered layout
+  - Message: "No waveform data available"
+  - Subtext: "Waveform capture data has not been recorded for this event"
+
+- **Component Integration**
+  - File: `src/components/EventManagement/EventDetails.tsx` modified
+  - Replaced old `WaveformDisplay` with new `WaveformViewer`
+  - Added `waveformCsvData` state variable
+  - useEffect hook for async CSV loading per event
+  - Props: `csvData: string | null`
+
+- **TypeScript Type Updates**
+  - File: `src/types/database.ts`
+  - Added `waveform_csv: string | null` to PQEvent interface
+  - Comment: "CSV data for waveform visualization (Timestamp,V1,V2,V3)"
+
+**Technical Implementation:**
+```typescript
+// WaveformViewer.tsx structure
+interface WaveformData {
+  timestamp: string;
+  v1: number;
+  v2: number;
+  v3: number;
+}
+
+interface WaveformViewerProps {
+  csvData: string | null;
+}
+
+// Key functions:
+- parsedData = useMemo(() => parseCSV(csvData), [csvData])
+- displayData = useMemo(() => downsample(parsedData, zoomLevel), [parsedData, zoomLevel])
+- stats = useMemo(() => calculateStats(parsedData), [parsedData])
+- CustomTooltip component for hover display
+- formatTimestamp(timestamp) for X-axis labels
+- handleWheel(e) for mouse wheel zoom
+```
+
+**Future Enhancements:**
+- Real CSV upload from PQMS system (replace demo data)
+- Waveform capture trigger marking (orange dashed line at event start)
+- Export waveform chart as PNG image (via html2canvas)
+- Compare multiple waveforms (overlay mode)
+- FFT analysis view (frequency domain)
+- Event annotation markers on timeline
+
+**Reference Materials:**
+- Reference UI: `Artifacts/From Users/System Images/image.png` (PQMS waveform viewer design)
+- Sample CSV: `Artifacts/From Users/System Images/BKP0227_20260126 101655_973.csv` (3586 rows)
+
+---
+
+#### Reporting & Meter Communication (Jan 23, 2026)
+**Features Added:**
+- Reporting page with Meter Communication summary + table, filters, sorting, and export (Excel/CSV)
+- **Database support** for `meter_voltage_readings` and `voltage_profiles` (UUID FK to `pq_meters`)
+- **Asset Management enhancement**: latest voltage/current reading panel sourced from database (mock fallback preserved)
+- **Shared availability utilities** for consistent time-range and availability calculations
+
+#### Reporting – PQ Summary UI Preview (Jan 30, 2026)
+**Features Added:**
+- New **Reporting** module entry (Navigation → Reporting)
+- PQ Summary screen matching target UI (filters + event list)
+- Clickable overlays for **Affected Customers**, **PQ Service Logs**, and **Event Details** (mock data)
+- English calendar-style date picker (YYYY/MM/DD) for time range selection
+
+#### Reporting – Benchmarking Tab Preview (Jan 30, 2026)
+**Features Added:**
+- Benchmarking tab with **PQ Standards** list (search + By Standard/By Parameter filters)
+- Add/Edit Standard modal and Delete confirmation modal (in-memory preview)
+- **Voltage Dip Benchmarking** flow: select standard + date range → “Get Benchmark Result” → chart + summary + detailed results table (mock data)
+
+#### Reporting – Data Maintenance Tab Preview (Jan 30, 2026)
+**Features Added:**
+- Data Maintenance tab with sub-tabs: **Raw Data / Daily Data / Weekly Data**
+- Left step panel:
+  - Step 1 meter selection (Raw: searchable meter list; Daily/Weekly: voltage level selector placeholder)
+  - Step 2 parameter selection (Voltage / Current / THD)
+  - Step 3 time range selection with English calendar popovers (`YYYY/MM/DD`) + hour/minute inputs
+  - Time range limits: Raw max **1 month**, Daily/Weekly max **1 year** (UI validation)
+- Right results area:
+  - Mock tables matching target layouts (Raw L1/L2/L3; Daily V1/2/3 max/min; Weekly L1/L2/L3)
+  - **Export CSV** (disabled when empty) + Clear Results
+
 #### Harmonic Events Table (Jan 9, 2026)
 **Features Added:**
 - **Separate Table for Harmonic Measurements**
@@ -712,6 +866,29 @@ Dashboard.tsx
    - Integration with substation data for automatic region lookup
    - Responsive 2-column grid layout (1 column on mobile)
 
+5. **Event Details Tabs** ✨ UPDATED (Jan 28, 2026)
+   - **Overview Tab**: Structured 4-card layout (AC1-AC4)
+     - AC1: Core Event Data (timestamp DD/MM/YYYY HH:mm:ss, voltage level, substation, transformer/ring number)
+     - AC2: Magnitude & Duration (VL1/VL2/VL3 large displays, auto-formatted duration)
+     - AC3: Binary Indicators (Min Volt <70%, False Alarm with checkmark/X icons)
+     - AC4: Classification & Workflow (event type, severity badges, status mapping)
+   - **Technical Tab**: Technical specifications + SARFI analysis + **Waveform Viewer** ⚡ NEW
+     - Remaining voltage progress bar with color coding
+     - SARFI indices (S10-S90) for voltage dip/swell events (hidden for harmonic)
+     - **Interactive Waveform Visualization**:
+       - Combined view: All 3 phases (Red V1, Green V2, Blue V3) in single chart
+       - Individual views: Separate V1/V2/V3 charts with phase-specific colors
+       - Mouse hover tooltips with exact voltage values at each timestamp
+       - Mouse wheel zoom (50%-200%) with zoom controls and reset button
+       - Statistics display: Min/Max/RMS values for each phase
+       - Performance: Downsampling 3586 rows → ~1000 points for smooth rendering
+       - CSV format: Timestamp, V1, V2, V3 (stored in `pq_events.waveform_csv`)
+   - **Customer Impact Tab**: Impact summary cards + affected customers table
+   - **PQ Services Tab**: Service records list (site surveys, consultations, etc.)
+   - **Child Events Tab**: Nested child events if mother event (tree structure)
+   - **Timeline Tab**: Event lifecycle timeline with status changes
+   - **IDR Tab**: Comprehensive incident data record management
+
 #### Key Features
 
 ##### Mother Event Grouping
@@ -1117,6 +1294,21 @@ interface ReportConfig {
 
 ---
 
+#### Reporting Tools ✨ UPDATED (January 2026)
+
+**Location**: Navigation → Reports
+
+**Purpose**: Centralized entry point for reporting tools and report configuration.
+
+**Scope**:
+- PQ Summary report filter configuration (11 event types)
+- Advanced filters are shown only when Event Type = **Voltage** (Voltage Level, Incident Time, Region, Duration)
+
+**Component File**:
+- `src/components/Reports.tsx`
+
+---
+
 ### 6. Data Maintenance Module
 
 **Purpose**: Master data management for SARFI profiles and PQ benchmarking standards
@@ -1294,6 +1486,15 @@ interface PQBenchmarkThreshold {
 - Year-over-year comparison
 - Improvement recommendations
 
+**Raw Data Download (UI in Reports Module)** ✨ NEW (Jan 2026)
+- Location: Reporting Tools → Report Type → **Annual PQ Performance**
+- 3-step filter workflow (aligned with PQMS raw data UI):
+  1) Select one PQ meter (with voltage-level quick filter + search)
+  2) Select parameter (dropdown)
+  3) Set time range (max 1 month)
+- Action: **Get Raw Data** downloads an Excel file with columns: `Name`, `Parameter`, `status`, `Timestamp`, `L1`, `L2`, `L3`
+- Data source: `meter_voltage_readings` (currently supports Voltage/Current phase values)
+
 ##### 3. Meter Availability Report
 **Metrics**:
 - Communication uptime (%)
@@ -1393,6 +1594,8 @@ interface NotificationRule {
 interface PQServiceRecord {
   id: string;
   customer_id: string | null;
+  event_id: string | null;           // Optional link to pq_events
+  idr_no?: string | null;            // PQSIS IDR number (primary key for Voltage Dip mapping)
   service_date: string;
   service_type: 'site_survey' | 'harmonic_analysis' | 'consultation';
   findings: string | null;           // Observations and measurements
@@ -1405,6 +1608,7 @@ interface PQServiceRecord {
 
 #### Key Features
 - **Customer Linkage**: Associated with customer accounts
+- **IDR Mapping (PQSIS → PQMAP)**: When `idr_no` is provided, map the service record to a PQMAP **Voltage Dip** event via `pq_events.idr_no` (non-voltage-dip services are shown as independent service entries)
 - **Engineering Notes**: Detailed findings documentation
 - **Benchmark Standards**: Reference standards for assessment
 - **Recommendation Tracking**: Follow-up on suggested actions

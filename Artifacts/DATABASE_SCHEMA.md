@@ -212,6 +212,30 @@ function mapUamRoleToDbRole(uamRole: string): 'admin' | 'operator' | 'viewer' {
 }
 ```
 
+**⚠️ CRITICAL: psbg_cause_type Enum Values**
+
+```sql
+-- Database enum definition (PostgreSQL)
+CREATE TYPE psbg_cause_type AS ENUM (
+  'VEGETATION',
+  'DAMAGED BY THIRD PARTY', 
+  'UNCONFIRMED',
+  'ANIMALS, BIRDS, INSECTS'
+);
+```
+
+**ONLY These 4 Values Are Valid:**
+- `'VEGETATION'` - Vegetation-related causes (tree contact, growth interference)
+- `'DAMAGED BY THIRD PARTY'` - External damage by construction, vehicles, etc.
+- `'UNCONFIRMED'` - Cause not yet determined or verified
+- `'ANIMALS, BIRDS, INSECTS'` - Wildlife interference with equipment
+
+**Usage in pq_events table:**
+- Nullable field allows gradual adoption alongside existing `cause` field
+- UI displays PSBG cause first, falls back to IDR `cause` if PSBG cause is null
+- Charts and reports prioritize PSBG cause for standardized analysis
+- Management modal prevents deletion of options currently selected in events
+
 **Foreign Key Constraint:**
 ```sql
 -- profiles.id references auth.users(id)
@@ -368,6 +392,7 @@ Production substations with official codes and coordinates:
 |--------|------|---------|-------------|
 | `cause_group` | text | | High-level cause category |
 | `cause` | text | | Specific root cause (migrated from root_cause) |
+| `psbg_cause` | psbg_cause_type | | PSBG standardized cause classification |
 | `description` | text | | Detailed event description |
 
 **Equipment Fault Details:**
@@ -417,6 +442,12 @@ Production substations with official codes and coordinates:
   - Added realistic values (0.001 to 0.1) with seasonal patterns
   - 10 NULL values distributed for testing
   - Higher values Jul-Dec (typhoon/summer season)
+- ✅ **January 30, 2026**: Added PSBG cause field for standardized cause classification
+  - Migration: `20260130000000_add_psbg_cause_to_pq_events.sql`
+  - New enum type: `psbg_cause_type` with 4 values: 'VEGETATION', 'DAMAGED BY THIRD PARTY', 'UNCONFIRMED', 'ANIMALS, BIRDS, INSECTS'
+  - Nullable field allows gradual adoption alongside existing `cause` field
+  - UI integration: PSBG cause takes priority in displays and charts, falls back to IDR cause
+  - Management modal prevents deletion of options currently in use
 
 ---
 
@@ -672,12 +703,17 @@ Historical events (created before the trigger was added) will have `customer_cou
 | `benchmark_standard` | text | | Standard reference | `IEEE 519-2014` |
 | `engineer_id` | uuid | FK → profiles | Assigned engineer | `550e8400-e29b-41d4-a716-446655440000` |
 | `content` | text | | Additional content | |
+| `idr_no` | text | | IDR number from PQSIS (used to map to PQMAP voltage dip events) | `IDR-2025-000123` |
 | `created_at` | timestamptz | DEFAULT now() | Creation timestamp | `2025-12-15 14:30:00+00` |
 | `updated_at` | timestamptz | DEFAULT now() | Last update timestamp | `2025-12-15 16:45:00+00` |
 
 **Relationships:**
 - **event_id → pq_events**: Links service records to specific power quality events (one event can have multiple service records)
 - **customer_id → customers**: Associates service with customer account
+
+**IDR Mapping Rule (PQSIS → PQMAP):**
+- If `idr_no` is present, the system uses it as the primary key to map the service record to a **PQMAP Voltage Dip** event (`pq_events.event_type = 'voltage_dip'`).
+- For all other PQ services (no `idr_no`), records are displayed as independent service entries (no event-level mapping required).
 - **engineer_id → profiles**: Tracks which engineer performed the service
 
 **TypeScript Interface:** `PQServiceRecord`  

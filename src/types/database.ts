@@ -7,11 +7,32 @@ export type SubstationStatus = 'operational' | 'maintenance' | 'offline';
 export type CustomerType = 'residential' | 'commercial' | 'industrial';
 export type ServiceType = 'site_survey' | 'harmonic_analysis' | 'consultation' | 'on_site_study' | 'power_quality_audit' | 'installation_support';
 export type ReportType = 'supply_reliability' | 'annual_pq' | 'meter_availability' | 'customer_impact' | 'harmonic_analysis' | 'voltage_quality';
-export type NotificationType = 'email' | 'sms' | 'both';
+export type NotificationType = 'email' | 'teams';
 export type NotificationStatus = 'pending' | 'sent' | 'failed';
 export type ReportStatus = 'generating' | 'completed' | 'failed';
 export type SystemStatus = 'healthy' | 'degraded' | 'down';
 export type LoadType = 'DC' | 'EV' | 'others' | 'RE-PV' | 'RES' | 'RES-HRB' | 'RES-NOC';
+
+// Event Audit Log Types
+export type EventOperationType = 
+  | 'event_created'
+  | 'event_detected'
+  | 'marked_false'
+  | 'converted_from_false'
+  | 'grouped_automatic'
+  | 'grouped_manual'
+  | 'ungrouped_full'
+  | 'ungrouped_partial'
+  | 'idr_created'
+  | 'idr_updated'
+  | 'status_changed'
+  | 'severity_changed'
+  | 'cause_updated'
+  | 'psbg_cause_updated'
+  | 'event_modified'
+  | 'batch_marked_false'
+  | 'event_resolved'
+  | 'event_deleted';
 
 // UAM (User Access Management) Types
 export type SystemRole = 'system_admin' | 'system_owner' | 'manual_implementator' | 'watcher';
@@ -109,6 +130,35 @@ export interface PQMeter {
   substation?: Substation;
 }
 
+export type VoltageProfileDataType = 'voltage' | 'current';
+export type VoltageProfileValueType = 'average' | 'raw';
+
+export interface VoltageProfile {
+  id: string;
+  user_id: string;
+  profile_name: string;
+  data_type: VoltageProfileDataType;
+  value_type: VoltageProfileValueType;
+  voltage_level: string | null;
+  selected_meters: string[] | null;
+  parameters: string[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MeterVoltageReading {
+  id: string;
+  meter_id: string;
+  timestamp: string;
+  v1: number | null;
+  v2: number | null;
+  v3: number | null;
+  i1: number | null;
+  i2: number | null;
+  i3: number | null;
+  created_at: string;
+}
+
 export interface Customer {
   id: string;
   account_number: string;
@@ -169,6 +219,7 @@ export interface PQEvent {
   affected_phases: string[];
   severity: SeverityLevel;
   waveform_data: WaveformData | null;
+  waveform_csv: string | null; // CSV data for waveform visualization (Timestamp,V1,V2,V3)
   status: EventStatus;
   // Mother Event Grouping properties
   grouping_type: 'automatic' | 'manual' | null;
@@ -184,6 +235,7 @@ export interface PQEvent {
    // Cause Analysis
   cause_group: string | null;
   cause: string | null;
+  psbg_cause: 'VEGETATION' | 'DAMAGED BY THIRD PARTY' | 'UNCONFIRMED' | 'ANIMALS, BIRDS, INSECTS' | null;
   description: string | null;
     // Equipment Fault Details
   object_part_group: string | null;
@@ -282,30 +334,32 @@ export interface HarmonicEvent {
 export interface IDRRecord {
   id: string;
   event_id: string;
-  // Basic Information
+  // IDR Core Information
   idr_no: string | null;
   status: string | null;
-  voltage_level: string | null;
+  voltage_level: '400kV' | '132kV' | '11kV' | '380V' | null;
   duration_ms: number | null;
-  // Location & Equipment
-  address: string | null;
-  equipment_type: string | null;
-  // Voltage Measurements
+  // Fault & Asset Location
   v1: number | null;
   v2: number | null;
   v3: number | null;
-  // Fault Details
-  fault_type: string | null;
-  // Cause Analysis
+  address: string | null;
+  circuit: string | null;
+  equipment_type: string | null;
+  // Root Cause Analysis
   cause_group: string | null;
   cause: string; // REQUIRED
+  faulty_component: string | null;
   remarks: string | null;
+  // Extended Technical Details
+  external_internal: 'external' | 'internal' | null;
   object_part_group: string | null;
   object_part_code: string | null;
   damage_group: string | null;
   damage_code: string | null;
-  // Environment & Operations
+  fault_type: string | null;
   outage_type: string | null;
+  // Environment & Operations
   weather: string | null;
   weather_condition: string | null;
   responsible_oc: string | null;
@@ -357,11 +411,31 @@ export interface PQServiceRecord {
   benchmark_standard: string | null;
   engineer_id: string | null;
   event_id: string | null;
+  idr_no?: string | null;
   content: string | null;
   created_at: string;
   updated_at: string;
+  // New fields (Migration 20260205000001)
+  case_number?: number; // Auto-generated sequential case number
+  tariff_group?: string | null; // Customer premises tariff group (e.g., BT, HT, LT)
+  service_charge_amount?: number | null; // Service charging amount in HKD (thousands)
+  party_charged?: string | null; // Party to be charged (e.g., AMD, CLP, Customer)
+  completion_date?: string | null; // Service completion date
+  planned_reply_date?: string | null; // Planned reply date
+  actual_reply_date?: string | null; // Actual reply date
+  planned_report_issue_date?: string | null; // Planned report issue date
+  actual_report_issue_date?: string | null; // Actual report issue date
+  is_closed?: boolean; // Case closed status
+  is_in_progress?: boolean; // Case in-progress status
+  completed_before_target?: boolean | null; // Completed before target date
+  business_nature?: string | null; // Business nature (e.g., Shopping Centre, Factory)
+  participant_count?: number | null; // Number of participants (for education service type)
+  ss132_info?: string | null; // 132kV Primary S/S Name & Txn No.
+  ss011_info?: string | null; // 11kV Customer S/S Code & Txn No.
+  // Joined relations
   customer?: Customer;
   engineer?: Profile;
+  event?: Pick<PQEvent, 'id' | 'idr_no'>;
 }
 
 export interface Report {
@@ -506,6 +580,9 @@ export interface SubstationMapFilters {
   profileId: string;
   startDate: string;
   endDate: string;
+  includeFalseEvents: boolean;
+  motherEventsOnly: boolean;
+  voltageLevels: string[];
 }
 
 export interface SubstationMapProfile {
@@ -626,13 +703,12 @@ export interface PaginatedResponse<T> extends ApiResponse<T[]> {
 export interface NotificationChannel {
   id: string;
   name: string;
-  type: 'email' | 'sms' | 'teams';
+  type: 'email' | 'teams';
   status: 'enabled' | 'disabled' | 'maintenance';
   priority: number;
   config: {
     demo_mode?: boolean;
     smtp_server?: string;
-    sms_gateway?: string;
     teams_webhook?: string;
     [key: string]: any;
   };
@@ -653,7 +729,6 @@ export interface NotificationTemplate {
   description: string | null;
   email_subject: string | null;
   email_body: string | null;
-  sms_body: string | null;
   teams_body: string | null;
   variables: Array<{
     name: string;
@@ -688,7 +763,6 @@ export interface NotificationGroupMember {
   group_id: string;
   user_id: string;
   email: string | null;
-  phone: string | null;
   preferred_channels: string[];
   added_at: string;
   added_by: string | null;
@@ -728,7 +802,6 @@ export interface NotificationLog {
   recipient_type: 'user' | 'group' | 'adhoc';
   recipient_id: string | null;
   recipient_email: string | null;
-  recipient_phone: string | null;
   channel: string;
   subject: string | null;
   message: string | null;
@@ -757,3 +830,28 @@ export interface NotificationSystemConfig {
   updated_by: string | null;
 }
 
+export interface EventAuditLog {
+  id: string;
+  event_id: string;
+  operation_type: EventOperationType;
+  operation_details: {
+    source?: string;
+    note?: string;
+    affected_fields?: string[];
+    child_event_ids?: string[];
+    field_changes?: Record<string, { from: any; to: any }>;
+    is_mother_event?: boolean;
+    parent_event_id?: string | null;
+    event_type?: string;
+    duration_ms?: number;
+    severity?: string;
+    idr_no?: string;
+    manual_create?: boolean;
+    final_status?: string;
+    [key: string]: any;
+  };
+  user_id: string | null;
+  created_at: string;
+  // Joined relations
+  user?: Profile;
+}

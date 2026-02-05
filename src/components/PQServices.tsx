@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Wrench,
   Plus,
@@ -9,16 +9,21 @@ import {
   Calendar,
   BarChart3,
   Eye,
+  EyeOff,
   ChevronDown,
   FileDown,
   Building2,
   MapPin,
   AlertTriangle,
   X,
+  Upload,
+  Check,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Customer, PQServiceRecord, ServiceType } from '../types/database';
-import AddServiceModal from './PQServices/AddServiceModal';
+import EditServiceModal from './PQServices/EditServiceModal';
 import ViewDetailsModal from './PQServices/ViewDetailsModal';
 import EventDetails from './EventManagement/EventDetails';
 import * as XLSX from 'xlsx';
@@ -34,6 +39,7 @@ export default function PQServices() {
   const [timeRange, setTimeRange] = useState<'month' | '3months' | 'year' | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [servicesDetailView, setServicesDetailView] = useState(false); // Toggle between simple and detail view
   
   // Filters
   const [serviceTypeFilter, setServiceTypeFilter] = useState<ServiceType | 'all'>('all');
@@ -42,15 +48,31 @@ export default function PQServices() {
   const [sortBy, setSortBy] = useState<'name' | 'last_service' | 'total_services'>('name');
   
   // Modals
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedService, setSelectedService] = useState<PQServiceRecord | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [serviceToDelete, setServiceToDelete] = useState<PQServiceRecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
+  type EventDetailsTab = 'overview' | 'technical' | 'impact' | 'services' | 'children' | 'timeline' | 'idr';
+  const [eventDetailsInitialTab, setEventDetailsInitialTab] = useState<EventDetailsTab>('overview');
   const [selectedEventData, setSelectedEventData] = useState<{
     event: any;
     substation: any;
     impacts: any[];
   } | null>(null);
+
+  // PQSIS Import states
+  const [showImportDropdown, setShowImportDropdown] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResults, setImportResults] = useState<{
+    success: number;
+    failed: number;
+    errors: Array<{ row: number; message: string }>;
+  } | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load data
   useEffect(() => {
@@ -81,7 +103,41 @@ export default function PQServices() {
         .order('service_date', { ascending: false });
 
       if (error) throw error;
-      setServices(data || []);
+
+      const serviceRows = (data || []) as PQServiceRecord[];
+      const idrNumbers = Array.from(
+        new Set(
+          serviceRows
+            .map((s) => (s.idr_no || '').trim())
+            .filter((v) => v.length > 0)
+        )
+      );
+
+      let idrToVoltageDipEvent = new Map<string, { id: string; idr_no: string }>();
+      if (idrNumbers.length > 0) {
+        const { data: eventsData, error: eventsError } = await supabase
+          .from('pq_events')
+          .select('id, idr_no, event_type')
+          .in('idr_no', idrNumbers)
+          .eq('event_type', 'voltage_dip');
+
+        if (eventsError) throw eventsError;
+        (eventsData || []).forEach((e: any) => {
+          if (e.idr_no) {
+            idrToVoltageDipEvent.set(String(e.idr_no), { id: e.id, idr_no: String(e.idr_no) });
+          }
+        });
+      }
+
+      const enriched = serviceRows.map((s) => {
+        const idrNo = (s.idr_no || '').trim();
+        if (idrNo && idrToVoltageDipEvent.has(idrNo)) {
+          return { ...s, event: idrToVoltageDipEvent.get(idrNo) };
+        }
+        return { ...s, event: undefined };
+      });
+
+      setServices(enriched);
     } catch (err) {
       console.error('Error loading services:', err);
     } finally {
@@ -207,8 +263,179 @@ export default function PQServices() {
     };
   };
 
+  // Download PQSIS import template
+  const handleDownloadPQSISTemplate = () => {
+    const headers = [
+      'Case No.',
+      'Customer Name',
+      'Customer Group',
+      'Request Date',
+      'Service Type',
+      'Service',
+      'Service Charging (k)',
+      'Charged Department',
+      'Service Completion Date',
+      'Closed Case',
+      'In-Progress Case',
+      'Completed before Target Date',
+      'Planned Reply Date',
+      'Actual Reply Date',
+      'Planned Report Issue Date',
+      'Actual Report Issue Date',
+      'IDR Number'
+    ];
+
+    const exampleData = [
+      '5337.2',
+      'ABC Corporation',
+      'TG1',
+      '01/01/2026',
+      'Harmonics',
+      'Harmonic Analysis Study',
+      '25.5',
+      'PQ Department',
+      '15/01/2026',
+      'No',
+      'Yes',
+      'Yes',
+      '10/01/2026',
+      '09/01/2026',
+      '20/01/2026',
+      '18/01/2026',
+      'IDR-2026-001'
+    ];
+
+    const csvContent = [
+      '# PQSIS Import Template',
+      '# Upload this file with your PQSIS service records',
+      '# Date format: dd/mm/yyyy',
+      '# Closed Case / In-Progress / Completed before Target: Yes or No',
+      '',
+      headers.join(','),
+      exampleData.join(',')
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `PQSIS_Import_Template_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    setShowImportDropdown(false);
+  };
+
+  // Handle PQSIS CSV import
+  const handleImportPQSIS = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setImportResults(null);
+
+    try {
+      const text = await file.text();
+      const lines = text.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+
+      if (lines.length < 2) {
+        alert('CSV file is empty or invalid');
+        setIsImporting(false);
+        return;
+      }
+
+      // Skip header row
+      let successCount = 0;
+      let failedCount = 0;
+      const errors: Array<{ row: number; message: string }> = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+
+        if (values.length < 17) {
+          errors.push({ row: i + 1, message: 'Invalid CSV format - missing columns' });
+          failedCount++;
+          continue;
+        }
+
+        try {
+          // Map CSV to pq_service_records table structure
+          const serviceRecord = {
+            case_number: values[0],
+            service_date: values[3], // Request Date
+            service_type: values[4].toLowerCase().replace(/ /g, '_'),
+            content: values[5], // Service
+            service_charge_amount: parseFloat(values[6]) || 0,
+            party_charged: values[7],
+            completion_date: values[8],
+            is_closed: values[9].toLowerCase() === 'yes',
+            is_in_progress: values[10].toLowerCase() === 'yes',
+            completed_before_target: values[11].toLowerCase() === 'yes',
+            tariff_group: values[2], // Customer Group
+            planned_reply_date: values[12],
+            actual_reply_date: values[13],
+            planned_report_issue_date: values[14],
+            actual_report_issue_date: values[15],
+            idr_no: values[16] || null,
+            // Find customer_id from customer name
+            customer_id: null as string | null
+          };
+
+          // Find customer by name
+          const customerName = values[1];
+          const customer = customers.find(c => 
+            c.name.toLowerCase() === customerName.toLowerCase()
+          );
+
+          if (!customer) {
+            errors.push({ 
+              row: i + 1, 
+              message: `Customer "${customerName}" not found in database` 
+            });
+            failedCount++;
+            continue;
+          }
+
+          serviceRecord.customer_id = customer.id;
+
+          // Insert into database
+          const { error } = await supabase
+            .from('pq_service_records')
+            .insert(serviceRecord);
+
+          if (error) {
+            errors.push({ row: i + 1, message: error.message });
+            failedCount++;
+          } else {
+            successCount++;
+          }
+        } catch (err: any) {
+          errors.push({ row: i + 1, message: err.message || 'Unknown error' });
+          failedCount++;
+        }
+      }
+
+      setImportResults({
+        success: successCount,
+        failed: failedCount,
+        errors
+      });
+      setShowImportModal(true);
+
+      // Reload services if any succeeded
+      if (successCount > 0) {
+        await loadServices();
+      }
+    } catch (error: any) {
+      console.error('CSV import error:', error);
+      alert(`Failed to process CSV file: ${error.message}`);
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   // Handle View Event button click
-  const handleViewEvent = async (eventId: string) => {
+  const handleViewEvent = async (eventId: string, initialTab: EventDetailsTab = 'overview') => {
     console.log('🔍 [PQServices] View Event clicked:', eventId);
     
     try {
@@ -259,6 +486,8 @@ export default function PQServices() {
         firstImpact: impactsData?.[0]
       });
 
+      setEventDetailsInitialTab(initialTab);
+
       setSelectedEventData({
         event: eventData,
         substation: substationData,
@@ -284,8 +513,6 @@ export default function PQServices() {
       'Service Type': service.service_type.replace(/_/g, ' ').toUpperCase(),
       'Event ID': service.event_id || 'N/A',
       'Benchmark Standard': service.benchmark_standard || 'None',
-      'Findings': service.findings || '',
-      'Recommendations': service.recommendations || '',
       'Engineer': service.engineer?.full_name || 'Not assigned',
       'Created': new Date(service.created_at).toLocaleDateString('en-GB'),
     }));
@@ -311,14 +538,37 @@ export default function PQServices() {
   // Recent activities (last 10 services across all customers)
   const recentActivities = services.slice(0, 10);
 
-  const serviceTypeLabels: Record<string, string> = {
-    site_survey: 'Site Survey',
-    harmonic_analysis: 'Harmonic Analysis',
-    consultation: 'Consultation',
-    on_site_study: 'On-site Study',
-    power_quality_audit: 'Power Quality Audit',
-    installation_support: 'Installation Support',
+  // Click outside to close import dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (showImportDropdown && !target.closest('.import-dropdown-container')) {
+        setShowImportDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showImportDropdown]);
+
+  // Helper function to convert service_type enum to display label
+  const formatServiceTypeLabel = (serviceType: string): string => {
+    return serviceType
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
   };
+
+  // Get unique service types from actual database data
+  const getServiceTypeLabels = (): Record<string, string> => {
+    const uniqueTypes = Array.from(new Set(services.map(s => s.service_type)));
+    const labels: Record<string, string> = {};
+    uniqueTypes.forEach(type => {
+      labels[type] = formatServiceTypeLabel(type);
+    });
+    return labels;
+  };
+
+  const serviceTypeLabels = getServiceTypeLabels();
 
   return (
     <div className="p-6 space-y-6">
@@ -333,8 +583,8 @@ export default function PQServices() {
             </div>
           </div>
 
-          {/* Time Range Selector */}
-          <div className="flex items-center gap-2">
+          {/* Time Range Selector + PQSIS Import */}
+          <div className="flex items-center gap-3">
             <span className="text-sm font-semibold text-slate-700">Time Range:</span>
             <select
               value={timeRange}
@@ -346,63 +596,136 @@ export default function PQServices() {
               <option value="year">This Year</option>
               <option value="all">All Time</option>
             </select>
-          </div>
-        </div>
 
-        {/* Dashboard Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
-            <div className="flex items-center gap-3 mb-2">
-              <Users className="w-6 h-6 text-blue-600" />
-              <p className="text-sm font-medium text-slate-600">Total Customers</p>
-            </div>
-            <p className="text-3xl font-bold text-slate-900">{metrics.totalCustomers}</p>
-          </div>
+            {/* PQSIS Import Dropdown */}
+            <div className="relative import-dropdown-container">
+              <button
+                onClick={() => setShowImportDropdown(!showImportDropdown)}
+                disabled={isImporting}
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
+                title="Upload PQSIS CSV"
+              >
+                <Upload className="w-4 h-4" />
+                {isImporting ? 'Importing...' : 'Upload CSV'}
+                <ChevronDown className={`w-4 h-4 transition-transform ${showImportDropdown ? 'rotate-180' : ''}`} />
+              </button>
 
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
-            <div className="flex items-center gap-3 mb-2">
-              <Wrench className="w-6 h-6 text-green-600" />
-              <p className="text-sm font-medium text-slate-600">Total Services</p>
-            </div>
-            <p className="text-3xl font-bold text-slate-900">{metrics.totalServices}</p>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
-            <div className="flex items-center gap-3 mb-2">
-              <Calendar className="w-6 h-6 text-purple-600" />
-              <p className="text-sm font-medium text-slate-600">This Month</p>
-            </div>
-            <p className="text-3xl font-bold text-slate-900">{metrics.thisMonthServices}</p>
-          </div>
-        </div>
-
-        {/* Horizontal Bar Chart */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
-          <div className="flex items-center gap-2 mb-4">
-            <BarChart3 className="w-6 h-6 text-slate-700" />
-            <h2 className="text-xl font-bold text-slate-900">Services by Category</h2>
-          </div>
-          <div className="space-y-3">
-            {Object.entries(serviceTypeLabels).map(([key, label]) => {
-              const count = metrics.serviceCounts[key] || 0;
-              const maxCount = Math.max(...Object.values(metrics.serviceCounts), 1);
-              const percentage = (count / maxCount) * 100;
-
-              return (
-                <div key={key} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-slate-700">{label}</span>
-                    <span className="font-bold text-slate-900">{count}</span>
-                  </div>
-                  <div className="h-8 bg-slate-100 rounded-lg overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500"
-                      style={{ width: `${percentage}%` }}
-                    />
-                  </div>
+              {showImportDropdown && (
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 py-2 z-30">
+                  <button
+                    onClick={() => {
+                      fileInputRef.current?.click();
+                      setShowImportDropdown(false);
+                    }}
+                    className="w-full px-4 py-2 text-left hover:bg-blue-50 flex items-center gap-2 text-slate-700 transition-colors"
+                  >
+                    <Upload className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm font-medium">Import CSV</span>
+                  </button>
+                  <button
+                    onClick={handleDownloadPQSISTemplate}
+                    className="w-full px-4 py-2 text-left hover:bg-green-50 flex items-center gap-2 text-slate-700 transition-colors"
+                  >
+                    <FileDown className="w-4 h-4 text-green-600" />
+                    <span className="text-sm font-medium">Download Template</span>
+                  </button>
                 </div>
-              );
-            })}
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={handleImportPQSIS}
+                className="hidden"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Compact Dashboard: 30% Metrics + 70% Chart */}
+        <div className="grid grid-cols-12 gap-3 h-[320px]">
+          {/* Left: Vertical Metrics (30%) */}
+          <div className="col-span-12 lg:col-span-4 space-y-2">
+            {/* Total Customers */}
+            <div className="bg-white rounded-lg shadow-md p-3 border border-slate-100 h-[calc((100%-1rem)/3)]">
+              <div className="flex items-center gap-2 mb-1">
+                <Users className="w-4 h-4 text-blue-600" />
+                <p className="text-[11px] font-semibold text-slate-600">Total Customers</p>
+              </div>
+              <p className="text-xl font-bold text-slate-900">{metrics.totalCustomers}</p>
+            </div>
+
+            {/* Total Services */}
+            <div className="bg-white rounded-lg shadow-md p-3 border border-slate-100 h-[calc((100%-1rem)/3)]">
+              <div className="flex items-center gap-2 mb-1">
+                <Wrench className="w-4 h-4 text-green-600" />
+                <p className="text-[11px] font-semibold text-slate-600">Total Services</p>
+              </div>
+              <p className="text-xl font-bold text-slate-900">{metrics.totalServices}</p>
+            </div>
+
+            {/* This Month */}
+            <div className="bg-white rounded-lg shadow-md p-3 border border-slate-100 h-[calc((100%-1rem)/3)]">
+              <div className="flex items-center gap-2 mb-1">
+                <Calendar className="w-4 h-4 text-purple-600" />
+                <p className="text-[11px] font-semibold text-slate-600">This Month</p>
+              </div>
+              <p className="text-xl font-bold text-slate-900">{metrics.thisMonthServices}</p>
+            </div>
+          </div>
+
+          {/* Right: Vertical Bar Chart (70%) */}
+          <div className="col-span-12 lg:col-span-8">
+            <div className="bg-white rounded-lg shadow-md p-3 border border-slate-100 h-full">
+              <div className="flex items-center gap-2 mb-2">
+                <BarChart3 className="w-4 h-4 text-slate-700" />
+                <h2 className="text-sm font-bold text-slate-900">Services by Category</h2>
+              </div>
+              
+              {/* Vertical Bars Container */}
+              <div className="h-[calc(100%-1.75rem)] flex items-end justify-between gap-2">
+                {Object.entries(serviceTypeLabels).map(([key, label]) => {
+                  const count = metrics.serviceCounts[key] || 0;
+                  const maxCount = Math.max(...Object.values(metrics.serviceCounts), 1);
+                  const heightPercentage = (count / maxCount) * 100;
+
+                  return (
+                    <div key={key} className="flex-1 flex flex-col items-center gap-2">
+                      {/* Bar */}
+                      <div className="w-full flex flex-col justify-end items-center" style={{ height: 'calc(100% - 3rem)' }}>
+                        <div className="w-full relative">
+                          <div
+                            className="w-full bg-gradient-to-t from-blue-500 to-indigo-500 rounded-t-lg transition-all duration-500 relative group cursor-pointer hover:from-blue-600 hover:to-indigo-600"
+                            style={{ height: `${heightPercentage}%`, minHeight: count > 0 ? '20px' : '0px' }}
+                          >
+                            {/* Count Label on Hover */}
+                            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <span className="bg-slate-900 text-white text-xs font-bold px-2 py-1 rounded whitespace-nowrap">
+                                {count}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Label */}
+                      <div className="text-center">
+                        <p className="text-[10px] font-medium text-slate-600 leading-tight" style={{ wordBreak: 'break-word' }}>
+                          {label.split(' ').map((word, i) => (
+                            <span key={i}>
+                              {word}
+                              {i < label.split(' ').length - 1 && <br />}
+                            </span>
+                          ))}
+                        </p>
+                        <p className="text-xs font-bold text-slate-900 mt-0.5">{count}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -664,6 +987,44 @@ export default function PQServices() {
                             : 'No services yet'}
                         </p>
                       </div>
+
+                      <div className="p-4 bg-white rounded-lg border border-slate-200 md:col-span-2">
+                        <p className="text-sm font-semibold text-slate-700 mb-3">IDR Numbers</p>
+                        {services.filter(s => s.customer_id === selectedCustomer.id).length === 0 ? (
+                          <p className="text-sm text-slate-500">No services yet</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {services
+                              .filter(s => s.customer_id === selectedCustomer.id)
+                              .map((s) => {
+                                const idrNo = (s.idr_no || s.event?.idr_no || '').trim();
+                                const mappedEventId = s.event?.id;
+                                const hasEvent = !!mappedEventId;
+                                return (
+                                  <button
+                                    key={s.id}
+                                    type="button"
+                                    disabled={!hasEvent}
+                                    onClick={() => {
+                                      if (mappedEventId) handleViewEvent(mappedEventId, 'idr');
+                                    }}
+                                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                                      hasEvent
+                                        ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                                        : 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'
+                                    }`}
+                                    title={hasEvent ? 'Open IDR details' : 'No related event linked'}
+                                  >
+                                    {idrNo || 'No IDR'}
+                                  </button>
+                                );
+                              })}
+                          </div>
+                        )}
+                        <p className="text-xs text-slate-500 mt-2">
+                          Click an IDR number to open the related event and view IDR details.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -675,7 +1036,24 @@ export default function PQServices() {
                       <h3 className="text-lg font-bold text-slate-900">
                         Service Log ({getFilteredServices().length})
                       </h3>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
+                        {/* View Toggle */}
+                        <button
+                          onClick={() => setServicesDetailView(!servicesDetailView)}
+                          className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors text-sm font-medium text-slate-700"
+                        >
+                          {servicesDetailView ? (
+                            <>
+                              <EyeOff className="w-4 h-4" />
+                              Simple View
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="w-4 h-4" />
+                              Detail View
+                            </>
+                          )}
+                        </button>
                         {/* Export */}
                         <div className="relative export-dropdown-container">
                           <button
@@ -699,14 +1077,6 @@ export default function PQServices() {
                           )}
                         </div>
 
-                        {/* Add Service */}
-                        <button
-                          onClick={() => setShowAddModal(true)}
-                          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-lg transition-all font-semibold"
-                        >
-                          <Plus className="w-5 h-5" />
-                          Add Service
-                        </button>
                       </div>
                     </div>
 
@@ -722,22 +1092,232 @@ export default function PQServices() {
                         <p className="font-medium text-lg">No services found</p>
                         <p className="text-sm mt-1">Add a service to get started</p>
                       </div>
+                    ) : servicesDetailView ? (
+                      // DETAIL VIEW: 2-column card layout
+                      <div className="space-y-4">
+                        {getFilteredServices().map((service) => (
+                          <div key={service.id} className="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-lg transition-shadow">
+                            {/* Header */}
+                            <div className="flex items-start justify-between mb-4 pb-4 border-b border-slate-200">
+                              <div>
+                                <h4 className="text-lg font-bold text-slate-900">
+                                  Case #{service.case_number || 'N/A'}
+                                </h4>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                                    {serviceTypeLabels[service.service_type]}
+                                  </span>
+                                  {service.is_closed ? (
+                                    <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                                      ✓ Closed
+                                    </span>
+                                  ) : service.is_in_progress ? (
+                                    <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-medium">
+                                      ⏳ In Progress
+                                    </span>
+                                  ) : null}
+                                  {service.completed_before_target !== null && (
+                                    service.completed_before_target ? (
+                                      <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-medium">
+                                        ✓ On Time
+                                      </span>
+                                    ) : (
+                                      <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">
+                                        ⚠ Late
+                                      </span>
+                                    )
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm text-slate-500">Request Date</p>
+                                <p className="font-semibold text-slate-900">
+                                  {new Date(service.service_date).toLocaleDateString('en-GB')}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* 2-Column Layout */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                              {/* Customer Information */}
+                              <div className="space-y-3">
+                                <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                                  Customer Information
+                                </h5>
+                                <div>
+                                  <p className="text-xs text-slate-500">Customer Premises Location</p>
+                                  {service.customer ? (
+                                    <div>
+                                      <p className="font-medium text-slate-900">{service.customer.name}</p>
+                                      <p className="text-sm text-slate-600">{service.customer.address || 'N/A'}</p>
+                                      <p className="text-xs text-slate-500 mt-1">Acc: {service.customer.account_number}</p>
+                                    </div>
+                                  ) : (
+                                    <p className="text-slate-400">N/A</p>
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="text-xs text-slate-500">Tariff Group</p>
+                                  <p className="font-medium text-slate-900">{service.tariff_group || 'N/A'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-slate-500">Business Nature</p>
+                                  <p className="font-medium text-slate-900">{service.business_nature || 'N/A'}</p>
+                                </div>
+                              </div>
+
+                              {/* Service Details */}
+                              <div className="space-y-3">
+                                <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                                  Service Details
+                                </h5>
+                                <div>
+                                  <p className="text-xs text-slate-500">Service</p>
+                                  <p className="font-medium text-slate-900 text-sm whitespace-pre-wrap">
+                                    {service.content 
+                                      ? service.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)
+                                      : 'No description'}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-slate-500">Engineer</p>
+                                  <p className="font-medium text-slate-900">
+                                    {service.engineer?.full_name || 'Not assigned'}
+                                  </p>
+                                </div>
+                                {service.participant_count && (
+                                  <div>
+                                    <p className="text-xs text-slate-500">No. of Participants</p>
+                                    <p className="font-medium text-slate-900">{service.participant_count}</p>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Financial Information */}
+                              <div className="space-y-3">
+                                <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                                  Financial
+                                </h5>
+                                <div>
+                                  <p className="text-xs text-slate-500">Service Charging (HKD)</p>
+                                  <p className="font-medium text-slate-900">
+                                    {service.service_charge_amount 
+                                      ? `$${service.service_charge_amount.toLocaleString()}k` 
+                                      : 'N/A'}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-slate-500">Party To Be Charged</p>
+                                  <p className="font-medium text-slate-900">{service.party_charged || 'N/A'}</p>
+                                </div>
+                              </div>
+
+                              {/* Dates */}
+                              <div className="space-y-3">
+                                <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                                  Key Dates
+                                </h5>
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  <div>
+                                    <p className="text-slate-500">Planned Reply</p>
+                                    <p className="font-medium text-slate-900">
+                                      {service.planned_reply_date 
+                                        ? new Date(service.planned_reply_date).toLocaleDateString('en-GB')
+                                        : 'N/A'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500">Actual Reply</p>
+                                    <p className="font-medium text-slate-900">
+                                      {service.actual_reply_date 
+                                        ? new Date(service.actual_reply_date).toLocaleDateString('en-GB')
+                                        : 'N/A'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500">Planned Report</p>
+                                    <p className="font-medium text-slate-900">
+                                      {service.planned_report_issue_date 
+                                        ? new Date(service.planned_report_issue_date).toLocaleDateString('en-GB')
+                                        : 'N/A'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500">Actual Report</p>
+                                    <p className="font-medium text-slate-900">
+                                      {service.actual_report_issue_date 
+                                        ? new Date(service.actual_report_issue_date).toLocaleDateString('en-GB')
+                                        : 'N/A'}
+                                    </p>
+                                  </div>
+                                  <div className="col-span-2">
+                                    <p className="text-slate-500">Service Completion</p>
+                                    <p className="font-medium text-slate-900">
+                                      {service.completion_date 
+                                        ? new Date(service.completion_date).toLocaleDateString('en-GB')
+                                        : 'Not completed'}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Substation/Circuit Info */}
+                              <div className="space-y-3 md:col-span-2">
+                                <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                                  Substation / Circuit Information
+                                </h5>
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <p className="text-xs text-slate-500">132kV Primary S/S Name & Txn No.</p>
+                                    <p className="font-medium text-slate-900">{service.ss132_info || 'N/A'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-slate-500">11kV Customer S/S Code & Txn No.</p>
+                                    <p className="font-medium text-slate-900">{service.ss011_info || 'N/A'}</p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Linked Event */}
+                              {service.event?.id && (
+                                <div className="md:col-span-2 pt-4 border-t border-slate-200">
+                                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                                    <button
+                                      onClick={() => handleViewEvent(service.event!.id, 'overview')}
+                                      className="text-blue-600 hover:text-blue-700 font-medium underline"
+                                    >
+                                      View Linked Event
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     ) : (
+                      // SIMPLE VIEW: Table with crucial columns
                       <div className="border border-slate-200 rounded-lg overflow-hidden">
                         <table className="w-full">
                           <thead className="bg-slate-50 border-b border-slate-200">
                             <tr>
                               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                                Date
+                                Case No.
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                                Customer Premises
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                                Request Date
                               </th>
                               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                                 Service Type
                               </th>
                               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                                Event ID
+                                Status
                               </th>
                               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                                Content
+                                Completion Date
                               </th>
                               <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
                                 Actions
@@ -747,53 +1327,71 @@ export default function PQServices() {
                           <tbody className="divide-y divide-slate-200">
                             {getFilteredServices().map((service) => (
                               <tr key={service.id} className="hover:bg-slate-50">
+                                <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-slate-900">
+                                  #{service.case_number || 'N/A'}
+                                </td>
                                 <td className="px-4 py-3 text-sm text-slate-900">
-                                  {new Date(service.service_date).toLocaleDateString('en-GB', {
-                                    day: '2-digit',
-                                    month: 'short',
-                                    year: 'numeric',
-                                  })}
-                                </td>
-                                <td className="px-4 py-3">
-                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded">
-                                    {serviceTypeLabels[service.service_type]}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3 text-sm">
-                                  {service.event_id ? (
-                                    <button 
-                                      onClick={() => {
-                                        console.log('🖱️ [PQServices] Event ID clicked in table:', service.event_id);
-                                        if (service.event_id) {
-                                          handleViewEvent(service.event_id);
-                                        }
-                                      }}
-                                      className="text-blue-600 hover:text-blue-700 font-medium underline"
-                                    >
-                                      {service.event_id.slice(0, 8)}...
-                                    </button>
+                                  {service.customer ? (
+                                    <div>
+                                      <div className="font-medium">{service.customer.name}</div>
+                                      <div className="text-xs text-slate-500 truncate max-w-xs">
+                                        {service.customer.address || 'N/A'}
+                                      </div>
+                                    </div>
                                   ) : (
                                     <span className="text-slate-400">N/A</span>
                                   )}
                                 </td>
-                                <td className="px-4 py-3 text-sm text-slate-600 max-w-xs truncate">
-                                  {service.content ? (
-                                    <div dangerouslySetInnerHTML={{ __html: service.content.slice(0, 100) + '...' }} />
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-900">
+                                  {new Date(service.service_date).toLocaleDateString('en-GB')}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded">
+                                    {serviceTypeLabels[service.service_type]}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                  {service.is_closed ? (
+                                    <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                                      ✓ Closed
+                                    </span>
+                                  ) : service.is_in_progress ? (
+                                    <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-medium">
+                                      ⏳ In Progress
+                                    </span>
                                   ) : (
-                                    <span className="text-slate-400">No content</span>
+                                    <span className="text-slate-400">N/A</span>
                                   )}
                                 </td>
-                                <td className="px-4 py-3 text-center">
-                                  <button
-                                    onClick={() => {
-                                      setSelectedService(service);
-                                      setShowDetailsModal(true);
-                                    }}
-                                    className="inline-flex items-center gap-1 px-3 py-1 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors text-sm font-medium"
-                                  >
-                                    <Eye className="w-4 h-4" />
-                                    View Details
-                                  </button>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-900">
+                                  {service.completion_date 
+                                    ? new Date(service.completion_date).toLocaleDateString('en-GB')
+                                    : <span className="text-slate-400">Pending</span>
+                                  }
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <button
+                                      onClick={() => {
+                                        setSelectedService(service);
+                                        setShowEditModal(true);
+                                      }}
+                                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                      title="Edit Service"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setServiceToDelete(service);
+                                        setShowDeleteModal(true);
+                                      }}
+                                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                      title="Delete Service"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -851,15 +1449,20 @@ export default function PQServices() {
 
       {/* Modals */}
       {selectedCustomer && (
-        <AddServiceModal
-          isOpen={showAddModal}
-          onClose={() => setShowAddModal(false)}
+        <EditServiceModal
+          isOpen={showEditModal}
+          onClose={() => {
+            setShowEditModal(false);
+            setSelectedService(null);
+          }}
           onSuccess={() => {
             loadServices();
-            setShowAddModal(false);
+            setShowEditModal(false);
+            setSelectedService(null);
           }}
           customerId={selectedCustomer.id}
           customerName={selectedCustomer.name}
+          serviceToEdit={selectedService}
         />
       )}
 
@@ -898,6 +1501,7 @@ export default function PQServices() {
                 event={selectedEventData.event}
                 substation={selectedEventData.substation}
                 impacts={selectedEventData.impacts}
+                initialTab={eventDetailsInitialTab}
                 onStatusChange={async (eventId, status) => {
                   console.log('🔄 [PQServices] Status change requested:', { eventId, status });
                   // Reload services after status change
@@ -907,6 +1511,7 @@ export default function PQServices() {
                   console.log('🗑️ [PQServices] Event deleted, reloading services');
                   setShowEventDetailsModal(false);
                   setSelectedEventData(null);
+                  setEventDetailsInitialTab('overview');
                   loadServices();
                 }}
                 onEventUpdated={() => {
@@ -914,6 +1519,188 @@ export default function PQServices() {
                   loadServices();
                 }}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PQSIS Import Results Modal */}
+      {showImportModal && importResults && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 rounded-t-2xl flex-shrink-0">
+              <h2 className="text-2xl font-bold">Import Results</h2>
+              <p className="text-blue-100 mt-1">PQSIS CSV Import Summary</p>
+            </div>
+
+            {/* Content - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <Check className="w-8 h-8 text-green-600" />
+                    <div>
+                      <p className="text-sm text-green-700 font-medium">Successful</p>
+                      <p className="text-3xl font-bold text-green-900">{importResults.success}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <X className="w-8 h-8 text-red-600" />
+                    <div>
+                      <p className="text-sm text-red-700 font-medium">Failed</p>
+                      <p className="text-3xl font-bold text-red-900">{importResults.failed}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Error Details */}
+              {importResults.errors.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-orange-500" />
+                    Error Details ({importResults.errors.length})
+                  </h3>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {importResults.errors.map((error, idx) => (
+                      <div key={idx} className="bg-white border border-slate-200 rounded-lg p-3 text-sm">
+                        <p className="font-semibold text-slate-900">Row {error.row}</p>
+                        <p className="text-red-600 mt-1">{error.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Success Message */}
+              {importResults.success > 0 && importResults.failed === 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+                  <Check className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-bold text-green-900">Import Completed Successfully!</p>
+                    <p className="text-sm text-green-700 mt-1">
+                      All {importResults.success} records have been imported to the database.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer - Always Visible */}
+            <div className="border-t border-slate-200 p-4 flex justify-end flex-shrink-0">
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportResults(null);
+                }}
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && serviceToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-4">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <AlertTriangle className="w-6 h-6" />
+                Confirm Delete
+              </h2>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <p className="text-slate-700 mb-4">
+                Are you sure you want to delete this PQ service record?
+              </p>
+              
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-600">Case Number:</span>
+                  <span className="text-slate-900">{serviceToDelete.case_number}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-600">Service Type:</span>
+                  <span className="text-slate-900">{formatServiceTypeLabel(serviceToDelete.service_type)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-600">Service Date:</span>
+                  <span className="text-slate-900">
+                    {serviceToDelete.service_date 
+                      ? new Date(serviceToDelete.service_date).toLocaleDateString('en-GB')
+                      : 'N/A'
+                    }
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-sm text-red-600 mt-4 font-semibold">
+                This action cannot be undone.
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-slate-200 px-6 py-4 flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setServiceToDelete(null);
+                }}
+                disabled={isDeleting}
+                className="px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!serviceToDelete?.id) return;
+
+                  setIsDeleting(true);
+                  try {
+                    const { error } = await supabase
+                      .from('pq_service_records')
+                      .delete()
+                      .eq('id', serviceToDelete.id);
+
+                    if (error) throw error;
+
+                    // Reload services
+                    await loadServices();
+                    setShowDeleteModal(false);
+                    setServiceToDelete(null);
+                    alert('PQ service record deleted successfully');
+                  } catch (error) {
+                    console.error('Error deleting service:', error);
+                    alert('Failed to delete service record. Please try again.');
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                disabled={isDeleting}
+                className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { X, Save, Eye, Plus, Trash2, Code } from 'lucide-react';
-import { createTemplate, updateTemplate, getTemplate } from '../../services/notificationService';
 import { substituteVariables } from '../../services/notificationService';
 
 interface TemplateEditorProps {
@@ -9,7 +8,7 @@ interface TemplateEditorProps {
   onSaved: () => void;
 }
 
-type ChannelTab = 'email' | 'sms' | 'teams';
+type ChannelTab = 'email' | 'teams';
 
 interface TemplateVariable {
   name: string;
@@ -45,7 +44,6 @@ export default function TemplateEditor({ templateId, onClose, onSaved }: Templat
   const [description, setDescription] = useState('');
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
-  const [smsBody, setSmsBody] = useState('');
   const [teamsBody, setTeamsBody] = useState('');
   const [variables, setVariables] = useState<TemplateVariable[]>([
     { name: 'event_type', description: 'Type of PQ event', required: true },
@@ -56,7 +54,8 @@ export default function TemplateEditor({ templateId, onClose, onSaved }: Templat
     { name: 'duration', description: 'Event duration', required: false },
     { name: 'customer_count', description: 'Affected customers', required: false }
   ]);
-  const [selectedChannels, setSelectedChannels] = useState<string[]>(['email']);
+  // Email-only distribution channel (hardcoded)
+  const [selectedChannels] = useState<string[]>(['email']);
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
 
@@ -67,25 +66,47 @@ export default function TemplateEditor({ templateId, onClose, onSaved }: Templat
   }, [templateId]);
 
   const loadTemplate = async () => {
-    if (!templateId) return;
-    
-    setLoading(true);
-    const { data } = await getTemplate(templateId);
-    
-    if (data) {
-      setName(data.name);
-      setCode(data.code);
-      setDescription(data.description || '');
-      setEmailSubject(data.email_subject || '');
-      setEmailBody(data.email_body || '');
-      setSmsBody(data.sms_body || '');
-      setTeamsBody(data.teams_body || '');
-      setVariables(data.variables || []);
-      setSelectedChannels(data.applicable_channels || []);
-      setTags(data.tags || []);
+    if (!templateId) {
+      setLoading(false);
+      return;
     }
     
-    setLoading(false);
+    try {
+      setLoading(true);
+      
+      // Load from localStorage
+      const storedTemplates = localStorage.getItem('notificationTemplates');
+      if (storedTemplates) {
+        const parsedTemplates = JSON.parse(storedTemplates);
+        const data = parsedTemplates.find((t: any) => t.id === templateId);
+        
+        if (data) {
+          setName(data.name);
+          setCode(data.code);
+          setDescription(data.description || '');
+          setEmailSubject(data.email_subject || '');
+          setEmailBody(data.email_body || '');
+          setTeamsBody(data.teams_body || '');
+          setVariables(data.variables || []);
+          // Note: selectedChannels is const ['email'], no need to update
+          setTags(data.tags || []);
+        } else {
+          console.error('Template not found:', templateId);
+          alert('Template not found');
+          onClose();
+        }
+      } else {
+        console.error('No templates in localStorage');
+        alert('No templates found in storage');
+        onClose();
+      }
+    } catch (error) {
+      console.error('Error loading template:', error);
+      alert('Error loading template');
+      onClose();
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSave = async () => {
@@ -108,10 +129,7 @@ export default function TemplateEditor({ templateId, onClose, onSaved }: Templat
       alert('Email channel requires both subject and body');
       return;
     }
-    if (selectedChannels.includes('sms') && !smsBody.trim()) {
-      alert('SMS channel requires message body');
-      return;
-    }
+
     if (selectedChannels.includes('teams') && !teamsBody.trim()) {
       alert('Teams channel requires message body');
       return;
@@ -119,37 +137,73 @@ export default function TemplateEditor({ templateId, onClose, onSaved }: Templat
 
     setSaving(true);
 
-    const templateData = {
-      name: name.trim(),
-      code: code.trim().toUpperCase(),
-      description: description.trim() || null,
-      email_subject: emailSubject.trim() || null,
-      email_body: emailBody.trim() || null,
-      sms_body: smsBody.trim() || null,
-      teams_body: teamsBody.trim() || null,
-      variables,
-      applicable_channels: selectedChannels,
-      tags,
-      status: 'draft' as const,
-      version: 1,
-      created_by: null,
-      approved_by: null,
-      approved_at: null
-    };
+    try {
+      // Load existing templates from localStorage
+      const storedTemplates = localStorage.getItem('notificationTemplates');
+      const templates = storedTemplates ? JSON.parse(storedTemplates) : [];
 
-    let result;
-    if (templateId) {
-      result = await updateTemplate(templateId, templateData);
-    } else {
-      result = await createTemplate(templateData);
-    }
+      // Check for duplicate code (excluding current template if editing)
+      const isDuplicateCode = templates.some((t: any) => 
+        t.code === code.trim().toUpperCase() && t.id !== templateId
+      );
 
-    setSaving(false);
+      if (isDuplicateCode) {
+        alert('Template code already exists. Please use a different code.');
+        setSaving(false);
+        return;
+      }
 
-    if (!result.error) {
+      const now = new Date().toISOString();
+
+      if (templateId) {
+        // Update existing template
+        const updatedTemplates = templates.map((t: any) => {
+          if (t.id === templateId) {
+            return {
+              ...t,
+              name: name.trim(),
+              code: code.trim().toUpperCase(),
+              description: description.trim() || null,
+              email_subject: emailSubject.trim() || null,
+              email_body: emailBody.trim() || null,
+              teams_body: teamsBody.trim() || null,
+              variables,
+              applicable_channels: selectedChannels,
+              tags,
+              updated_at: now
+            };
+          }
+          return t;
+        });
+        localStorage.setItem('notificationTemplates', JSON.stringify(updatedTemplates));
+      } else {
+        // Create new template
+        const newTemplate = {
+          id: `template-${Date.now()}`,
+          name: name.trim(),
+          code: code.trim().toUpperCase(),
+          description: description.trim() || null,
+          email_subject: emailSubject.trim() || null,
+          email_body: emailBody.trim() || null,
+          teams_body: teamsBody.trim() || null,
+          variables,
+          applicable_channels: selectedChannels,
+          tags,
+          status: 'draft',
+          version: 1,
+          created_at: now,
+          updated_at: now,
+          approved_at: null
+        };
+        templates.push(newTemplate);
+        localStorage.setItem('notificationTemplates', JSON.stringify(templates));
+      }
+
+      setSaving(false);
       onSaved();
-    } else {
-      alert('Error saving template: ' + result.error.message);
+    } catch (error: any) {
+      setSaving(false);
+      alert('Error saving template: ' + (error.message || 'Unknown error'));
     }
   };
 
@@ -173,9 +227,6 @@ export default function TemplateEditor({ templateId, onClose, onSaved }: Templat
     switch (activeTab) {
       case 'email':
         setEmailBody(emailBody + placeholder);
-        break;
-      case 'sms':
-        setSmsBody(smsBody + placeholder);
         break;
       case 'teams':
         setTeamsBody(teamsBody + placeholder);
@@ -201,22 +252,11 @@ export default function TemplateEditor({ templateId, onClose, onSaved }: Templat
           subject: substituteVariables(emailSubject, sampleVariables),
           body: substituteVariables(emailBody, sampleVariables)
         };
-      case 'sms':
-        return {
-          body: substituteVariables(smsBody, sampleVariables)
-        };
       case 'teams':
         return {
           body: substituteVariables(teamsBody, sampleVariables)
         };
     }
-  };
-
-  const getSmsCharCount = () => {
-    const count = smsBody.length;
-    const limit = 160;
-    const color = count > limit ? 'text-red-600' : count > limit * 0.9 ? 'text-amber-600' : 'text-slate-600';
-    return <span className={`text-sm ${color} font-semibold`}>{count}/{limit}</span>;
   };
 
   if (loading) {
@@ -300,27 +340,24 @@ export default function TemplateEditor({ templateId, onClose, onSaved }: Templat
                 {/* Channels */}
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">
-                    Channels *
+                    Distribution Channel
                   </label>
-                  <div className="space-y-2">
-                    {['email', 'sms', 'teams'].map((channel) => (
-                      <label key={channel} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedChannels.includes(channel)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedChannels([...selectedChannels, channel]);
-                            } else {
-                              setSelectedChannels(selectedChannels.filter(c => c !== channel));
-                            }
-                          }}
-                          className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                        />
-                        <span className="text-sm text-slate-700 capitalize">{channel}</span>
-                      </label>
-                    ))}
+                  <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">📧</span>
+                      <div>
+                        <p className="text-sm font-semibold text-blue-900">Email Only</p>
+                        <p className="text-xs text-blue-700">All notifications will be sent via email</p>
+                      </div>
+                    </div>
                   </div>
+                  {/* Hidden checkbox to maintain compatibility - always checked for email */}
+                  <input
+                    type="checkbox"
+                    checked={true}
+                    readOnly
+                    className="hidden"
+                  />
                 </div>
 
                 {/* Tags */}
@@ -420,22 +457,12 @@ export default function TemplateEditor({ templateId, onClose, onSaved }: Templat
 
             {/* Right Column: Channel Content */}
             <div className="lg:col-span-2 space-y-4">
-              {/* Tab Navigation */}
-              <div className="flex gap-2 border-b border-slate-200">
-                {['email', 'sms', 'teams'].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab as ChannelTab)}
-                    className={`px-4 py-2 font-semibold transition-all capitalize ${
-                      activeTab === tab
-                        ? 'text-blue-600 border-b-2 border-blue-600'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
-                <div className="flex-1"></div>
+              {/* Email Header with Preview Button */}
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">📧</span>
+                  <h3 className="text-lg font-bold text-slate-900">Email Content</h3>
+                </div>
                 <button
                   onClick={() => setShowPreview(!showPreview)}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
@@ -452,24 +479,22 @@ export default function TemplateEditor({ templateId, onClose, onSaved }: Templat
               {/* Channel Content */}
               {!showPreview ? (
                 <div className="space-y-4">
-                  {activeTab === 'email' && (
-                    <>
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">
-                          Subject *
-                        </label>
-                        <input
-                          type="text"
-                          value={emailSubject}
-                          onChange={(e) => setEmailSubject(e.target.value)}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="Critical PQ Event: {{event_type}} at {{location}}"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">
-                          Body (HTML supported) *
-                        </label>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                      Subject *
+                    </label>
+                    <input
+                      type="text"
+                      value={emailSubject}
+                      onChange={(e) => setEmailSubject(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Critical PQ Event: {{event_type}} at {{location}}"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                      Body (HTML supported) *
+                    </label>
                         <textarea
                           value={emailBody}
                           onChange={(e) => setEmailBody(e.target.value)}
@@ -478,64 +503,22 @@ export default function TemplateEditor({ templateId, onClose, onSaved }: Templat
                           placeholder="Event detected at {{timestamp}}..."
                         />
                       </div>
-                    </>
-                  )}
-
-                  {activeTab === 'sms' && (
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="block text-sm font-semibold text-slate-700">
-                          Message *
-                        </label>
-                        {getSmsCharCount()}
-                      </div>
-                      <textarea
-                        value={smsBody}
-                        onChange={(e) => setSmsBody(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        rows={10}
-                        placeholder="PQ Alert: {{event_type}} at {{location}}. Magnitude: {{magnitude}}."
-                      />
-                    </div>
-                  )}
-
-                  {activeTab === 'teams' && (
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-2">
-                        Message (Markdown supported) *
-                      </label>
-                      <textarea
-                        value={teamsBody}
-                        onChange={(e) => setTeamsBody(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                        rows={20}
-                        placeholder="## PQ Event Alert\n\n**Type:** {{event_type}}\n**Location:** {{location}}"
-                      />
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="bg-slate-50 rounded-xl p-6 min-h-96">
                   <h3 className="font-bold text-slate-900 mb-4">Preview with Sample Data</h3>
-                  {activeTab === 'email' && (
-                    <div className="space-y-4">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-600 mb-2">Subject:</p>
-                        <p className="text-lg font-semibold text-slate-900">{getPreviewContent().subject}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-600 mb-2">Body:</p>
-                        <div className="bg-white p-4 rounded-lg border border-slate-200 whitespace-pre-wrap">
-                          {getPreviewContent().body}
-                        </div>
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-600 mb-2">Subject:</p>
+                      <p className="text-lg font-semibold text-slate-900">{getPreviewContent().subject}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-600 mb-2">Body:</p>
+                      <div className="bg-white p-4 rounded-lg border border-slate-200 whitespace-pre-wrap">
+                        {getPreviewContent().body}
                       </div>
                     </div>
-                  )}
-                  {(activeTab === 'sms' || activeTab === 'teams') && (
-                    <div className="bg-white p-4 rounded-lg border border-slate-200 whitespace-pre-wrap">
-                      {getPreviewContent().body}
-                    </div>
-                  )}
+                  </div>
                 </div>
               )}
             </div>

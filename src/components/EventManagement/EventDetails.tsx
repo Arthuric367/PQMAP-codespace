@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Clock, MapPin, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Upload, FileDown, Wrench } from 'lucide-react';
-import { PQEvent, Substation, EventCustomerImpact, IDRRecord, PQServiceRecord, PQMeter, Customer } from '../../types/database';
+import { Clock, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Upload, FileDown, Wrench, Eye, EyeOff, Filter } from 'lucide-react';
+import { PQEvent, Substation, EventCustomerImpact, IDRRecord, PQServiceRecord, PQMeter, Customer, EventAuditLog, EventOperationType } from '../../types/database';
 import { supabase } from '../../lib/supabase';
-import WaveformDisplay from './WaveformDisplay';
+import WaveformViewer from './WaveformViewer';
 import { MotherEventGroupingService } from '../../services/mother-event-grouping';
 import { ExportService } from '../../services/exportService';
 import CustomerEventHistoryPanel from './CustomerEventHistoryPanel';
+import PSBGConfigModal from './PSBGConfigModal';
+import { EventAuditService } from '../../services/eventAuditService';
 
 type TabType = 'overview' | 'technical' | 'impact' | 'services' | 'children' | 'timeline' | 'idr';
 
@@ -13,12 +15,13 @@ interface EventDetailsProps {
   event: PQEvent;
   substation?: Substation;
   impacts: EventCustomerImpact[];
+  initialTab?: TabType;
   onStatusChange: (eventId: string, status: string) => void;
   onEventDeleted?: () => void;
   onEventUpdated?: () => void;
 }
 
-export default function EventDetails({ event: initialEvent, substation: initialSubstation, impacts: initialImpacts, onStatusChange, onEventDeleted, onEventUpdated }: EventDetailsProps) {
+export default function EventDetails({ event: initialEvent, substation: initialSubstation, impacts: initialImpacts, initialTab, onStatusChange, onEventDeleted, onEventUpdated }: EventDetailsProps) {
   // Navigation state
   const [currentEvent, setCurrentEvent] = useState<PQEvent>(initialEvent);
   const [currentSubstation, setCurrentSubstation] = useState<Substation | undefined>(initialSubstation);
@@ -31,7 +34,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
   }>>([]);
   
   // Tab state - remembers last viewed tab
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab ?? 'overview');
   
   // Child events state
   const [childEvents, setChildEvents] = useState<PQEvent[]>([]);
@@ -96,16 +99,38 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     equipment_affected: '',
     restoration_actions: '',
     notes: '',
+    circuit: '',
+    faulty_component: '',
+    external_internal: '' as 'external' | 'internal' | '',
   });
   const [savingIDR, setSavingIDR] = useState(false);
 
   // PQ Services state
   const [services, setServices] = useState<PQServiceRecord[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
+  const [servicesDetailView, setServicesDetailView] = useState(false); // Toggle between simple and detail view
+
+  // Timeline/Audit Log state
+  const [auditLogs, setAuditLogs] = useState<EventAuditLog[]>([]);
+  const [loadingAuditLogs, setLoadingAuditLogs] = useState(false);
+  const [auditLogFilter, setAuditLogFilter] = useState<EventOperationType | 'all'>('all');
 
   // Customer event history panel state
   const [showCustomerHistory, setShowCustomerHistory] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
+  // Waveform data state
+  const [waveformCsvData, setWaveformCsvData] = useState<string | null>(null);
+
+  // PSBG Cause management state
+  const [showPSBGConfig, setShowPSBGConfig] = useState(false);
+  const [psbgOptions, setPsbgOptions] = useState<string[]>([
+    'VEGETATION',
+    'DAMAGED BY THIRD PARTY',
+    'UNCONFIRMED',
+    'ANIMALS, BIRDS, INSECTS'
+  ]);
+  const [usedPsbgOptions, setUsedPsbgOptions] = useState<string[]>([]);
 
   // Update state when props change
   useEffect(() => {
@@ -148,6 +173,20 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     }
   };
 
+  const loadAuditLogs = async (eventId: string) => {
+    try {
+      setLoadingAuditLogs(true);
+      const logs = await EventAuditService.getEventAuditLogs(eventId);
+      setAuditLogs(logs);
+      console.log(`✅ Loaded ${logs.length} audit log entries for event ${eventId}`);
+    } catch (error) {
+      console.error('❌ Error loading audit logs:', error);
+      setAuditLogs([]);
+    } finally {
+      setLoadingAuditLogs(false);
+    }
+  };
+
   const loadMeter = async (meterId: string | null) => {
     if (!meterId) {
       setCurrentMeter(null);
@@ -178,10 +217,37 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     loadServices(currentEvent.id);
   }, [currentEvent.id]);
 
+  // Load audit logs for current event
+  useEffect(() => {
+    loadAuditLogs(currentEvent.id);
+  }, [currentEvent.id]);
+
   // Load meter for current event
   useEffect(() => {
     loadMeter(currentEvent.meter_id);
   }, [currentEvent.meter_id]);
+
+  // Load demo waveform data (for demonstration purposes)
+  useEffect(() => {
+    const loadDemoWaveform = async () => {
+      try {
+        // For demonstration, load the sample CSV for all events
+        const response = await fetch('/BKP0227_20260126 101655_973.csv');
+        if (response.ok) {
+          const csvText = await response.text();
+          setWaveformCsvData(csvText);
+        } else {
+          console.warn('⚠️ Demo waveform CSV not found, using fallback');
+          setWaveformCsvData(null);
+        }
+      } catch (error) {
+        console.error('❌ Error loading demo waveform:', error);
+        setWaveformCsvData(null);
+      }
+    };
+
+    loadDemoWaveform();
+  }, [currentEvent.id]);
 
   // Load child events for mother events
   useEffect(() => {
@@ -207,6 +273,28 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showExportDropdown, showUploadDropdown]);
+
+  // Load used PSBG options when component mounts
+  useEffect(() => {
+    const loadUsedPsbgOptions = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('pq_events')
+          .select('psbg_cause')
+          .not('psbg_cause', 'is', null);
+
+        if (error) throw error;
+
+        const used = [...new Set(data?.map(d => d.psbg_cause).filter(Boolean) || [])];
+        setUsedPsbgOptions(used);
+      } catch (error) {
+        console.error('❌ Error loading used PSBG options:', error);
+        setUsedPsbgOptions([]);
+      }
+    };
+
+    loadUsedPsbgOptions();
+  }, []);
 
   const loadIDRRecord = async (eventId: string) => {
     setLoadingIDR(true);
@@ -251,6 +339,9 @@ export default function EventDetails({ event: initialEvent, substation: initialS
           equipment_affected: data.equipment_affected || '',
           restoration_actions: data.restoration_actions || '',
           notes: data.notes || '',
+          circuit: data.circuit || '',
+          faulty_component: data.faulty_component || '',
+          external_internal: data.external_internal || '',
         });
       } else {
         console.log('ℹ️ No IDR record found, showing empty form');
@@ -282,6 +373,9 @@ export default function EventDetails({ event: initialEvent, substation: initialS
           equipment_affected: '',
           restoration_actions: '',
           notes: '',
+          circuit: '',
+          faulty_component: '',
+          external_internal: '',
         });
       }
     } catch (error) {
@@ -785,6 +879,36 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     }
   };
 
+  // PSBG Cause handler
+  const handlePsbgCauseChange = async (newPsbgCause: string) => {
+    const validValues: Array<'VEGETATION' | 'DAMAGED BY THIRD PARTY' | 'UNCONFIRMED' | 'ANIMALS, BIRDS, INSECTS'> = [
+      'VEGETATION', 'DAMAGED BY THIRD PARTY', 'UNCONFIRMED', 'ANIMALS, BIRDS, INSECTS'
+    ];
+    const validatedValue = validValues.includes(newPsbgCause as any) ? newPsbgCause as typeof validValues[number] : null;
+
+    try {
+      const { error } = await supabase
+        .from('pq_events')
+        .update({ psbg_cause: validatedValue })
+        .eq('id', currentEvent.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setCurrentEvent({ ...currentEvent, psbg_cause: validatedValue });
+
+      // Notify parent to reload data
+      if (onEventUpdated) {
+        onEventUpdated();
+      }
+
+      console.log('✅ PSBG cause updated successfully');
+    } catch (error) {
+      console.error('❌ Error updating PSBG cause:', error);
+      alert('Failed to update PSBG cause. Please try again.');
+    }
+  };
+
   // IDR CSV Upload Functions
   const handleDownloadIDRTemplate = () => {
     const headers = [
@@ -1019,28 +1143,6 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     }
   };
 
-  const generateMockWaveform = () => {
-    const samples = 200;
-    const baseVoltage = currentEvent.magnitude || 100;
-    
-    const voltage: { time: number; value: number }[] = Array.from({ length: samples }, (_, idx) => ({
-      time: idx * 0.001,
-      value: baseVoltage + (Math.random() - 0.5) * 5
-    }));
-
-    const current: { time: number; value: number }[] = voltage.map(point => ({
-      time: point.time,
-      value: point.value * 0.8
-    }));
-
-    return {
-      voltage,
-      current
-    };
-  };
-
-  const waveformData = currentEvent.waveform_data || generateMockWaveform();
-
   // Calculate child events severity distribution for preview
   const getChildEventsSummary = () => {
     const severityCounts = childEvents.reduce((acc, child) => {
@@ -1263,92 +1365,269 @@ export default function EventDetails({ event: initialEvent, substation: initialS
         {/* OVERVIEW TAB */}
         {activeTab === 'overview' && (
           <div className="space-y-6 animate-fadeIn">
-            {/* Basic Info Cards - 2 Column Layout */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* Location Card */}
-              <div className="p-4 bg-slate-50 rounded-lg">
-                <div className="flex items-center gap-2 text-slate-600 mb-2">
-                  <MapPin className="w-4 h-4" />
-                  <span className="text-sm font-semibold">Location</span>
-                </div>
-                <p className="text-slate-900 font-medium">
-                  {currentSubstation?.code} • {currentSubstation?.name}
-                </p>
-                {currentMeter?.site_id && (
-                  <p className="text-xs text-slate-600 mt-1">Site ID: {currentMeter.site_id}</p>
-                )}
-                {currentMeter?.region && (
-                  <p className="text-xs text-slate-600 mt-1">Region: {currentMeter.region}</p>
-                )}
-                {currentMeter?.oc && (
-                  <p className="text-xs text-slate-600 mt-1">OC: {currentMeter.oc}</p>
-                )}
+            {/* AC1 - Core Event Data Card */}
+            <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-3">
+                <h3 className="font-semibold text-white flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
+                  Core Event Data
+                </h3>
               </div>
+              <div className="p-4">
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Incident Time */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Incident Time</label>
+                    <p className="text-base font-semibold text-slate-900 mt-1">
+                      {new Date(currentEvent.timestamp).toLocaleDateString('en-GB', { 
+                        day: '2-digit', 
+                        month: '2-digit', 
+                        year: 'numeric' 
+                      })} {new Date(currentEvent.timestamp).toLocaleTimeString('en-GB', { 
+                        hour: '2-digit', 
+                        minute: '2-digit', 
+                        second: '2-digit',
+                        hour12: false 
+                      })}
+                    </p>
+                  </div>
 
-              {/* Timestamp Card */}
-              <div className="p-4 bg-slate-50 rounded-lg">
-                <div className="flex items-center gap-2 text-slate-600 mb-2">
-                  <Clock className="w-4 h-4" />
-                  <span className="text-sm font-semibold">Timestamp</span>
-                </div>
-                <p className="text-slate-900 font-medium">
-                  {new Date(currentEvent.timestamp).toLocaleDateString()} {new Date(currentEvent.timestamp).toLocaleTimeString()}
-                </p>
-              </div>
+                  {/* Voltage Level */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Voltage Level</label>
+                    <p className="text-base font-semibold text-slate-900 mt-1">
+                      {currentMeter?.voltage_level || 'N/A'}
+                    </p>
+                  </div>
 
-              {/* Asset Card */}
-              <div className="p-4 bg-slate-50 rounded-lg">
-                <div className="flex items-center gap-2 text-slate-600 mb-2">
-                  <Zap className="w-4 h-4" />
-                  <span className="text-sm font-semibold">Asset</span>
-                </div>
-                {currentMeter ? (
-                  <>
-                    <p className="text-xs text-slate-600 mt-1">Meter ID: <span className="font-semibold text-slate-900">{currentMeter.meter_id}</span></p>
-                    {currentMeter.circuit_id && (
-                      <p className="text-xs text-slate-600 mt-1">Circuit ID: <span className="font-semibold text-slate-900">{currentMeter.circuit_id}</span></p>
+                  {/* Source Substation */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Source Substation</label>
+                    <p className="text-base font-semibold text-slate-900 mt-1">
+                      {currentSubstation ? `${currentSubstation.code} - ${currentSubstation.name}` : 'N/A'}
+                    </p>
+                    {currentMeter?.site_id && (
+                      <p className="text-xs text-slate-500 mt-0.5">Site ID: {currentMeter.site_id}</p>
                     )}
-                    {currentMeter.voltage_level && (
-                      <p className="text-xs text-slate-600 mt-1">Voltage Level: <span className="font-semibold text-slate-900">{currentMeter.voltage_level}</span></p>
-                    )}
-                    <p className="text-xs text-slate-400 mt-1">Ring Number: <span className="italic">TBD</span></p>
-                  </>
-                ) : (
-                  <p className="text-xs text-slate-400 italic">No meter data</p>
-                )}
-              </div>
+                  </div>
 
-              {/* Event Information Card */}
-              <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg">
-                <div className="flex items-center gap-2 text-slate-600 mb-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span className="text-sm font-semibold">Event Information</span>
+                  {/* Transformer No. & Ring Number */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Transformer No. & Ring Number</label>
+                    <p className="text-base font-semibold text-slate-900 mt-1">
+                      {currentMeter?.circuit_id || 'N/A'} • TTNR0003
+                    </p>
+                    {currentMeter?.meter_id && (
+                      <p className="text-xs text-slate-500 mt-0.5">Meter: {currentMeter.meter_id}</p>
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-1 text-xs">
-                  <p className="text-slate-600">Event ID: <span className="font-mono text-slate-900">{currentEvent.id.slice(0, 8)}...</span></p>
-                  <p className="text-slate-600">Type: <span className="font-semibold text-slate-900 capitalize">{currentEvent.event_type.replace('_', ' ')}</span></p>
-                  <p className="text-slate-600">Severity: <span className={`font-semibold capitalize ${
-                    currentEvent.severity === 'critical' ? 'text-red-700' :
-                    currentEvent.severity === 'high' ? 'text-orange-700' :
-                    currentEvent.severity === 'medium' ? 'text-yellow-700' :
-                    'text-green-700'
-                  }`}>{currentEvent.severity}</span></p>
-                  <p className="text-slate-600">Duration: <span className="font-semibold text-slate-900">
-                    {currentEvent.duration_ms && currentEvent.duration_ms < 1000
-                      ? `${currentEvent.duration_ms}ms`
-                      : `${((currentEvent.duration_ms || 0) / 1000).toFixed(2)}s`
-                    }
-                  </span></p>
-                  <p className="text-slate-600">Magnitude: <span className="font-semibold text-slate-900">{currentEvent.magnitude !== null && currentEvent.magnitude !== undefined ? `${currentEvent.magnitude.toFixed(2)}%` : 'N/A'}</span></p>
-                  {currentEvent.event_type !== 'harmonic' && (
-                    <>
-                      <p className="text-slate-600">V1: <span className="font-semibold text-slate-900">{currentEvent.v1 !== null && currentEvent.v1 !== undefined ? `${currentEvent.v1.toFixed(2)}%` : 'N/A'}</span></p>
-                      <p className="text-slate-600">V2: <span className="font-semibold text-slate-900">{currentEvent.v2 !== null && currentEvent.v2 !== undefined ? `${currentEvent.v2.toFixed(2)}%` : 'N/A'}</span></p>
-                      <p className="text-slate-600">V3: <span className="font-semibold text-slate-900">{currentEvent.v3 !== null && currentEvent.v3 !== undefined ? `${currentEvent.v3.toFixed(2)}%` : 'N/A'}</span></p>
-                    </>
-                  )}
-                  <p className="text-slate-600">Affected Phases: <span className="font-semibold text-slate-900">{currentEvent.affected_phases.join(', ')}</span></p>
+              </div>
+            </div>
+
+            {/* AC2 - Magnitude & Duration Card */}
+            <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-purple-500 to-purple-600 px-4 py-3">
+                <h3 className="font-semibold text-white flex items-center gap-2">
+                  <Zap className="w-5 h-5" />
+                  Magnitude & Duration
+                </h3>
+              </div>
+              <div className="p-4">
+                <div className="grid grid-cols-4 gap-4">
+                  {/* Phase Percentages */}
+                  <div className="text-center p-3 bg-purple-50 rounded-lg">
+                    <label className="text-xs font-semibold text-purple-700 uppercase tracking-wide block mb-1">VL1 (%)</label>
+                    <p className="text-2xl font-bold text-purple-900">
+                      {currentEvent.v1 !== null && currentEvent.v1 !== undefined ? currentEvent.v1.toFixed(2) : 'N/A'}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">Phase A</p>
+                  </div>
+
+                  <div className="text-center p-3 bg-purple-50 rounded-lg">
+                    <label className="text-xs font-semibold text-purple-700 uppercase tracking-wide block mb-1">VL2 (%)</label>
+                    <p className="text-2xl font-bold text-purple-900">
+                      {currentEvent.v2 !== null && currentEvent.v2 !== undefined ? currentEvent.v2.toFixed(2) : 'N/A'}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">Phase B</p>
+                  </div>
+
+                  <div className="text-center p-3 bg-purple-50 rounded-lg">
+                    <label className="text-xs font-semibold text-purple-700 uppercase tracking-wide block mb-1">VL3 (%)</label>
+                    <p className="text-2xl font-bold text-purple-900">
+                      {currentEvent.v3 !== null && currentEvent.v3 !== undefined ? currentEvent.v3.toFixed(2) : 'N/A'}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">Phase C</p>
+                  </div>
+
+                  {/* Duration */}
+                  <div className="text-center p-3 bg-purple-50 rounded-lg">
+                    <label className="text-xs font-semibold text-purple-700 uppercase tracking-wide block mb-1">Duration</label>
+                    <p className="text-2xl font-bold text-purple-900">
+                      {currentEvent.duration_ms !== null && currentEvent.duration_ms !== undefined
+                        ? currentEvent.duration_ms < 1000
+                          ? `${currentEvent.duration_ms}ms`
+                          : `${(currentEvent.duration_ms / 1000).toFixed(2)}s`
+                        : 'N/A'
+                      }
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">Total time</p>
+                  </div>
                 </div>
+              </div>
+            </div>
+
+            {/* AC3 - Binary Indicators Row */}
+            <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-3">
+                <h3 className="font-semibold text-white flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5" />
+                  Event Indicators
+                </h3>
+              </div>
+              <div className="p-4">
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Min Volt Indicator */}
+                  <div className="p-3 bg-slate-50 rounded-lg">
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Min Volt (Below 70%)</label>
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const hasMinVoltage = 
+                          (currentEvent.v1 !== null && currentEvent.v1 < 70) ||
+                          (currentEvent.v2 !== null && currentEvent.v2 < 70) ||
+                          (currentEvent.v3 !== null && currentEvent.v3 < 70);
+                        return hasMinVoltage ? (
+                          <>
+                            <CheckCircle className="w-5 h-5 text-green-600" />
+                            <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold">Yes</span>
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="w-5 h-5 text-red-600" />
+                            <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-semibold">No</span>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* False Alarm */}
+                  <div className="p-3 bg-slate-50 rounded-lg">
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">False Alarm</label>
+                    <div className="flex items-center gap-2">
+                      {currentEvent.false_event ? (
+                        <>
+                          <CheckCircle className="w-5 h-5 text-green-600" />
+                          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold">Yes</span>
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="w-5 h-5 text-red-600" />
+                          <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-semibold">No</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* AC4 - Classification & Workflow Card */}
+            <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-slate-500 to-slate-600 px-4 py-3">
+                <h3 className="font-semibold text-white flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Classification & Workflow
+                </h3>
+              </div>
+              <div className="p-4">
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Event Type & Severity */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Event Type</label>
+                    <p className="text-base font-semibold text-slate-900 mt-1 capitalize">
+                      {currentEvent.event_type.replace('_', ' ')}
+                    </p>
+                    <div className="mt-2">
+                      <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Severity</label>
+                      <span className={`inline-block mt-1 px-3 py-1 rounded-full text-sm font-semibold capitalize ${
+                        currentEvent.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                        currentEvent.severity === 'high' ? 'bg-orange-100 text-orange-700' :
+                        currentEvent.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-green-100 text-green-700'
+                      }`}>
+                        {currentEvent.severity}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Status */}
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Status</label>
+                    <div className="mt-1">
+                      <span className={`inline-block px-4 py-2 rounded-lg text-base font-semibold ${
+                        currentEvent.status === 'new' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
+                        currentEvent.status === 'investigating' ? 'bg-blue-100 text-blue-800 border border-blue-300' :
+                        currentEvent.status === 'resolved' ? 'bg-green-100 text-green-800 border border-green-300' :
+                        'bg-slate-100 text-slate-800 border border-slate-300'
+                      }`}>
+                        {currentEvent.status === 'new' ? 'New' : 
+                         currentEvent.status === 'investigating' ? 'Investigating' : 
+                         currentEvent.status === 'resolved' ? 'Closed' : 
+                         currentEvent.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-2">
+                      Event ID: <span className="font-mono text-slate-700">{currentEvent.id.slice(0, 8)}...</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Additional Information Row */}
+                <div className="mt-4 pt-4 border-t border-slate-200">
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600">Magnitude</label>
+                      <p className="text-slate-900 font-medium mt-0.5">
+                        {currentEvent.magnitude !== null && currentEvent.magnitude !== undefined 
+                          ? `${currentEvent.magnitude.toFixed(2)}%` 
+                          : 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600">Affected Phases</label>
+                      <p className="text-slate-900 font-medium mt-0.5">
+                        {currentEvent.affected_phases.join(', ')}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600">Customer Count</label>
+                      <p className="text-slate-900 font-medium mt-0.5">
+                        {currentEvent.customer_count !== null ? currentEvent.customer_count : 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Region & OC Information */}
+                {(currentMeter?.region || currentMeter?.oc) && (
+                  <div className="mt-4 pt-4 border-t border-slate-200">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      {currentMeter.region && (
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600">Region</label>
+                          <p className="text-slate-900 font-medium mt-0.5">{currentMeter.region}</p>
+                        </div>
+                      )}
+                      {currentMeter.oc && (
+                        <div>
+                          <label className="text-xs font-semibold text-slate-600">Operating Center (OC)</label>
+                          <p className="text-slate-900 font-medium mt-0.5">{currentMeter.oc}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1528,10 +1807,39 @@ export default function EventDetails({ event: initialEvent, substation: initialS
               </div>
             )}
 
-            {currentEvent.cause && (
+            {/* PSBG Cause Field */}
+            <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-blue-700 text-sm font-semibold">PSBG Cause:</span>
+                <button
+                  onClick={() => setShowPSBGConfig(true)}
+                  className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                  title="Manage PSBG Cause Options"
+                >
+                  <Wrench className="w-4 h-4" />
+                </button>
+              </div>
+              <select
+                value={currentEvent.psbg_cause || ''}
+                onChange={(e) => handlePsbgCauseChange(e.target.value)}
+                className="w-full px-3 py-2 border border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select PSBG Cause</option>
+                {psbgOptions.map(option => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Cause Display (PSBG takes priority, falls back to IDR cause) */}
+            {(currentEvent.psbg_cause || currentEvent.cause) && (
               <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg">
-                <span className="text-slate-600 text-sm font-semibold">Cause:</span>
-                <p className="text-slate-900 mt-1">{currentEvent.cause}</p>
+                <span className="text-slate-600 text-sm font-semibold">
+                  {currentEvent.psbg_cause ? 'Cause (IDR):' : 'Cause:'}
+                </span>
+                <p className="text-slate-900 mt-1">
+                  {currentEvent.psbg_cause ? (currentEvent.cause || 'Not specified') : currentEvent.cause}
+                </p>
               </div>
             )}
 
@@ -1557,14 +1865,15 @@ export default function EventDetails({ event: initialEvent, substation: initialS
               </div>
             </div>
 
-            {/* False Event Actions */}
+            {/* False Event Actions - Only show for voltage_dip and voltage_swell */}
             {(() => {
               console.log('🔍 [Convert Button Condition]', {
                 activeTab,
+                event_type: currentEvent.event_type,
                 false_event: currentEvent.false_event,
-                shouldShow: currentEvent.false_event === true
+                shouldShow: currentEvent.false_event === true && (currentEvent.event_type === 'voltage_dip' || currentEvent.event_type === 'voltage_swell')
               });
-              return currentEvent.false_event;
+              return currentEvent.false_event && (currentEvent.event_type === 'voltage_dip' || currentEvent.event_type === 'voltage_swell');
             })() && (
               <div className="p-4 bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-lg">
                 <div className="flex items-center justify-between">
@@ -1633,22 +1942,25 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                     )}
                   </dd>
                 </div>
-                <div>
-                  <dt className="text-sm text-slate-600">False Event:</dt>
-                  <dd className="flex items-center gap-2 mt-1">
-                    {currentEvent.false_event ? (
-                      <>
-                        <XCircle className="w-5 h-5 text-red-600" />
-                        <span className="font-semibold text-red-700">Yes</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                        <span className="font-semibold text-green-700">No</span>
-                      </>
-                    )}
-                  </dd>
-                </div>
+                {/* False Event - Only show for voltage_dip and voltage_swell */}
+                {(currentEvent.event_type === 'voltage_dip' || currentEvent.event_type === 'voltage_swell') && (
+                  <div>
+                    <dt className="text-sm text-slate-600">False Event:</dt>
+                    <dd className="flex items-center gap-2 mt-1">
+                      {currentEvent.false_event ? (
+                        <>
+                          <XCircle className="w-5 h-5 text-red-600" />
+                          <span className="font-semibold text-red-700">Yes</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-5 h-5 text-green-600" />
+                          <span className="font-semibold text-green-700">No</span>
+                        </>
+                      )}
+                    </dd>
+                  </div>
+                )}
               </dl>
             </div>
 
@@ -1698,7 +2010,11 @@ export default function EventDetails({ event: initialEvent, substation: initialS
             )}
 
             {/* Waveform Display */}
-            <WaveformDisplay data={waveformData} />
+            <WaveformViewer 
+              csvData={waveformCsvData} 
+              event={currentEvent}
+              eventType={currentEvent.event_type}
+            />
           </div>
         )}
 
@@ -2115,8 +2431,26 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                 <Wrench className="w-5 h-5 text-blue-600" />
                 PQ Service Records
               </h3>
-              <div className="text-sm text-slate-600">
-                {services.length} service{services.length !== 1 ? 's' : ''} logged for this event
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setServicesDetailView(!servicesDetailView)}
+                  className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors text-sm font-medium text-slate-700"
+                >
+                  {servicesDetailView ? (
+                    <>
+                      <EyeOff className="w-4 h-4" />
+                      Simple View
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-4 h-4" />
+                      Detail View
+                    </>
+                  )}
+                </button>
+                <div className="text-sm text-slate-600">
+                  {services.length} service{services.length !== 1 ? 's' : ''} logged for this event
+                </div>
               </div>
             </div>
 
@@ -2131,25 +2465,229 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                 <p className="font-medium text-lg">No PQ services found</p>
                 <p className="text-sm mt-1">No service records have been logged for this event yet</p>
               </div>
+            ) : servicesDetailView ? (
+              // DETAIL VIEW: 2-column card layout with all fields
+              <div className="space-y-4">
+                {services.map((service) => {
+                  const serviceTypeLabels: Record<string, string> = {
+                    site_survey: 'Site Survey',
+                    harmonic_analysis: 'Harmonic Analysis',
+                    consultation: 'Consultation',
+                    on_site_study: 'On-site Study',
+                    power_quality_audit: 'Power Quality Audit',
+                    installation_support: 'Installation Support',
+                  };
+
+                  return (
+                    <div key={service.id} className="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-lg transition-shadow">
+                      {/* Header */}
+                      <div className="flex items-start justify-between mb-4 pb-4 border-b border-slate-200">
+                        <div>
+                          <h4 className="text-lg font-bold text-slate-900">
+                            Case #{service.case_number || 'N/A'}
+                          </h4>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                              {serviceTypeLabels[service.service_type] || service.service_type}
+                            </span>
+                            {service.is_closed ? (
+                              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                                Closed
+                              </span>
+                            ) : service.is_in_progress ? (
+                              <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-medium">
+                                In Progress
+                              </span>
+                            ) : null}
+                            {service.completed_before_target !== null && (
+                              service.completed_before_target ? (
+                                <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-medium">
+                                  ✓ On Time
+                                </span>
+                              ) : (
+                                <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">
+                                  ⚠ Late
+                                </span>
+                              )
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-slate-500">Request Date</p>
+                          <p className="font-semibold text-slate-900">
+                            {new Date(service.service_date).toLocaleDateString('en-GB')}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* 2-Column Layout */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                        {/* Customer Information */}
+                        <div className="space-y-3">
+                          <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                            Customer Information
+                          </h5>
+                          <div>
+                            <p className="text-xs text-slate-500">Customer Premises Location</p>
+                            {service.customer ? (
+                              <div>
+                                <p className="font-medium text-slate-900">{service.customer.name}</p>
+                                <p className="text-sm text-slate-600">{service.customer.address || 'N/A'}</p>
+                                <p className="text-xs text-slate-500 mt-1">Acc: {service.customer.account_number}</p>
+                              </div>
+                            ) : (
+                              <p className="text-slate-400">N/A</p>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Tariff Group</p>
+                            <p className="font-medium text-slate-900">{service.tariff_group || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Business Nature</p>
+                            <p className="font-medium text-slate-900">{service.business_nature || 'N/A'}</p>
+                          </div>
+                        </div>
+
+                        {/* Service Details */}
+                        <div className="space-y-3">
+                          <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                            Service Details
+                          </h5>
+                          <div>
+                            <p className="text-xs text-slate-500">Service</p>
+                            <p className="font-medium text-slate-900 text-sm whitespace-pre-wrap">
+                              {service.content 
+                                ? service.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)
+                                : 'No description'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Engineer</p>
+                            <p className="font-medium text-slate-900">
+                              {service.engineer?.full_name || 'Not assigned'}
+                            </p>
+                          </div>
+                          {service.participant_count && (
+                            <div>
+                              <p className="text-xs text-slate-500">No. of Participants</p>
+                              <p className="font-medium text-slate-900">{service.participant_count}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Financial Information */}
+                        <div className="space-y-3">
+                          <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                            Financial
+                          </h5>
+                          <div>
+                            <p className="text-xs text-slate-500">Service Charging (HKD)</p>
+                            <p className="font-medium text-slate-900">
+                              {service.service_charge_amount 
+                                ? `$${service.service_charge_amount.toLocaleString()}k` 
+                                : 'N/A'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Party To Be Charged</p>
+                            <p className="font-medium text-slate-900">{service.party_charged || 'N/A'}</p>
+                          </div>
+                        </div>
+
+                        {/* Dates */}
+                        <div className="space-y-3">
+                          <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                            Key Dates
+                          </h5>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <p className="text-slate-500">Planned Reply</p>
+                              <p className="font-medium text-slate-900">
+                                {service.planned_reply_date 
+                                  ? new Date(service.planned_reply_date).toLocaleDateString('en-GB')
+                                  : 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500">Actual Reply</p>
+                              <p className="font-medium text-slate-900">
+                                {service.actual_reply_date 
+                                  ? new Date(service.actual_reply_date).toLocaleDateString('en-GB')
+                                  : 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500">Planned Report</p>
+                              <p className="font-medium text-slate-900">
+                                {service.planned_report_issue_date 
+                                  ? new Date(service.planned_report_issue_date).toLocaleDateString('en-GB')
+                                  : 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500">Actual Report</p>
+                              <p className="font-medium text-slate-900">
+                                {service.actual_report_issue_date 
+                                  ? new Date(service.actual_report_issue_date).toLocaleDateString('en-GB')
+                                  : 'N/A'}
+                              </p>
+                            </div>
+                            <div className="col-span-2">
+                              <p className="text-slate-500">Service Completion</p>
+                              <p className="font-medium text-slate-900">
+                                {service.completion_date 
+                                  ? new Date(service.completion_date).toLocaleDateString('en-GB')
+                                  : 'Not completed'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Substation/Circuit Info */}
+                        <div className="space-y-3 md:col-span-2">
+                          <h5 className="font-semibold text-slate-700 text-sm uppercase tracking-wide border-b border-slate-200 pb-2">
+                            Substation / Circuit Information
+                          </h5>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <p className="text-xs text-slate-500">132kV Primary S/S Name & Txn No.</p>
+                              <p className="font-medium text-slate-900">{service.ss132_info || 'N/A'}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-500">11kV Customer S/S Code & Txn No.</p>
+                              <p className="font-medium text-slate-900">{service.ss011_info || 'N/A'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
+              // SIMPLE VIEW: Table with crucial columns only
               <div className="border border-slate-200 rounded-lg overflow-hidden">
                 <table className="w-full">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                        Service Date
+                        Case No.
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Customer Premises
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Request Date
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                         Service Type
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                        Customer
+                        Status
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                        Content
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                        Engineer
+                        Completion Date
                       </th>
                     </tr>
                   </thead>
@@ -2166,6 +2704,21 @@ export default function EventDetails({ event: initialEvent, substation: initialS
 
                       return (
                         <tr key={service.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-slate-900">
+                            #{service.case_number || 'N/A'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-900">
+                            {service.customer ? (
+                              <div>
+                                <div className="font-medium">{service.customer.name}</div>
+                                <div className="text-xs text-slate-500 truncate max-w-xs">
+                                  {service.customer.address || 'N/A'}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">N/A</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-900">
                             {new Date(service.service_date).toLocaleDateString('en-GB')}
                           </td>
@@ -2174,29 +2727,24 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                               {serviceTypeLabels[service.service_type] || service.service_type}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-slate-900">
-                            {service.customer ? (
-                              <div>
-                                <div className="font-medium">{service.customer.name}</div>
-                                <div className="text-xs text-slate-500">{service.customer.account_number}</div>
-                              </div>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm">
+                            {service.is_closed ? (
+                              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                                ✓ Closed
+                              </span>
+                            ) : service.is_in_progress ? (
+                              <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-medium">
+                                ⏳ In Progress
+                              </span>
                             ) : (
                               <span className="text-slate-400">N/A</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-sm text-slate-700">
-                            {service.content ? (
-                              <div className="max-w-md truncate" title={service.content}>
-                                {service.content}
-                              </div>
-                            ) : (
-                              <span className="text-slate-400">No content</span>
-                            )}
-                          </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-900">
-                            {service.engineer?.full_name || (
-                              <span className="text-slate-400">Not assigned</span>
-                            )}
+                            {service.completion_date 
+                              ? new Date(service.completion_date).toLocaleDateString('en-GB')
+                              : <span className="text-slate-400">Pending</span>
+                            }
                           </td>
                         </tr>
                       );
@@ -2224,152 +2772,188 @@ export default function EventDetails({ event: initialEvent, substation: initialS
 
         {activeTab === 'timeline' && (
           <div className="space-y-6 animate-fadeIn">
-            <div className="p-6 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg">
-              <h4 className="font-semibold text-slate-900 mb-6">Event Lifecycle Timeline</h4>
-              
-              <div className="space-y-6 relative">
-                {/* Timeline line */}
-                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-purple-200" />
-                
-                {/* Created */}
-                <div className="flex items-start gap-4 relative">
-                  <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold text-sm z-10">
-                    1
-                  </div>
-                  <div className="flex-1 pt-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-slate-900">📅 Record Created</span>
-                      <span className="text-sm text-slate-600">
-                        {new Date(currentEvent.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-600 mt-1">Event entered into system</p>
-                  </div>
-                </div>
-
-                {/* Detected */}
-                <div className="flex items-start gap-4 relative">
-                  <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold text-sm z-10">
-                    2
-                  </div>
-                  <div className="flex-1 pt-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-slate-900">👁️ Event Detected</span>
-                      <span className="text-sm text-slate-600">
-                        {new Date(currentEvent.timestamp).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-600 mt-1">
-                      Duration: {currentEvent.duration_ms && currentEvent.duration_ms < 1000
-                        ? `${currentEvent.duration_ms}ms`
-                        : `${((currentEvent.duration_ms || 0) / 1000).toFixed(2)}s`
-                      }
-                    </p>
-                  </div>
-                </div>
-
-                {/* Grouped (if applicable) */}
-                {currentEvent.grouped_at && (
-                  <div className="flex items-start gap-4 relative">
-                    <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold text-sm z-10">
-                      3
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-900">🔗 Event Grouped</span>
-                        <span className="text-sm text-slate-600">
-                          {new Date(currentEvent.grouped_at).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="text-sm text-slate-600 mt-1">
-                        {currentEvent.grouping_type === 'automatic' ? '🤖 Automatically grouped' : '👤 Manually grouped'}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* False Event Detection (if applicable) */}
-                {currentEvent.false_event && currentEvent.remarks?.includes('[Marked as false event') && (
-                  <div className="flex items-start gap-4 relative">
-                    <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center text-white font-bold text-sm z-10">
-                      <XCircle className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-900">🚫 Marked as False Event</span>
-                        <span className="text-sm text-slate-600">
-                          {currentEvent.remarks.match(/\[Marked as false event.*?(\d{4}-\d{2}-\d{2})/)?.[1] || 'Unknown date'}
-                        </span>
-                      </div>
-                      <p className="text-sm text-slate-600 mt-1">Event validated as false detection</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Converted from False Event (if applicable) */}
-                {!currentEvent.false_event && currentEvent.remarks?.includes('[Converted from false event') && (
-                  <div className="flex items-start gap-4 relative">
-                    <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-sm z-10">
-                      <CheckCircle className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-900">✅ Converted from False Event</span>
-                        <span className="text-sm text-slate-600">
-                          {currentEvent.remarks.match(/\[Converted from false event.*?(\d{4}-\d{2}-\d{2})/)?.[1] || 'Unknown date'}
-                        </span>
-                      </div>
-                      <p className="text-sm text-slate-600 mt-1">Re-validated as real event</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Resolved (if applicable) */}
-                {currentEvent.resolved_at && (
-                  <div className="flex items-start gap-4 relative">
-                    <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-sm z-10">
-                      ✓
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-900">✅ Event Resolved</span>
-                        <span className="text-sm text-slate-600">
-                          {new Date(currentEvent.resolved_at).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="text-sm text-slate-600 mt-1">Event marked as resolved</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Current Status (if not resolved) */}
-                {!currentEvent.resolved_at && (
-                  <div className="flex items-start gap-4 relative">
-                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm z-10 animate-pulse">
-                      ●
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <span className="font-semibold text-blue-700 capitalize">
-                        Current Status: {currentEvent.status}
-                      </span>
-                      <p className="text-sm text-slate-600 mt-1">Event is being monitored</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Total Duration */}
-              <div className="mt-8 pt-6 border-t border-purple-200">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600">Total Lifecycle Duration:</span>
-                  <span className="font-bold text-purple-900">
-                    {currentEvent.resolved_at
-                      ? `${Math.round((new Date(currentEvent.resolved_at).getTime() - new Date(currentEvent.created_at).getTime()) / 1000 / 60)} minutes`
-                      : 'Ongoing'
+            {/* Filter Header */}
+            <div className="bg-white rounded-lg border border-slate-200 p-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-slate-900 flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
+                  Event Timeline & Audit Log
+                </h4>
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-slate-600" />
+                  <select
+                    value={auditLogFilter}
+                    onChange={(e) => setAuditLogFilter(e.target.value)}
+                    className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  >
+                    <option value="all">All Operations</option>
+                    <option value="false_event">False Event</option>
+                    <option value="group">Group</option>
+                    <option value="idr">IDR</option>
+                    <option value="status_update">Status Update</option>
+                  </select>
+                  <span className="text-sm text-slate-600">
+                    {auditLogFilter === 'all' 
+                      ? `${auditLogs.length} total operations`
+                      : `${auditLogs.filter(log => {
+                          const categoryMap: Record<string, EventOperationType[]> = {
+                            'false_event': ['marked_false', 'converted_from_false', 'batch_marked_false'],
+                            'group': ['grouped_automatic', 'grouped_manual', 'ungrouped_full', 'ungrouped_partial'],
+                            'idr': ['idr_created', 'idr_updated'],
+                            'status_update': ['event_created', 'event_detected', 'status_changed', 'severity_changed', 'cause_updated', 'psbg_cause_updated', 'event_modified', 'event_resolved', 'event_deleted']
+                          };
+                          return categoryMap[auditLogFilter]?.includes(log.operation_type) || false;
+                        }).length} operations`
                     }
                   </span>
                 </div>
               </div>
+            </div>
+
+            {/* Timeline Content */}
+            <div className="p-6 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg">
+              {loadingAuditLogs ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                  <span className="ml-3 text-slate-600">Loading timeline...</span>
+                </div>
+              ) : auditLogs.length === 0 ? (
+                <div className="text-center py-12">
+                  <Clock className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                  <p className="text-slate-600 font-medium">No Timeline Data</p>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Event history will appear here as operations are performed
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-6 relative">
+                    {/* Timeline line */}
+                    <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-purple-200" />
+                    
+                    {/* Filter and display audit logs */}
+                    {auditLogs
+                      .filter(log => {
+                        if (auditLogFilter === 'all') return true;
+                        
+                        // Map categories to operation types
+                        const categoryMap: Record<string, EventOperationType[]> = {
+                          'false_event': ['marked_false', 'converted_from_false', 'batch_marked_false'],
+                          'group': ['grouped_automatic', 'grouped_manual', 'ungrouped_full', 'ungrouped_partial'],
+                          'idr': ['idr_created', 'idr_updated'],
+                          'status_update': ['event_created', 'event_detected', 'status_changed', 'severity_changed', 'cause_updated', 'psbg_cause_updated', 'event_modified', 'event_resolved', 'event_deleted']
+                        };
+                        
+                        return categoryMap[auditLogFilter]?.includes(log.operation_type) || false;
+                      })
+                      .map((log, index) => {
+                        const color = EventAuditService.getOperationTypeColor(log.operation_type);
+                        const icon = EventAuditService.getOperationTypeIcon(log.operation_type);
+                        const label = EventAuditService.getOperationTypeLabel(log.operation_type);
+                        
+                        return (
+                          <div key={log.id} className="flex items-start gap-4 relative">
+                            <div 
+                              className={`w-8 h-8 rounded-full bg-${color}-500 flex items-center justify-center text-white font-bold text-sm z-10 shadow-md`}
+                              style={{
+                                backgroundColor: 
+                                  color === 'purple' ? '#9333ea' :
+                                  color === 'red' ? '#ef4444' :
+                                  color === 'green' ? '#10b981' :
+                                  color === 'blue' ? '#3b82f6' :
+                                  color === 'indigo' ? '#6366f1' :
+                                  color === 'orange' ? '#f97316' :
+                                  color === 'teal' ? '#14b8a6' :
+                                  color === 'cyan' ? '#06b6d4' :
+                                  color === 'yellow' ? '#eab308' :
+                                  color === 'slate' ? '#64748b' :
+                                  '#9ca3af'
+                              }}
+                            >
+                              <span className="text-xs">{icon}</span>
+                            </div>
+                            <div className="flex-1 pt-1">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-semibold text-slate-900">{label}</span>
+                                <span className="text-sm text-slate-600">
+                                  {new Date(log.created_at).toLocaleString()}
+                                </span>
+                              </div>
+                              
+                              {/* Operation Details */}
+                              {log.operation_details?.note && (
+                                <p className="text-sm text-slate-600">{log.operation_details.note}</p>
+                              )}
+                              
+                              {/* Affected Fields for IDR/Event updates */}
+                              {log.operation_details?.affected_fields && (
+                                <p className="text-xs text-slate-500 mt-1">
+                                  <span className="font-medium">Fields:</span> {log.operation_details.affected_fields.join(', ')}
+                                </p>
+                              )}
+                              
+                              {/* Child Events for grouping/ungrouping */}
+                              {log.operation_details?.child_event_ids && (
+                                <p className="text-xs text-slate-500 mt-1">
+                                  <span className="font-medium">Affected Events:</span> {log.operation_details.child_event_ids.length}
+                                </p>
+                              )}
+                              
+                              {/* Status/Severity changes */}
+                              {(log.operation_details?.from || log.operation_details?.to) && (
+                                <p className="text-xs text-slate-500 mt-1">
+                                  <span className="font-medium">Changed:</span>{' '}
+                                  {log.operation_details.from || 'None'} → {log.operation_details.to || 'None'}
+                                </p>
+                              )}
+                              
+                              {/* User Information */}
+                              {log.user_id && log.user && (
+                                <p className="text-xs text-purple-600 mt-1 flex items-center gap-1">
+                                  <Users className="w-3 h-3" />
+                                  {log.user.full_name || log.user.email}
+                                </p>
+                              )}
+                              
+                              {!log.user_id && (
+                                <p className="text-xs text-slate-400 mt-1 italic">System operation</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+
+                  {/* Total Duration */}
+                  {auditLogs.length > 0 && (
+                    <div className="mt-8 pt-6 border-t border-purple-200">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-600">Event Lifecycle Duration:</span>
+                        <span className="font-bold text-purple-900">
+                          {(() => {
+                            const firstLog = auditLogs[0];
+                            const lastLog = auditLogs[auditLogs.length - 1];
+                            const durationMs = new Date(lastLog.created_at).getTime() - new Date(firstLog.created_at).getTime();
+                            const minutes = Math.round(durationMs / 1000 / 60);
+                            
+                            if (minutes < 60) {
+                              return `${minutes} minutes`;
+                            } else if (minutes < 1440) {
+                              const hours = Math.floor(minutes / 60);
+                              const remainingMinutes = minutes % 60;
+                              return `${hours}h ${remainingMinutes}m`;
+                            } else {
+                              const days = Math.floor(minutes / 1440);
+                              const hours = Math.floor((minutes % 1440) / 60);
+                              return `${days}d ${hours}h`;
+                            }
+                          })()}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         )}
@@ -2528,6 +3112,51 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                             alert('Failed to save IDR changes. Please try again.');
                           } else {
                             console.log('✅ IDR record saved successfully:', data);
+                            
+                            // Log audit trail
+                            try {
+                              // Determine if this is a create or update
+                              const isCreate = !idrRecord?.id;
+                              
+                              if (isCreate) {
+                                // Log IDR creation
+                                await EventAuditService.logIDRCreated(
+                                  currentEvent.id,
+                                  idrFormData.idr_no || 'N/A',
+                                  true // manual create
+                                );
+                              } else {
+                                // Detect changed fields for update
+                                const affectedFields: string[] = [];
+                                const fieldNames = [
+                                  'idr_no', 'status', 'voltage_level', 'address', 'duration_ms',
+                                  'v1', 'v2', 'v3', 'equipment_type', 'cause_group', 'cause',
+                                  'remarks', 'object_part_group', 'object_part_code', 'damage_group',
+                                  'damage_code', 'fault_type', 'outage_type', 'weather', 
+                                  'weather_condition', 'responsible_oc', 'total_cmi',
+                                  'equipment_affected', 'restoration_actions', 'notes'
+                                ];
+                                
+                                fieldNames.forEach(field => {
+                                  const oldVal = idrRecord?.[field as keyof typeof idrRecord];
+                                  const newVal = idrFormData[field as keyof typeof idrFormData];
+                                  if (oldVal !== newVal) {
+                                    affectedFields.push(field);
+                                  }
+                                });
+                                
+                                if (affectedFields.length > 0) {
+                                  await EventAuditService.logIDRUpdated(currentEvent.id, affectedFields);
+                                }
+                              }
+                              
+                              // Reload audit logs to show the new entry
+                              await loadAuditLogs(currentEvent.id);
+                            } catch (auditError) {
+                              console.error('❌ Error logging audit trail:', auditError);
+                              // Don't block the save, just log the error
+                            }
+                            
                             setIDRRecord(data);
                             setIsEditingIDR(false);
                             if (onEventUpdated) onEventUpdated();
@@ -2564,11 +3193,11 @@ export default function EventDetails({ event: initialEvent, substation: initialS
 
             {/* IDR Content - Grouped Cards Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {/* Basic Information */}
+              {/* IDR Core Information */}
               <div className="bg-white border border-slate-200 rounded-lg p-3">
                 <h4 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
                   <span className="w-1 h-4 bg-blue-500 rounded"></span>
-                  Basic Information
+                  IDR Core Information
                 </h4>
                 <div className="space-y-2">
                   <div className="grid grid-cols-2 gap-2">
@@ -2652,51 +3281,12 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                 </div>
               </div>
 
-              {/* Location & Equipment */}
-              <div className="bg-white border border-slate-200 rounded-lg p-3">
-                <h4 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
-                  <span className="w-1 h-4 bg-green-500 rounded"></span>
-                  Location & Equipment
-                </h4>
-                <div className="space-y-2">
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Region</label>
-                    <p className="text-sm font-semibold text-slate-900 mt-1">{currentSubstation?.region || '-'}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Address</label>
-                    {isEditingIDR ? (
-                      <input
-                        type="text"
-                        value={idrFormData.address}
-                        onChange={(e) => setIDRFormData({ ...idrFormData, address: e.target.value })}
-                        className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
-                      />
-                    ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.address || '-'}</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Equipment Type</label>
-                    {isEditingIDR ? (
-                      <input
-                        type="text"
-                        value={idrFormData.equipment_type}
-                        onChange={(e) => setIDRFormData({ ...idrFormData, equipment_type: e.target.value })}
-                        className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
-                      />
-                    ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.equipment_type || '-'}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
 
-              {/* Fault Details */}
+              {/* Fault & Asset Location */}
               <div className="bg-white border border-slate-200 rounded-lg p-3">
                 <h4 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
                   <span className="w-1 h-4 bg-red-500 rounded"></span>
-                  Fault Details
+                  Fault & Asset Location
                 </h4>
                 <div className="space-y-2">
                   <div>
@@ -2764,26 +3354,60 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                   </div>
 
                   <div>
-                    <label className="text-xs font-medium text-slate-600">Fault Type</label>
+                    <label className="text-xs font-medium text-slate-600">Address</label>
                     {isEditingIDR ? (
                       <input
                         type="text"
-                        value={idrFormData.fault_type}
-                        onChange={(e) => setIDRFormData({ ...idrFormData, fault_type: e.target.value })}
+                        value={idrFormData.address}
+                        onChange={(e) => setIDRFormData({ ...idrFormData, address: e.target.value })}
                         className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
                       />
                     ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.fault_type || '-'}</p>
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.address || '-'}</p>
                     )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Circuit</label>
+                    {isEditingIDR ? (
+                      <input
+                        type="text"
+                        value={idrFormData.circuit}
+                        onChange={(e) => setIDRFormData({ ...idrFormData, circuit: e.target.value })}
+                        className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    ) : (
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.circuit || '-'}</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Region</label>
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{currentSubstation?.region || '-'}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Equipment Type</label>
+                      {isEditingIDR ? (
+                        <input
+                          type="text"
+                          value={idrFormData.equipment_type}
+                          onChange={(e) => setIDRFormData({ ...idrFormData, equipment_type: e.target.value })}
+                          className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.equipment_type || '-'}</p>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Cause Analysis */}
+              {/* Root Cause Analysis */}
               <div className="bg-white border border-slate-200 rounded-lg p-3">
                 <h4 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
                   <span className="w-1 h-4 bg-yellow-500 rounded"></span>
-                  Cause Analysis
+                  Root Cause Analysis
                 </h4>
                 <div className="space-y-2">
                   <div className="grid grid-cols-2 gap-2">
@@ -2816,6 +3440,20 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                   </div>
 
                   <div>
+                    <label className="text-xs font-medium text-slate-600">Faulty Component</label>
+                    {isEditingIDR ? (
+                      <input
+                        type="text"
+                        value={idrFormData.faulty_component}
+                        onChange={(e) => setIDRFormData({ ...idrFormData, faulty_component: e.target.value })}
+                        className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
+                      />
+                    ) : (
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.faulty_component || '-'}</p>
+                    )}
+                  </div>
+
+                  <div>
                     <label className="text-xs font-medium text-slate-600">Remarks</label>
                     {isEditingIDR ? (
                       <textarea
@@ -2826,6 +3464,32 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                       />
                     ) : (
                       <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.remarks || '-'}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Extended Technical Detail */}
+              <div className="bg-white border border-slate-200 rounded-lg p-3">
+                <h4 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
+                  <span className="w-1 h-4 bg-purple-500 rounded"></span>
+                  Extended Technical Detail
+                </h4>
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">External / Internal</label>
+                    {isEditingIDR ? (
+                      <select
+                        value={idrFormData.external_internal}
+                        onChange={(e) => setIDRFormData({ ...idrFormData, external_internal: e.target.value as 'external' | 'internal' | '' })}
+                        className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="">Select...</option>
+                        <option value="external">External</option>
+                        <option value="internal">Internal</option>
+                      </select>
+                    ) : (
+                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.external_internal ? (idrFormData.external_internal === 'external' ? 'External' : 'Internal') : '-'}</p>
                     )}
                   </div>
 
@@ -2886,13 +3550,42 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                       )}
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Fault Type</label>
+                      {isEditingIDR ? (
+                        <input
+                          type="text"
+                          value={idrFormData.fault_type}
+                          onChange={(e) => setIDRFormData({ ...idrFormData, fault_type: e.target.value })}
+                          className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.fault_type || '-'}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-600">Outage Type</label>
+                      {isEditingIDR ? (
+                        <input
+                          type="text"
+                          value={idrFormData.outage_type}
+                          onChange={(e) => setIDRFormData({ ...idrFormData, outage_type: e.target.value })}
+                          className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.outage_type || '-'}</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {/* Environment & Operations */}
               <div className="bg-white border border-slate-200 rounded-lg p-3 lg:col-span-2">
                 <h4 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
-                  <span className="w-1 h-4 bg-purple-500 rounded"></span>
+                  <span className="w-1 h-4 bg-orange-500 rounded"></span>
                   Environment & Operations
                 </h4>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
@@ -2923,20 +3616,6 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                       />
                     ) : (
                       <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.weather_condition || '-'}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-medium text-slate-600">Outage Type</label>
-                    {isEditingIDR ? (
-                      <input
-                        type="text"
-                        value={idrFormData.outage_type}
-                        onChange={(e) => setIDRFormData({ ...idrFormData, outage_type: e.target.value })}
-                        className="w-full mt-1 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-1 focus:ring-blue-500"
-                      />
-                    ) : (
-                      <p className="text-sm font-semibold text-slate-900 mt-1">{idrFormData.outage_type || '-'}</p>
                     )}
                   </div>
 
@@ -3150,4 +3829,15 @@ export default function EventDetails({ event: initialEvent, substation: initialS
       )}
     </div>
   );
+
+  {/* PSBG Config Modal */}
+  {showPSBGConfig && (
+    <PSBGConfigModal
+      isOpen={showPSBGConfig}
+      onClose={() => setShowPSBGConfig(false)}
+      onSave={setPsbgOptions}
+      currentOptions={psbgOptions}
+      usedOptions={usedPsbgOptions}
+    />
+  )}
 }

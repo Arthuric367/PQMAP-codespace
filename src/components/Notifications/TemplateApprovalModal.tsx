@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { X, CheckCircle, XCircle, Eye } from 'lucide-react';
-import { approveTemplate } from '../../services/notificationService';
 import { substituteVariables } from '../../services/notificationService';
 import type { NotificationTemplate } from '../../types/database';
 
@@ -10,7 +9,7 @@ interface TemplateApprovalModalProps {
   onApproved: () => void;
 }
 
-type ViewTab = 'email' | 'sms' | 'teams';
+type ViewTab = 'email' | 'teams';
 
 const sampleVariables = {
   event_id: 'EVT-2026-0001',
@@ -38,13 +37,31 @@ export default function TemplateApprovalModal({ template, onClose, onApproved }:
     }
 
     setApproving(true);
-    const { error } = await approveTemplate(template.id);
-    setApproving(false);
-
-    if (!error) {
-      onApproved();
-    } else {
-      alert('Error approving template: ' + error.message);
+    
+    try {
+      // Load from localStorage and update status to approved
+      const storedTemplates = localStorage.getItem('notificationTemplates');
+      if (storedTemplates) {
+        const parsedTemplates = JSON.parse(storedTemplates);
+        const updatedTemplates = parsedTemplates.map((t: any) => {
+          if (t.id === template.id) {
+            return {
+              ...t,
+              status: 'approved',
+              approved_at: new Date().toISOString()
+            };
+          }
+          return t;
+        });
+        localStorage.setItem('notificationTemplates', JSON.stringify(updatedTemplates));
+        onApproved();
+      } else {
+        throw new Error('Templates not found in storage');
+      }
+    } catch (error: any) {
+      alert('Error approving template: ' + (error.message || 'Unknown error'));
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -68,10 +85,6 @@ export default function TemplateApprovalModal({ template, onClose, onApproved }:
         return {
           subject: template.email_subject ? substituteVariables(template.email_subject, sampleVariables) : '',
           body: template.email_body ? substituteVariables(template.email_body, sampleVariables) : ''
-        };
-      case 'sms':
-        return {
-          body: template.sms_body ? substituteVariables(template.sms_body, sampleVariables) : ''
         };
       case 'teams':
         return {
@@ -229,20 +242,6 @@ export default function TemplateApprovalModal({ template, onClose, onApproved }:
                       )}
                     </div>
                   </div>
-                </div>
-              )}
-
-              {activeTab === 'sms' && (
-                <div>
-                  <p className="text-sm font-semibold text-slate-600 mb-2">SMS Message:</p>
-                  <div className="whitespace-pre-wrap text-slate-900">
-                    {getPreviewContent('sms').body || (
-                      <span className="text-slate-400">No SMS body defined</span>
-                    )}
-                  </div>
-                  <p className="text-sm text-slate-500 mt-4">
-                    Character count: {getPreviewContent('sms').body?.length || 0}/160
-                  </p>
                 </div>
               )}
 
