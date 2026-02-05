@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../lib/supabase';
 import {
   AlertCircle,
   BarChart3,
@@ -15,7 +16,6 @@ import {
   Plus,
   Search,
   Trash2,
-  Upload,
   X
 } from 'lucide-react';
 import ReportBuilder from './Dashboard/ReportBuilder/ReportBuilder';
@@ -105,7 +105,6 @@ type PQSISRecord = {
   closedCase: string; // Yes/No
   inProgressCase: string; // Yes/No
   completedBeforeTargetDate: string; // Yes/No
-  businessType: string;
   plannedReplyDate: string; // dd/mm/yyyy
   actualReplyDate: string; // dd/mm/yyyy
   plannedReportIssueDate: string; // dd/mm/yyyy
@@ -1312,14 +1311,16 @@ function VoltageDipBenchmarkingView({ standards }: { standards: PQBenchmarkStand
                 </div>
               </div>
 
-              {/* Chart Visualization */}
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6 relative">
-                <div className="text-center mb-4">
-                  <h4 className="text-sm font-bold text-slate-700">Voltage Dip Benchmarking</h4>
-                </div>
-                
-                {/* SVG Chart */}
-                <svg viewBox="0 0 800 500" className="w-full h-auto">
+              {/* Chart Visualization - Flex Container */}
+              <div className="flex gap-4">
+                {/* Chart Area */}
+                <div className="flex-1 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6">
+                  <div className="text-center mb-4">
+                    <h4 className="text-sm font-bold text-slate-700">Voltage Dip Benchmarking</h4>
+                  </div>
+                  
+                  {/* SVG Chart */}
+                  <svg viewBox="0 0 800 500" className="w-full h-auto">
                   {/* Grid lines */}
                   <defs>
                     <pattern id="grid" width="80" height="50" patternUnits="userSpaceOnUse">
@@ -1436,55 +1437,58 @@ function VoltageDipBenchmarkingView({ standards }: { standards: PQBenchmarkStand
                     * Each point represents an event group (power system fault). Select point to show voltage dip details
                   </text>
                 </svg>
+              </div>
 
-                {/* Legend */}
-                <div className="absolute top-8 right-8 bg-white border border-slate-300 rounded-lg p-3 shadow-lg">
-                  <div className="space-y-2">
-                    {voltageDipStandards.map((std) => (
-                      <label key={std.id} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="voltage-dip-standard"
-                          checked={selectedStandardForChart === std.id}
-                          onChange={() => setSelectedStandardForChart(std.id)}
-                          className="text-blue-600"
-                        />
-                        <span className="text-xs text-slate-700">{std.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                  <div className="mt-3 pt-3 border-t border-slate-200">
-                    <div className="text-xs text-slate-500">
-                      * Green point represents real 380V PQ meter.<br/>
-                      * Red point represents 11kV PQ meter (converted to 380V level).
-                    </div>
-                  </div>
+              {/* Standard Selection Box - Right Side */}
+              <div className="flex-shrink-0 w-48 bg-white border border-slate-300 rounded-lg p-3 shadow-lg">
+                <div className="space-y-2">
+                  {voltageDipStandards.map((std) => (
+                    <label key={std.id} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="voltage-dip-standard"
+                        checked={selectedStandardForChart === std.id}
+                        onChange={() => setSelectedStandardForChart(std.id)}
+                        className="text-blue-600 flex-shrink-0"
+                      />
+                      <span className="text-xs text-slate-700 leading-tight break-words">{std.name}</span>
+                    </label>
+                  ))}
                 </div>
-
-                {/* Summary table in chart */}
-                <div className="absolute bottom-8 right-8 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-                  <table className="text-xs">
-                    <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
-                      <tr>
-                        <th className="px-3 py-1 text-left font-bold">Curve</th>
-                        <th className="px-3 py-1 text-center font-bold">Passed</th>
-                        <th className="px-3 py-1 text-center font-bold">Failed</th>
-                        <th className="px-3 py-1 text-center font-bold">% Fail</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white">
-                      <tr>
-                        <td className="px-3 py-1 text-slate-700">{selectedStandard.name}</td>
-                        <td className="px-3 py-1 text-center text-green-600 font-bold">{vdSummary.pass}</td>
-                        <td className="px-3 py-1 text-center text-red-600 font-bold">{vdSummary.fail}</td>
-                        <td className="px-3 py-1 text-center text-slate-700 font-bold">
-                          {vdSummary.total > 0 ? ((vdSummary.fail / vdSummary.total) * 100).toFixed(1) : '0.0'}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+                <div className="mt-3 pt-3 border-t border-slate-200">
+                  <div className="text-xs text-slate-500 leading-relaxed">
+                    * Green point represents real 380V PQ meter.<br/>
+                    * Red point represents 11kV PQ meter (converted to 380V level).
+                  </div>
                 </div>
               </div>
+            </div>
+
+            {/* Compliance Index Table - Below Chart */}
+            <div className="flex justify-end mt-4">
+              <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                <table className="text-xs">
+                  <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
+                    <tr>
+                      <th className="px-3 py-1 text-left font-bold">Curve</th>
+                      <th className="px-3 py-1 text-center font-bold">Passed</th>
+                      <th className="px-3 py-1 text-center font-bold">Failed</th>
+                      <th className="px-3 py-1 text-center font-bold">% Fail</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    <tr>
+                      <td className="px-3 py-1 text-slate-700">{selectedStandard.name}</td>
+                      <td className="px-3 py-1 text-center text-green-600 font-bold">{vdSummary.pass}</td>
+                      <td className="px-3 py-1 text-center text-red-600 font-bold">{vdSummary.fail}</td>
+                      <td className="px-3 py-1 text-center text-slate-700 font-bold">
+                        {vdSummary.total > 0 ? ((vdSummary.fail / vdSummary.total) * 100).toFixed(1) : '0.0'}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
               {/* Results table */}
               <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -3289,13 +3293,6 @@ type PQSummaryReportView = 'voltageDipSummary' | 'customerPowerDisturbance';
 function PQSISMaintenanceTab() {
   const [pqsisRecords, setPqsisRecords] = useState<PQSISRecord[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<PQSISRecord[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadSummary, setUploadSummary] = useState<{
-    total: number;
-    newRecords: number;
-    updated: number;
-  } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Filter states
   const [serviceTypeFilter, setServiceTypeFilter] = useState<PQSISServiceType>('All');
@@ -3306,7 +3303,7 @@ function PQSISMaintenanceTab() {
   const [dateFromOpen, setDateFromOpen] = useState(false);
   const [dateToOpen, setDateToOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 20;
+  const itemsPerPage = 10;
 
   // Click outside to close date pickers
   useEffect(() => {
@@ -3319,72 +3316,70 @@ function PQSISMaintenanceTab() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [dateFromOpen, dateToOpen]);
 
-  // Mock initial data
+  // Load data from Supabase
   useEffect(() => {
-    const mockData: PQSISRecord[] = [
-      {
-        caseNo: '5337.2',
-        customerName: 'Microelectronics Centre',
-        customerGroup: 'BT',
-        requestDate: '15/01/2025',
-        serviceType: 'Technical Services',
-        service: 'PQ Site Investigation',
-        serviceCharging: 25.5,
-        chargedDepartment: 'AMD',
-        serviceCompletionDate: '28/02/2025',
-        closedCase: 'Yes',
-        inProgressCase: 'No',
-        completedBeforeTargetDate: 'Yes',
-        businessType: 'Shopping Centre',
-        plannedReplyDate: '20/01/2025',
-        actualReplyDate: '18/01/2025',
-        plannedReportIssueDate: '25/02/2025',
-        actualReportIssueDate: '28/02/2025',
-        idrNumber: 'IDR-2025-001'
-      },
-      {
-        caseNo: '5338.1',
-        customerName: 'Tech Plaza Mall',
-        customerGroup: 'Commercial',
-        requestDate: '20/01/2025',
-        serviceType: 'Harmonics',
-        service: 'Harmonic Analysis',
-        serviceCharging: 18.0,
-        chargedDepartment: 'PQD',
-        serviceCompletionDate: '15/03/2025',
-        closedCase: 'No',
-        inProgressCase: 'Yes',
-        completedBeforeTargetDate: 'No',
-        businessType: 'Shopping Centre',
-        plannedReplyDate: '25/01/2025',
-        actualReplyDate: '26/01/2025',
-        plannedReportIssueDate: '10/03/2025',
-        actualReportIssueDate: '',
-        idrNumber: 'IDR-2025-005'
-      },
-      {
-        caseNo: '5339.0',
-        customerName: 'Industrial Park Ltd',
-        customerGroup: 'Industrial',
-        requestDate: '05/02/2025',
-        serviceType: 'Supply Enquiry',
-        service: 'Voltage Quality Assessment',
-        serviceCharging: 12.8,
-        chargedDepartment: 'TSO',
-        serviceCompletionDate: '20/02/2025',
-        closedCase: 'Yes',
-        inProgressCase: 'No',
-        completedBeforeTargetDate: 'Yes',
-        businessType: 'Industrial',
-        plannedReplyDate: '10/02/2025',
-        actualReplyDate: '09/02/2025',
-        plannedReportIssueDate: '18/02/2025',
-        actualReportIssueDate: '20/02/2025',
-        idrNumber: ''
+    const loadPQSISRecords = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('pq_service_records')
+          .select(`
+            id,
+            case_number,
+            service_date,
+            service_type,
+            content,
+            service_charge_amount,
+            party_charged,
+            completion_date,
+            is_closed,
+            is_in_progress,
+            completed_before_target,
+            tariff_group,
+            planned_reply_date,
+            actual_reply_date,
+            planned_report_issue_date,
+            actual_report_issue_date,
+            customer:customers(
+              name
+            )
+          `)
+          .order('case_number', { ascending: false });
+
+        if (error) {
+          console.error('❌ Error loading PQSIS records:', error);
+          return;
+        }
+
+        // Transform database records to PQSISRecord format
+        const records: PQSISRecord[] = (data || []).map((record: any) => ({
+          caseNo: record.case_number?.toString() || '',
+          customerName: record.customer?.name || 'N/A',
+          customerGroup: record.tariff_group || '',
+          requestDate: record.service_date ? new Date(record.service_date).toLocaleDateString('en-GB') : '',
+          serviceType: record.service_type || '',
+          service: record.content || '',
+          serviceCharging: record.service_charge_amount || 0,
+          chargedDepartment: record.party_charged || '',
+          serviceCompletionDate: record.completion_date ? new Date(record.completion_date).toLocaleDateString('en-GB') : '',
+          closedCase: record.is_closed ? 'Yes' : 'No',
+          inProgressCase: record.is_in_progress ? 'Yes' : 'No',
+          completedBeforeTargetDate: record.completed_before_target === null ? 'N/A' : (record.completed_before_target ? 'Yes' : 'No'),
+          plannedReplyDate: record.planned_reply_date ? new Date(record.planned_reply_date).toLocaleDateString('en-GB') : '',
+          actualReplyDate: record.actual_reply_date ? new Date(record.actual_reply_date).toLocaleDateString('en-GB') : '',
+          plannedReportIssueDate: record.planned_report_issue_date ? new Date(record.planned_report_issue_date).toLocaleDateString('en-GB') : '',
+          actualReportIssueDate: record.actual_report_issue_date ? new Date(record.actual_report_issue_date).toLocaleDateString('en-GB') : '',
+          idrNumber: undefined // idr_no column doesn't exist yet in database
+        }));
+
+        console.log('✅ Loaded', records.length, 'PQSIS records from database');
+        setPqsisRecords(records);
+        setFilteredRecords(records);
+      } catch (error) {
+        console.error('❌ Unexpected error loading PQSIS records:', error);
       }
-    ];
-    setPqsisRecords(mockData);
-    setFilteredRecords(mockData);
+    };
+
+    loadPQSISRecords();
   }, []);
 
   // Apply filters
@@ -3425,94 +3420,6 @@ function PQSISMaintenanceTab() {
 
   const totalPages = Math.ceil(filteredRecords.length / itemsPerPage);
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    setUploadSummary(null);
-
-    try {
-      const text = await file.text();
-      const lines = text.split('\n').filter(line => line.trim());
-      
-      if (lines.length < 2) {
-        alert('CSV file is empty or invalid');
-        setIsUploading(false);
-        return;
-      }
-
-      // @ts-ignore - headers used for potential future validation
-      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-      const newRecords: PQSISRecord[] = [];
-      const existingCaseNumbers = new Set(pqsisRecords.map(r => r.caseNo));
-      let newCount = 0;
-      let updateCount = 0;
-
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-        
-        const record: PQSISRecord = {
-          caseNo: values[0] || '',
-          customerName: values[1] || '',
-          customerGroup: values[2] || '',
-          requestDate: values[3] || '',
-          serviceType: values[4] || '',
-          service: values[5] || '',
-          serviceCharging: parseFloat(values[6]) || 0,
-          chargedDepartment: values[7] || '',
-          serviceCompletionDate: values[8] || '',
-          closedCase: values[9] || 'No',
-          inProgressCase: values[10] || 'No',
-          completedBeforeTargetDate: values[11] || 'No',
-          businessType: values[12] || '',
-          plannedReplyDate: values[13] || '',
-          actualReplyDate: values[14] || '',
-          plannedReportIssueDate: values[15] || '',
-          actualReportIssueDate: values[16] || '',
-          idrNumber: values[17] || ''
-        };
-
-        if (!record.caseNo) continue;
-
-        if (existingCaseNumbers.has(record.caseNo)) {
-          updateCount++;
-        } else {
-          newCount++;
-        }
-
-        newRecords.push(record);
-      }
-
-      // Merge records (update existing or add new)
-      const mergedRecords = [...pqsisRecords];
-      newRecords.forEach(newRec => {
-        const existingIndex = mergedRecords.findIndex(r => r.caseNo === newRec.caseNo);
-        if (existingIndex >= 0) {
-          mergedRecords[existingIndex] = newRec; // Overwrite
-        } else {
-          mergedRecords.push(newRec); // Add new
-        }
-      });
-
-      setPqsisRecords(mergedRecords);
-      setUploadSummary({
-        total: newRecords.length,
-        newRecords: newCount,
-        updated: updateCount
-      });
-
-    } catch (error) {
-      console.error('CSV upload error:', error);
-      alert('Failed to process CSV file. Please check the format.');
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
-
   const handleExport = () => {
     try {
       const exportData = filteredRecords.map(r => ({
@@ -3528,7 +3435,6 @@ function PQSISMaintenanceTab() {
         'Closed Case': r.closedCase,
         'In-Progress Case': r.inProgressCase,
         'Completed before Target Date': r.completedBeforeTargetDate,
-        'Business Type': r.businessType,
         'Planned Reply Date': r.plannedReplyDate,
         'Actual Reply Date': r.actualReplyDate,
         'Planned Report Issue Date': r.plannedReportIssueDate,
@@ -3570,27 +3476,11 @@ function PQSISMaintenanceTab() {
           <Database className="w-6 h-6 text-slate-700" />
           <div>
             <h2 className="text-xl font-bold text-slate-900">PQSIS Maintenance</h2>
-            <p className="text-sm text-slate-600 mt-1">Upload, manage and export PQSIS service records</p>
+            <p className="text-sm text-slate-600 mt-1">An overview of service records uploaded from PQSIS</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50"
-          >
-            <Upload className="w-4 h-4" />
-            {isUploading ? 'Uploading...' : 'Upload CSV'}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            onChange={handleFileUpload}
-            className="hidden"
-          />
           <button
             type="button"
             onClick={handleExport}
@@ -3603,44 +3493,11 @@ function PQSISMaintenanceTab() {
         </div>
       </div>
 
-      {/* Upload Summary */}
-      {uploadSummary && (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-          <div className="flex items-start gap-3">
-            <Check className="w-5 h-5 text-green-600 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="text-sm font-bold text-green-900 mb-2">Upload Successful</h3>
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div>
-                  <span className="text-slate-600">Total Processed:</span>
-                  <span className="ml-2 font-bold text-slate-900">{uploadSummary.total}</span>
-                </div>
-                <div>
-                  <span className="text-slate-600">New Records:</span>
-                  <span className="ml-2 font-bold text-green-700">{uploadSummary.newRecords}</span>
-                </div>
-                <div>
-                  <span className="text-slate-600">Updated Records:</span>
-                  <span className="ml-2 font-bold text-blue-700">{uploadSummary.updated}</span>
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setUploadSummary(null)}
-              className="p-1 hover:bg-green-100 rounded"
-            >
-              <X className="w-4 h-4 text-green-700" />
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Filters */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-4">
           <Filter className="w-4 h-4 text-slate-700" />
-          <h3 className="text-sm font-bold text-slate-900">Advanced Search & Filter</h3>
+          <h3 className="text-sm font-bold text-slate-900">Filter</h3>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -3769,7 +3626,6 @@ function PQSISMaintenanceTab() {
                 <th className="px-3 py-3 text-center font-bold whitespace-nowrap">Closed Case</th>
                 <th className="px-3 py-3 text-center font-bold whitespace-nowrap">In-Progress</th>
                 <th className="px-3 py-3 text-center font-bold whitespace-nowrap">Before Target</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Business Type</th>
                 <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Planned Reply</th>
                 <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Actual Reply</th>
                 <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Planned Report</th>
@@ -3780,7 +3636,7 @@ function PQSISMaintenanceTab() {
             <tbody className="divide-y divide-slate-100">
               {paginatedRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={18} className="px-3 py-8 text-center text-slate-500">
+                  <td colSpan={17} className="px-3 py-8 text-center text-slate-500">
                     <Database className="w-12 h-12 text-slate-300 mx-auto mb-2" />
                     <p>No PQSIS records found. Upload a CSV file to get started.</p>
                   </td>
@@ -3821,7 +3677,6 @@ function PQSISMaintenanceTab() {
                         {record.completedBeforeTargetDate}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-slate-700">{record.businessType}</td>
                     <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.plannedReplyDate}</td>
                     <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.actualReplyDate}</td>
                     <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.plannedReportIssueDate}</td>

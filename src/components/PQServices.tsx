@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Wrench,
   Plus,
@@ -16,6 +16,8 @@ import {
   MapPin,
   AlertTriangle,
   X,
+  Upload,
+  Check,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Customer, PQServiceRecord, ServiceType } from '../types/database';
@@ -55,6 +57,17 @@ export default function PQServices() {
     substation: any;
     impacts: any[];
   } | null>(null);
+
+  // PQSIS Import states
+  const [showImportDropdown, setShowImportDropdown] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResults, setImportResults] = useState<{
+    success: number;
+    failed: number;
+    errors: Array<{ row: number; message: string }>;
+  } | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load data
   useEffect(() => {
@@ -245,6 +258,177 @@ export default function PQServices() {
     };
   };
 
+  // Download PQSIS import template
+  const handleDownloadPQSISTemplate = () => {
+    const headers = [
+      'Case No.',
+      'Customer Name',
+      'Customer Group',
+      'Request Date',
+      'Service Type',
+      'Service',
+      'Service Charging (k)',
+      'Charged Department',
+      'Service Completion Date',
+      'Closed Case',
+      'In-Progress Case',
+      'Completed before Target Date',
+      'Planned Reply Date',
+      'Actual Reply Date',
+      'Planned Report Issue Date',
+      'Actual Report Issue Date',
+      'IDR Number'
+    ];
+
+    const exampleData = [
+      '5337.2',
+      'ABC Corporation',
+      'TG1',
+      '01/01/2026',
+      'Harmonics',
+      'Harmonic Analysis Study',
+      '25.5',
+      'PQ Department',
+      '15/01/2026',
+      'No',
+      'Yes',
+      'Yes',
+      '10/01/2026',
+      '09/01/2026',
+      '20/01/2026',
+      '18/01/2026',
+      'IDR-2026-001'
+    ];
+
+    const csvContent = [
+      '# PQSIS Import Template',
+      '# Upload this file with your PQSIS service records',
+      '# Date format: dd/mm/yyyy',
+      '# Closed Case / In-Progress / Completed before Target: Yes or No',
+      '',
+      headers.join(','),
+      exampleData.join(',')
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `PQSIS_Import_Template_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    setShowImportDropdown(false);
+  };
+
+  // Handle PQSIS CSV import
+  const handleImportPQSIS = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setImportResults(null);
+
+    try {
+      const text = await file.text();
+      const lines = text.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+
+      if (lines.length < 2) {
+        alert('CSV file is empty or invalid');
+        setIsImporting(false);
+        return;
+      }
+
+      // Skip header row
+      let successCount = 0;
+      let failedCount = 0;
+      const errors: Array<{ row: number; message: string }> = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+
+        if (values.length < 17) {
+          errors.push({ row: i + 1, message: 'Invalid CSV format - missing columns' });
+          failedCount++;
+          continue;
+        }
+
+        try {
+          // Map CSV to pq_service_records table structure
+          const serviceRecord = {
+            case_number: values[0],
+            service_date: values[3], // Request Date
+            service_type: values[4].toLowerCase().replace(/ /g, '_'),
+            content: values[5], // Service
+            service_charge_amount: parseFloat(values[6]) || 0,
+            party_charged: values[7],
+            completion_date: values[8],
+            is_closed: values[9].toLowerCase() === 'yes',
+            is_in_progress: values[10].toLowerCase() === 'yes',
+            completed_before_target: values[11].toLowerCase() === 'yes',
+            tariff_group: values[2], // Customer Group
+            planned_reply_date: values[12],
+            actual_reply_date: values[13],
+            planned_report_issue_date: values[14],
+            actual_report_issue_date: values[15],
+            idr_no: values[16] || null,
+            // Find customer_id from customer name
+            customer_id: null as string | null
+          };
+
+          // Find customer by name
+          const customerName = values[1];
+          const customer = customers.find(c => 
+            c.name.toLowerCase() === customerName.toLowerCase()
+          );
+
+          if (!customer) {
+            errors.push({ 
+              row: i + 1, 
+              message: `Customer "${customerName}" not found in database` 
+            });
+            failedCount++;
+            continue;
+          }
+
+          serviceRecord.customer_id = customer.id;
+
+          // Insert into database
+          const { error } = await supabase
+            .from('pq_service_records')
+            .insert(serviceRecord);
+
+          if (error) {
+            errors.push({ row: i + 1, message: error.message });
+            failedCount++;
+          } else {
+            successCount++;
+          }
+        } catch (err: any) {
+          errors.push({ row: i + 1, message: err.message || 'Unknown error' });
+          failedCount++;
+        }
+      }
+
+      setImportResults({
+        success: successCount,
+        failed: failedCount,
+        errors
+      });
+      setShowImportModal(true);
+
+      // Reload services if any succeeded
+      if (successCount > 0) {
+        await loadServices();
+      }
+    } catch (error: any) {
+      console.error('CSV import error:', error);
+      alert(`Failed to process CSV file: ${error.message}`);
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   // Handle View Event button click
   const handleViewEvent = async (eventId: string, initialTab: EventDetailsTab = 'overview') => {
     console.log('🔍 [PQServices] View Event clicked:', eventId);
@@ -349,6 +533,18 @@ export default function PQServices() {
   // Recent activities (last 10 services across all customers)
   const recentActivities = services.slice(0, 10);
 
+  // Click outside to close import dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (showImportDropdown && !target.closest('.import-dropdown-container')) {
+        setShowImportDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showImportDropdown]);
+
   const serviceTypeLabels: Record<string, string> = {
     site_survey: 'Site Survey',
     harmonic_analysis: 'Harmonic Analysis',
@@ -371,8 +567,8 @@ export default function PQServices() {
             </div>
           </div>
 
-          {/* Time Range Selector */}
-          <div className="flex items-center gap-2">
+          {/* Time Range Selector + PQSIS Import */}
+          <div className="flex items-center gap-3">
             <span className="text-sm font-semibold text-slate-700">Time Range:</span>
             <select
               value={timeRange}
@@ -384,6 +580,50 @@ export default function PQServices() {
               <option value="year">This Year</option>
               <option value="all">All Time</option>
             </select>
+
+            {/* PQSIS Import Dropdown */}
+            <div className="relative import-dropdown-container">
+              <button
+                onClick={() => setShowImportDropdown(!showImportDropdown)}
+                disabled={isImporting}
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
+                title="Upload PQSIS CSV"
+              >
+                <Upload className="w-4 h-4" />
+                {isImporting ? 'Importing...' : 'Upload CSV'}
+                <ChevronDown className={`w-4 h-4 transition-transform ${showImportDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showImportDropdown && (
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 py-2 z-30">
+                  <button
+                    onClick={() => {
+                      fileInputRef.current?.click();
+                      setShowImportDropdown(false);
+                    }}
+                    className="w-full px-4 py-2 text-left hover:bg-blue-50 flex items-center gap-2 text-slate-700 transition-colors"
+                  >
+                    <Upload className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm font-medium">Import CSV</span>
+                  </button>
+                  <button
+                    onClick={handleDownloadPQSISTemplate}
+                    className="w-full px-4 py-2 text-left hover:bg-green-50 flex items-center gap-2 text-slate-700 transition-colors"
+                  >
+                    <FileDown className="w-4 h-4 text-green-600" />
+                    <span className="text-sm font-medium">Download Template</span>
+                  </button>
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={handleImportPQSIS}
+                className="hidden"
+              />
+            </div>
           </div>
         </div>
 
@@ -1210,6 +1450,88 @@ export default function PQServices() {
                   loadServices();
                 }}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PQSIS Import Results Modal */}
+      {showImportModal && importResults && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 rounded-t-2xl flex-shrink-0">
+              <h2 className="text-2xl font-bold">Import Results</h2>
+              <p className="text-blue-100 mt-1">PQSIS CSV Import Summary</p>
+            </div>
+
+            {/* Content - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <Check className="w-8 h-8 text-green-600" />
+                    <div>
+                      <p className="text-sm text-green-700 font-medium">Successful</p>
+                      <p className="text-3xl font-bold text-green-900">{importResults.success}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <X className="w-8 h-8 text-red-600" />
+                    <div>
+                      <p className="text-sm text-red-700 font-medium">Failed</p>
+                      <p className="text-3xl font-bold text-red-900">{importResults.failed}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Error Details */}
+              {importResults.errors.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-orange-500" />
+                    Error Details ({importResults.errors.length})
+                  </h3>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {importResults.errors.map((error, idx) => (
+                      <div key={idx} className="bg-white border border-slate-200 rounded-lg p-3 text-sm">
+                        <p className="font-semibold text-slate-900">Row {error.row}</p>
+                        <p className="text-red-600 mt-1">{error.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Success Message */}
+              {importResults.success > 0 && importResults.failed === 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+                  <Check className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-bold text-green-900">Import Completed Successfully!</p>
+                    <p className="text-sm text-green-700 mt-1">
+                      All {importResults.success} records have been imported to the database.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer - Always Visible */}
+            <div className="border-t border-slate-200 p-4 flex justify-end flex-shrink-0">
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportResults(null);
+                }}
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
