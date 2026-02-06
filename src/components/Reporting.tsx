@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import * as XLSX from 'xlsx';
 import {
   AlertCircle,
   BarChart3,
   Calendar,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Copy,
   Database,
   Download,
   FileText,
   Filter,
-  Pencil,
+  Info,
   Plus,
   Search,
   Trash2,
@@ -28,7 +31,6 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import * as XLSX from 'xlsx';
 import NotificationBell from './NotificationBell';
 
 type PQSummaryEventType = 'Voltage Dip' | 'Voltage Swell' | 'Harmonic' | 'Interruption';
@@ -90,7 +92,9 @@ type VoltageDipBenchmarkEventMock = {
 
 
 
-type ReportingTab = 'pqSummary' | 'complianceSummary' | 'voltageCurrentProfile' | 'meterCommunication' | 'dynamicReport' | 'pqsisMaintenance';
+type ReportingTab = 'pqSummary' | 'complianceSummary' | 'voltageCurrentProfile' | 'meterCommunication' | 'dynamicReport' | 'pqsisMaintenance' | 'meterRawData';
+
+type MeterRawDataView = 'raw' | 'daily' | 'weekly';
 
 type PQSISRecord = {
   caseNo: string; // e.g., "5337.2"
@@ -114,23 +118,71 @@ type PQSISRecord = {
 
 type PQSISServiceType = 'Harmonics' | 'Supply Enquiry' | 'Site Survey' | 'Technical Services' | 'PQ Site Investigation' | 'Enquiry' | 'All';
 
+type PQSISColumn = 
+  | 'Customer Group'
+  | 'Request Date'
+  | 'Service Type'
+  | 'Service'
+  | 'Service Charging'
+  | 'Charged Dept'
+  | 'Completion Date'
+  | 'Closed Case'
+  | 'In-Progress'
+  | 'Before Target'
+  | 'Planned Reply'
+  | 'Actual Reply'
+  | 'Planned Report'
+  | 'Actual Report'
+  | 'IDR Number';
+
 type ComplianceSummaryReportView = 'pqStandards' | 'voltageDipBenchmarking' | 'individualHarmonics' | 'en50160';
 
 type HarmonicType = 'V1_HD' | 'V2_HD' | 'V3_HD' | 'I1_HD' | 'I2_HD' | 'I3_HD';
 
 type HarmonicDataRecord = {
-  timestamp: string;
-  order: number; // 3rd, 5th, 7th, etc.
-  magnitude: number;
-  angle: number;
-  thd: number;
+  harmonicOrder: number; // 3rd, 5th, 7th, 9th, 11th, 13th, etc.
+  limit: string; // EN50160 limit
+  percentile95th: string; // Weekly 95th percentile
+  dailyMax: string;
+  dailyMin: string;
+  monthlyMax: string;
+  monthlyMin: string;
+  compliance: 'Pass' | 'Fail';
+};
+
+type HarmonicReport = {
+  reportId: string;
+  reportingYear: string; // YYYY format
+  voltageLevel: '400kV' | '132kV' | '11kV' | '380V';
+  areaGroup: string; // e.g., Kowloon, New Territories
+  meterName: string;
+  sourceSubstation: string;
+  generatedDate: string;
+  overallCompliance: 'Pass' | 'Fail';
+  failedHarmonics: number;
 };
 
 type EN50160Parameter = {
   parameter: string;
   limit: string;
-  actualValue: string;
-  result: 'Pass' | 'Fail';
+  percentile95th: string; // Weekly 95th percentile
+  dailyMax: string;
+  dailyMin: string;
+  monthlyMax: string;
+  monthlyMin: string;
+  compliance: 'Pass' | 'Fail';
+};
+
+type EN50160Report = {
+  reportId: string;
+  reportingYear: string; // YYYY format
+  voltageLevel: '400kV' | '132kV' | '11kV' | '380V';
+  areaGroup: string; // e.g., Kowloon, New Territories
+  meterName: string;
+  sourceSubstation: string;
+  generatedDate: string;
+  overallCompliance: 'Pass' | 'Fail';
+  failedParameters: number;
 };
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -503,7 +555,7 @@ function ComplianceSummaryTab({ selectedReportView }: { selectedReportView: Comp
   }
 
   if (selectedReportView === 'voltageDipBenchmarking') {
-    return <VoltageDipBenchmarkingView standards={standards} />;
+    return <VoltageDipBenchmarkingView standards={standards} setStandards={setStandards} />;
   }
 
   if (selectedReportView === 'individualHarmonics') {
@@ -517,10 +569,9 @@ function ComplianceSummaryTab({ selectedReportView }: { selectedReportView: Comp
   return null;
 }
 
-// PQ Standards Report View
+// PQ Standards Report View (Read-Only)
 function PQStandardsView({ 
-  standards, 
-  setStandards 
+  standards
 }: { 
   standards: PQBenchmarkStandardMock[]; 
   setStandards: React.Dispatch<React.SetStateAction<PQBenchmarkStandardMock[]>>;
@@ -553,104 +604,6 @@ function PQStandardsView({
       return true;
     });
   }, [standards, searchText, searchType, filterFamily, filterParameter]);
-
-  const [standardModalOpen, setStandardModalOpen] = useState(false);
-  const [standardModalMode, setStandardModalMode] = useState<'create' | 'edit'>('create');
-  const [editingStandardId, setEditingStandardId] = useState<string | null>(null);
-  const [formName, setFormName] = useState('');
-  const [formFamily, setFormFamily] = useState('IEC');
-  const [formParameter, setFormParameter] = useState<BenchmarkParameter>('Voltage Dip');
-  const [formDescription, setFormDescription] = useState('');
-
-  const openCreateStandard = () => {
-    setStandardModalMode('create');
-    setEditingStandardId(null);
-    setFormName('');
-    setFormFamily('IEC');
-    setFormParameter('Voltage Dip');
-    setFormDescription('');
-    setStandardModalOpen(true);
-  };
-
-  const openEditStandard = (standard: PQBenchmarkStandardMock) => {
-    setStandardModalMode('edit');
-    setEditingStandardId(standard.id);
-    setFormName(standard.name);
-    setFormFamily(standard.family);
-    setFormParameter(standard.parameter as BenchmarkParameter);
-    setFormDescription(standard.description);
-    setStandardModalOpen(true);
-  };
-
-  const saveStandard = () => {
-    const name = formName.trim();
-    if (!name) {
-      alert('Standard Name is required');
-      return;
-    }
-
-    if (standardModalMode === 'create') {
-      const id = `std-${Math.random().toString(16).slice(2)}`;
-      const today = new Date();
-      const updatedAt = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-      const baseCurve =
-        formParameter === 'Voltage Dip'
-          ? [
-              { durationSec: 0.02, minVoltagePct: 50 },
-              { durationSec: 0.20, minVoltagePct: 70 },
-              { durationSec: 0.50, minVoltagePct: 80 },
-              { durationSec: 1.00, minVoltagePct: 90 }
-            ]
-          : [];
-
-      setStandards((prev) => [
-        {
-          id,
-          name,
-          family: formFamily,
-          parameter: formParameter,
-          description: formDescription.trim(),
-          updatedAt,
-          curvePoints: baseCurve
-        },
-        ...prev
-      ]);
-    } else if (editingStandardId) {
-      const today = new Date();
-      const updatedAt = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-      setStandards((prev) =>
-        prev.map((s) =>
-          s.id === editingStandardId
-            ? {
-                ...s,
-                name,
-                family: formFamily,
-                parameter: formParameter,
-                description: formDescription.trim(),
-                updatedAt
-              }
-            : s
-        )
-      );
-    }
-
-    setStandardModalOpen(false);
-  };
-
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleteStandardId, setDeleteStandardId] = useState<string | null>(null);
-
-  const openDeleteStandard = (standardId: string) => {
-    setDeleteStandardId(standardId);
-    setDeleteModalOpen(true);
-  };
-
-  const confirmDelete = () => {
-    if (!deleteStandardId) return;
-    setStandards((prev) => prev.filter((s) => s.id !== deleteStandardId));
-    setDeleteModalOpen(false);
-    setDeleteStandardId(null);
-  };
 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -697,7 +650,7 @@ function PQStandardsView({
           <BarChart3 className="w-6 h-6 text-slate-700" />
           <div>
             <h2 className="text-xl font-bold text-slate-900">PQ Standards Report</h2>
-            <p className="text-sm text-slate-600 mt-1">Manage power quality standards and benchmarks</p>
+            <p className="text-sm text-slate-600 mt-1">View power quality standards and benchmarks (Read-Only)</p>
           </div>
         </div>
 
@@ -766,14 +719,6 @@ function PQStandardsView({
                   <option value="Interruption">Interruption</option>
                 </select>
               </div>
-              <button
-                type="button"
-                onClick={openCreateStandard}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Add New Standard
-              </button>
             </div>
           </div>
         </div>
@@ -791,14 +736,14 @@ function PQStandardsView({
                 <th className="px-4 py-3 text-left font-bold">Max</th>
                 <th className="px-4 py-3 text-left font-bold">Unit</th>
                 <th className="px-4 py-3 text-left font-bold">Remarks</th>
-                <th className="px-4 py-3 text-center font-bold">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {paginatedStandards.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
-                    No standards found. Create a new standard to get started.
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                    <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                    <p>No standards found matching your criteria.</p>
                   </td>
                 </tr>
               ) : (
@@ -813,26 +758,6 @@ function PQStandardsView({
                     <td className="px-4 py-3 text-sm text-slate-700">{s.max || 'N/A'}</td>
                     <td className="px-4 py-3 text-sm text-slate-700">{s.unit || 'N/A'}</td>
                     <td className="px-4 py-3 text-sm text-slate-700">{s.remarks || s.description}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEditStandard(s)}
-                          className="p-2 hover:bg-blue-100 rounded-lg text-blue-600"
-                          title="Edit"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openDeleteStandard(s.id)}
-                          className="p-2 hover:bg-red-100 rounded-lg text-red-600"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
                   </tr>
                 ))
               )}
@@ -849,16 +774,18 @@ function PQStandardsView({
                   type="button"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="px-3 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                  className="px-3 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Previous
                 </button>
-                <span>Page {currentPage} of {totalPages}</span>
+                <div className="px-3 py-1">
+                  Page {currentPage} of {totalPages}
+                </div>
                 <button
                   type="button"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="px-3 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                  className="px-3 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next
                 </button>
@@ -868,128 +795,193 @@ function PQStandardsView({
         </div>
       </div>
 
-      {/* Create/Edit Modal */}
-      {standardModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-lg font-bold text-slate-900">
-                {standardModalMode === 'create' ? 'Add New Standard' : 'Edit Standard'}
-              </h3>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Standard Name</label>
-                <input
-                  type="text"
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="e.g. IEC 61000-4-30"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Family</label>
-                <select
-                  value={formFamily}
-                  onChange={(e) => setFormFamily(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                >
-                  <option value="IEC">IEC</option>
-                  <option value="SEMI">SEMI</option>
-                  <option value="ITIC">ITIC</option>
-                  <option value="CLP Supply Rules">CLP Supply Rules</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Parameter</label>
-                <select
-                  value={formParameter}
-                  onChange={(e) => setFormParameter(e.target.value as BenchmarkParameter)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                >
-                  <option value="Voltage Dip">Voltage Dip</option>
-                  <option value="Voltage Swell">Voltage Swell</option>
-                  <option value="Interruption">Interruption</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Description</label>
-                <textarea
-                  value={formDescription}
-                  onChange={(e) => setFormDescription(e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="Optional description..."
-                />
-              </div>
-            </div>
-            <div className="p-6 border-t border-slate-200 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setStandardModalOpen(false)}
-                className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={saveStandard}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
-              >
-                {standardModalMode === 'create' ? 'Create' : 'Save Changes'}
-              </button>
-            </div>
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+        <div className="flex items-start gap-3">
+          <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div>
+            <h3 className="text-sm font-bold text-blue-900 mb-1">Read-Only View</h3>
+            <p className="text-sm text-blue-700">
+              This is a read-only report of PQ standards. To add, edit, or delete standards, 
+              please use the <span className="font-semibold">"Voltage Dip Benchmarking"</span> report 
+              and click the <span className="font-semibold">"PQ Standard"</span> button.
+            </p>
           </div>
         </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {deleteModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-            <div className="p-6">
-              <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                  <AlertCircle className="w-6 h-6 text-red-600" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold text-slate-900 mb-2">Delete Standard</h3>
-                  <p className="text-sm text-slate-600">
-                    Are you sure you want to delete this standard? This action cannot be undone.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="p-6 border-t border-slate-200 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setDeleteModalOpen(false)}
-                className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmDelete}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
 
 // Voltage Dip Benchmarking View (from old Benchmarking tab)
-function VoltageDipBenchmarkingView({ standards }: { standards: PQBenchmarkStandardMock[] }) {
+function VoltageDipBenchmarkingView({ 
+  standards, 
+  setStandards 
+}: { 
+  standards: PQBenchmarkStandardMock[]; 
+  setStandards: React.Dispatch<React.SetStateAction<PQBenchmarkStandardMock[]>>;
+}) {
   const voltageDipStandards = useMemo(
     () => standards.filter((s) => s.parameter === 'Voltage Dip'),
     [standards]
   );
+
+  // PQ Standard Modal state
+  const [showPQStandardModal, setShowPQStandardModal] = useState(false);
+  const [showAddNewStandard, setShowAddNewStandard] = useState(false);
+  const [showEditStandardModal, setShowEditStandardModal] = useState(false);
+  const [editingStandardId, setEditingStandardId] = useState<string | null>(null);
+  
+  // Form state for add/edit standard
+  const [formStandardName, setFormStandardName] = useState('');
+  const [formFamily, setFormFamily] = useState('IEC');
+  const [formVersion, setFormVersion] = useState('');
+  const [formLevel, setFormLevel] = useState('All');
+  const [formMin, setFormMin] = useState('N/A');
+  const [formMax, setFormMax] = useState('N/A');
+  const [formUnit, setFormUnit] = useState('%');
+  const [formRemarks, setFormRemarks] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formCurvePoints, setFormCurvePoints] = useState<Array<{ durationSec: string; minVoltagePct: string }>>([{ durationSec: '0', minVoltagePct: '0' }]);
+
+  const resetForm = () => {
+    setFormStandardName('');
+    setFormFamily('IEC');
+    setFormVersion('');
+    setFormLevel('All');
+    setFormMin('N/A');
+    setFormMax('N/A');
+    setFormUnit('%');
+    setFormRemarks('');
+    setFormDescription('');
+    setFormCurvePoints([{ durationSec: '0', minVoltagePct: '0' }]);
+    setEditingStandardId(null);
+  };
+
+  const openAddNewStandard = () => {
+    resetForm();
+    setShowAddNewStandard(true);
+  };
+
+  const openEditStandard = (standard: PQBenchmarkStandardMock) => {
+    setFormStandardName(standard.name);
+    setFormFamily(standard.family);
+    setFormVersion(standard.version || '');
+    setFormLevel(standard.level || 'All');
+    setFormMin(standard.min || 'N/A');
+    setFormMax(standard.max || 'N/A');
+    setFormUnit(standard.unit || '%');
+    setFormRemarks(standard.remarks || '');
+    setFormDescription(standard.description || '');
+    setFormCurvePoints(standard.curvePoints.map(pt => ({
+      durationSec: String(pt.durationSec),
+      minVoltagePct: String(pt.minVoltagePct)
+    })));
+    setEditingStandardId(standard.id);
+    setShowEditStandardModal(true);
+  };
+
+  const handleSaveStandard = () => {
+    const name = formStandardName.trim();
+    if (!name) {
+      alert('Standard Name is required');
+      return;
+    }
+
+    // Check for duplicates (except when editing)
+    const duplicate = standards.find(s => 
+      s.name.toLowerCase() === name.toLowerCase() && 
+      s.id !== editingStandardId
+    );
+    if (duplicate) {
+      alert('A standard with this name already exists');
+      return;
+    }
+
+    // Validate curve points
+    const curvePoints = formCurvePoints
+      .filter(pt => pt.durationSec.trim() && pt.minVoltagePct.trim())
+      .map(pt => ({
+        durationSec: parseFloat(pt.durationSec),
+        minVoltagePct: parseFloat(pt.minVoltagePct)
+      }))
+      .filter(pt => !isNaN(pt.durationSec) && !isNaN(pt.minVoltagePct));
+
+    if (curvePoints.length < 2) {
+      alert('At least 2 valid curve points are required');
+      return;
+    }
+
+    if (editingStandardId) {
+      // Edit existing
+      setStandards(prev => prev.map(s => 
+        s.id === editingStandardId
+          ? {
+              ...s,
+              name,
+              family: formFamily,
+              version: formVersion,
+              level: formLevel,
+              min: formMin,
+              max: formMax,
+              unit: formUnit,
+              remarks: formRemarks,
+              description: formDescription,
+              updatedAt: new Date().getFullYear().toString(),
+              curvePoints
+            }
+          : s
+      ));
+      alert('Standard updated successfully');
+    } else {
+      // Add new
+      const newStandard: PQBenchmarkStandardMock = {
+        id: `std-vd-${Date.now()}`,
+        name,
+        family: formFamily,
+        parameter: 'Voltage Dip',
+        description: formDescription,
+        updatedAt: new Date().getFullYear().toString(),
+        version: formVersion,
+        level: formLevel,
+        min: formMin,
+        max: formMax,
+        unit: formUnit,
+        remarks: formRemarks,
+        curvePoints
+      };
+      setStandards(prev => [...prev, newStandard]);
+      alert('Standard added successfully');
+    }
+
+    resetForm();
+    setShowAddNewStandard(false);
+    setShowEditStandardModal(false);
+  };
+
+  const handleDeleteStandard = (standardId: string) => {
+    const standard = standards.find(s => s.id === standardId);
+    if (!standard) return;
+    
+    const confirmMessage = `Are you sure you want to delete this PQ standard?\n\nStandard: ${standard.name}\n\nThis action cannot be undone.`;
+    if (!confirm(confirmMessage)) return;
+    
+    setStandards(prev => prev.filter(s => s.id !== standardId));
+    alert('Standard deleted successfully');
+  };
+
+  const addCurvePoint = () => {
+    setFormCurvePoints(prev => [...prev, { durationSec: '', minVoltagePct: '' }]);
+  };
+
+  const removeCurvePoint = (index: number) => {
+    setFormCurvePoints(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateCurvePoint = (index: number, field: 'durationSec' | 'minVoltagePct', value: string) => {
+    setFormCurvePoints(prev => prev.map((pt, i) => 
+      i === index ? { ...pt, [field]: value } : pt
+    ));
+  };
 
   const [selectedStandardId, setSelectedStandardId] = useState<string>(() => voltageDipStandards[0]?.id ?? '');
   useEffect(() => {
@@ -1166,12 +1158,21 @@ function VoltageDipBenchmarkingView({ standards }: { standards: PQBenchmarkStand
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <BarChart3 className="w-6 h-6 text-slate-700" />
-        <div>
-          <h2 className="text-xl font-bold text-slate-900">Voltage Dip Benchmarking</h2>
-          <p className="text-sm text-slate-600 mt-1">Compare voltage dip events against compliance curves</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <BarChart3 className="w-6 h-6 text-slate-700" />
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">Voltage Dip Benchmarking</h2>
+            <p className="text-sm text-slate-600 mt-1">Compare voltage dip events against compliance curves</p>
+          </div>
         </div>
+        <button
+          onClick={() => setShowPQStandardModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <FileText className="w-4 h-4" />
+          PQ Standard
+        </button>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
@@ -1557,6 +1558,461 @@ function VoltageDipBenchmarkingView({ standards }: { standards: PQBenchmarkStand
           )}
         </div>
       </div>
+
+      {/* PQ Standard Management Modal */}
+      {showPQStandardModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-cyan-50">
+              <h2 className="text-xl font-bold text-slate-900">Manage Voltage Dip Standards</h2>
+              <button
+                onClick={() => setShowPQStandardModal(false)}
+                className="p-2 hover:bg-white/50 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+              {/* Existing Standards Table */}
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 mb-3">Existing Voltage Dip Standards</h3>
+                <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                  <table className="w-full">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Standard Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Version</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Level</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Min</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Max</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Unit</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Remarks</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {voltageDipStandards.map((standard) => (
+                        <tr key={standard.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 text-sm text-slate-900">{standard.name}</td>
+                          <td className="px-4 py-3 text-sm text-slate-700">{standard.version || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-700">{standard.level || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-700">{standard.min || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-700">{standard.max || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-700">{standard.unit || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-slate-700">{standard.remarks || '-'}</td>
+                          <td className="px-4 py-3 text-sm space-x-2">
+                            <button
+                              onClick={() => openEditStandard(standard)}
+                              className="text-blue-600 hover:text-blue-700 font-semibold"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteStandard(standard.id)}
+                              className="text-red-600 hover:text-red-700 font-semibold"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Add New Standard Section */}
+              <div className="border border-slate-200 rounded-lg">
+                <button
+                  onClick={() => {
+                    if (showAddNewStandard) {
+                      setShowAddNewStandard(false);
+                      resetForm();
+                    } else {
+                      openAddNewStandard();
+                    }
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors rounded-t-lg"
+                >
+                  <span className="text-lg font-semibold text-slate-900">Add New Standard</span>
+                  {showAddNewStandard ? (<ChevronUp className="w-5 h-5" />) : (<ChevronDown className="w-5 h-5" />)}
+                </button>
+
+                {showAddNewStandard && (
+                  <div className="p-6 space-y-6">
+                    {/* Form Grid */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Standard Name *</label>
+                        <input
+                          type="text"
+                          value={formStandardName}
+                          onChange={(e) => setFormStandardName(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          placeholder="e.g., IEC61000-4-34/11"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Version</label>
+                        <input
+                          type="text"
+                          value={formVersion}
+                          onChange={(e) => setFormVersion(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          placeholder="e.g., 2011"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Level</label>
+                        <input
+                          type="text"
+                          value={formLevel}
+                          onChange={(e) => setFormLevel(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          placeholder="e.g., All, 11kV"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Min</label>
+                        <input
+                          type="text"
+                          value={formMin}
+                          onChange={(e) => setFormMin(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          placeholder="N/A"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Max</label>
+                        <input
+                          type="text"
+                          value={formMax}
+                          onChange={(e) => setFormMax(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          placeholder="N/A"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Unit</label>
+                        <input
+                          type="text"
+                          value={formUnit}
+                          onChange={(e) => setFormUnit(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          placeholder="%"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Remarks</label>
+                        <input
+                          type="text"
+                          value={formRemarks}
+                          onChange={(e) => setFormRemarks(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          placeholder="Optional"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Description</label>
+                      <textarea
+                        value={formDescription}
+                        onChange={(e) => setFormDescription(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                        rows={2}
+                        placeholder="Optional description"
+                      />
+                    </div>
+
+                    {/* Curve Points Table */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-semibold text-slate-700">Curve Points (Duration vs Min Voltage) *</label>
+                        <button
+                          onClick={addCurvePoint}
+                          className="flex items-center gap-1 px-3 py-1 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add Point
+                        </button>
+                      </div>
+                      <div className="border border-slate-200 rounded-lg overflow-hidden">
+                        <table className="w-full">
+                          <thead className="bg-slate-50 border-b border-slate-200">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-slate-700">Duration (s)</th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-slate-700">Min Voltage (%)</th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-slate-700">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {formCurvePoints.map((pt, index) => (
+                              <tr key={index}>
+                                <td className="px-4 py-2">
+                                  <input
+                                    type="text"
+                                    value={pt.durationSec}
+                                    onChange={(e) => updateCurvePoint(index, 'durationSec', e.target.value)}
+                                    className="w-full px-2 py-1 border border-slate-300 rounded text-sm"
+                                    placeholder="0.0"
+                                  />
+                                </td>
+                                <td className="px-4 py-2">
+                                  <input
+                                    type="text"
+                                    value={pt.minVoltagePct}
+                                    onChange={(e) => updateCurvePoint(index, 'minVoltagePct', e.target.value)}
+                                    className="w-full px-2 py-1 border border-slate-300 rounded text-sm"
+                                    placeholder="0"
+                                  />
+                                </td>
+                                <td className="px-4 py-2">
+                                  <button
+                                    onClick={() => removeCurvePoint(index)}
+                                    disabled={formCurvePoints.length <= 1}
+                                    className="text-red-600 hover:text-red-700 disabled:text-slate-400 disabled:cursor-not-allowed"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">* At least 2 curve points required. Values will be sorted by duration automatically.</p>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+                      <button
+                        onClick={() => {
+                          setShowAddNewStandard(false);
+                          resetForm();
+                        }}
+                        className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSaveStandard}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      >
+                        {editingStandardId ? 'Update Standard' : 'Save Standard'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit PQ Standard Modal */}
+      {showEditStandardModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-cyan-50">
+              <h2 className="text-xl font-bold text-slate-900">Edit PQ Standard</h2>
+              <button
+                onClick={() => {
+                  setShowEditStandardModal(false);
+                  resetForm();
+                }}
+                className="p-2 hover:bg-white/50 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              <div className="space-y-6">
+                {/* Form Grid */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Standard Name *</label>
+                    <input
+                      type="text"
+                      value={formStandardName}
+                      onChange={(e) => setFormStandardName(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="e.g., IEC61000-4-34/11"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Version</label>
+                    <input
+                      type="text"
+                      value={formVersion}
+                      onChange={(e) => setFormVersion(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="e.g., 2011"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Level</label>
+                    <input
+                      type="text"
+                      value={formLevel}
+                      onChange={(e) => setFormLevel(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="e.g., All, 11kV"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Min</label>
+                    <input
+                      type="text"
+                      value={formMin}
+                      onChange={(e) => setFormMin(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="N/A"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Max</label>
+                    <input
+                      type="text"
+                      value={formMax}
+                      onChange={(e) => setFormMax(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="N/A"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Unit</label>
+                    <input
+                      type="text"
+                      value={formUnit}
+                      onChange={(e) => setFormUnit(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="%"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Remarks</label>
+                    <input
+                      type="text"
+                      value={formRemarks}
+                      onChange={(e) => setFormRemarks(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Optional"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Description</label>
+                  <textarea
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    rows={2}
+                    placeholder="Optional description"
+                  />
+                </div>
+
+                {/* Curve Points Table */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-semibold text-slate-700">Curve Points (Duration vs Min Voltage) *</label>
+                    <button
+                      onClick={addCurvePoint}
+                      className="flex items-center gap-1 px-3 py-1 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Point
+                    </button>
+                  </div>
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-slate-700">Duration (s)</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-slate-700">Min Voltage (%)</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-slate-700">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {formCurvePoints.map((pt, index) => (
+                          <tr key={index}>
+                            <td className="px-4 py-2">
+                              <input
+                                type="text"
+                                value={pt.durationSec}
+                                onChange={(e) => updateCurvePoint(index, 'durationSec', e.target.value)}
+                                className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="0.0"
+                              />
+                            </td>
+                            <td className="px-4 py-2">
+                              <input
+                                type="text"
+                                value={pt.minVoltagePct}
+                                onChange={(e) => updateCurvePoint(index, 'minVoltagePct', e.target.value)}
+                                className="w-full px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="0"
+                              />
+                            </td>
+                            <td className="px-4 py-2">
+                              <button
+                                onClick={() => removeCurvePoint(index)}
+                                disabled={formCurvePoints.length <= 1}
+                                className="text-red-600 hover:text-red-700 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">* At least 2 curve points required. Values will be sorted by duration automatically.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowEditStandardModal(false);
+                  resetForm();
+                }}
+                className="px-5 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-white transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveStandard}
+                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
+              >
+                Update Standard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1578,14 +2034,14 @@ function IndividualHarmonicsView() {
     { type: 'I3_HD', label: 'I3 HD' }
   ];
 
-  // Mock harmonic data
+  // Mock harmonic data (compliance-based structure)
   const mockHarmonicData = useMemo<HarmonicDataRecord[]>(() => [
-    { timestamp: '2025-01-15 10:00:00', order: 3, magnitude: 2.5, angle: 120.3, thd: 3.2 },
-    { timestamp: '2025-01-15 10:15:00', order: 5, magnitude: 1.8, angle: 95.7, thd: 2.9 },
-    { timestamp: '2025-01-15 10:30:00', order: 7, magnitude: 1.2, angle: 78.4, thd: 2.5 },
-    { timestamp: '2025-01-15 10:45:00', order: 9, magnitude: 0.9, angle: 62.1, thd: 2.3 },
-    { timestamp: '2025-01-15 11:00:00', order: 11, magnitude: 0.7, angle: 45.8, thd: 2.1 },
-    { timestamp: '2025-01-15 11:15:00', order: 13, magnitude: 0.5, angle: 30.2, thd: 1.9 }
+    { harmonicOrder: 3, limit: '<5%', percentile95th: '2.8%', dailyMax: '3.2%', dailyMin: '1.5%', monthlyMax: '3.2%', monthlyMin: '1.5%', compliance: 'Pass' },
+    { harmonicOrder: 5, limit: '<6%', percentile95th: '3.8%', dailyMax: '4.5%', dailyMin: '2.1%', monthlyMax: '4.5%', monthlyMin: '2.1%', compliance: 'Pass' },
+    { harmonicOrder: 7, limit: '<5%', percentile95th: '2.9%', dailyMax: '3.6%', dailyMin: '1.8%', monthlyMax: '3.6%', monthlyMin: '1.8%', compliance: 'Pass' },
+    { harmonicOrder: 9, limit: '<1.5%', percentile95th: '0.9%', dailyMax: '1.2%', dailyMin: '0.5%', monthlyMax: '1.2%', monthlyMin: '0.5%', compliance: 'Pass' },
+    { harmonicOrder: 11, limit: '<3.5%', percentile95th: '1.8%', dailyMax: '2.3%', dailyMin: '0.9%', monthlyMax: '2.3%', monthlyMin: '0.9%', compliance: 'Pass' },
+    { harmonicOrder: 13, limit: '<3%', percentile95th: '1.5%', dailyMax: '2.0%', dailyMin: '0.7%', monthlyMax: '2.0%', monthlyMin: '0.7%', compliance: 'Pass' }
   ], []);
 
   const handleGenerate = () => {
@@ -1599,11 +2055,14 @@ function IndividualHarmonicsView() {
   const handleExportCSV = () => {
     try {
       const exportData = mockHarmonicData.map(d => ({
-        'Timestamp': d.timestamp,
-        'Harmonic Order': `${d.order}th`,
-        'Magnitude': d.magnitude.toFixed(2),
-        'Angle (degrees)': d.angle.toFixed(1),
-        'THD (%)': d.thd.toFixed(1)
+        'Harmonic Order': `${d.harmonicOrder}th`,
+        'Limit': d.limit,
+        '95th Percentile': d.percentile95th,
+        'Daily Max': d.dailyMax,
+        'Daily Min': d.dailyMin,
+        'Monthly Max': d.monthlyMax,
+        'Monthly Min': d.monthlyMin,
+        'Compliance': d.compliance
       }));
 
       const wb = XLSX.utils.book_new();
@@ -1732,21 +2191,19 @@ function IndividualHarmonicsView() {
               <table className="w-full">
                 <thead className="bg-slate-900 text-white">
                   <tr>
-                    <th className="px-4 py-3 text-left font-bold">Timestamp</th>
                     <th className="px-4 py-3 text-left font-bold">Harmonic Order</th>
-                    <th className="px-4 py-3 text-right font-bold">Magnitude</th>
-                    <th className="px-4 py-3 text-right font-bold">Angle (°)</th>
-                    <th className="px-4 py-3 text-right font-bold">THD (%)</th>
+                    <th className="px-4 py-3 text-right font-bold">95th Percentile</th>
+                    <th className="px-4 py-3 text-right font-bold">Daily Max</th>
+                    <th className="px-4 py-3 text-right font-bold">Daily Min</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {mockHarmonicData.map((record, idx) => (
                     <tr key={idx} className="hover:bg-blue-50">
-                      <td className="px-4 py-3 text-sm text-slate-700">{record.timestamp}</td>
-                      <td className="px-4 py-3 text-sm text-slate-700">{record.order}th</td>
-                      <td className="px-4 py-3 text-sm text-slate-700 text-right">{record.magnitude.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-sm text-slate-700 text-right">{record.angle.toFixed(1)}</td>
-                      <td className="px-4 py-3 text-sm text-slate-700 text-right">{record.thd.toFixed(1)}</td>
+                      <td className="px-4 py-3 text-sm text-slate-700">{record.harmonicOrder}th</td>
+                      <td className="px-4 py-3 text-sm text-slate-700 text-right">{record.percentile95th}</td>
+                      <td className="px-4 py-3 text-sm text-slate-700 text-right">{record.dailyMax}</td>
+                      <td className="px-4 py-3 text-sm text-slate-700 text-right">{record.dailyMin}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1767,14 +2224,14 @@ function EN50160ReportsView() {
 
   // Mock EN50160 compliance data
   const mockEN50160Data = useMemo<EN50160Parameter[]>(() => [
-    { parameter: 'V-Magnitude (Supply Voltage Variations)', limit: '±10%', actualValue: '8.2%', result: 'Pass' },
-    { parameter: 'Frequency', limit: '50Hz ±1%', actualValue: '49.95Hz', result: 'Pass' },
-    { parameter: 'V-Unbalance (Negative Sequence)', limit: '<2%', actualValue: '0.8%', result: 'Pass' },
-    { parameter: 'Flicker (Pst - Short-term)', limit: '<1.0', actualValue: '0.7', result: 'Pass' },
-    { parameter: 'Flicker (Plt - Long-term)', limit: '<0.8', actualValue: '0.6', result: 'Pass' },
-    { parameter: 'Voltage THD (Total Harmonic Distortion)', limit: '<8%', actualValue: '4.2%', result: 'Pass' },
-    { parameter: 'Voltage TEHD (Total Even Harmonic)', limit: '<2%', actualValue: '0.5%', result: 'Pass' },
-    { parameter: 'Voltage TOHD (Total Odd Harmonic)', limit: '<5%', actualValue: '3.8%', result: 'Pass' }
+    { parameter: 'V-Magnitude (Supply Voltage Variations)', limit: '±10%', percentile95th: '8.2%', dailyMax: '9.1%', dailyMin: '6.5%', monthlyMax: '9.1%', monthlyMin: '6.5%', compliance: 'Pass' },
+    { parameter: 'Frequency', limit: '50Hz ±1%', percentile95th: '49.95Hz', dailyMax: '50.05Hz', dailyMin: '49.90Hz', monthlyMax: '50.05Hz', monthlyMin: '49.90Hz', compliance: 'Pass' },
+    { parameter: 'V-Unbalance (Negative Sequence)', limit: '<2%', percentile95th: '0.8%', dailyMax: '1.2%', dailyMin: '0.5%', monthlyMax: '1.2%', monthlyMin: '0.5%', compliance: 'Pass' },
+    { parameter: 'Flicker (Pst - Short-term)', limit: '<1.0', percentile95th: '0.7', dailyMax: '0.9', dailyMin: '0.4', monthlyMax: '0.9', monthlyMin: '0.4', compliance: 'Pass' },
+    { parameter: 'Flicker (Plt - Long-term)', limit: '<0.8', percentile95th: '0.6', dailyMax: '0.7', dailyMin: '0.3', monthlyMax: '0.7', monthlyMin: '0.3', compliance: 'Pass' },
+    { parameter: 'Voltage THD (Total Harmonic Distortion)', limit: '<8%', percentile95th: '4.2%', dailyMax: '5.8%', dailyMin: '2.9%', monthlyMax: '5.8%', monthlyMin: '2.9%', compliance: 'Pass' },
+    { parameter: 'Voltage TEHD (Total Even Harmonic)', limit: '<2%', percentile95th: '0.5%', dailyMax: '0.8%', dailyMin: '0.2%', monthlyMax: '0.8%', monthlyMin: '0.2%', compliance: 'Pass' },
+    { parameter: 'Voltage TOHD (Total Odd Harmonic)', limit: '<5%', percentile95th: '3.8%', dailyMax: '4.5%', dailyMin: '2.1%', monthlyMax: '4.5%', monthlyMin: '2.1%', compliance: 'Pass' }
   ], []);
 
   const handleGenerate = () => {
@@ -1800,7 +2257,7 @@ function EN50160ReportsView() {
       ];
 
       const ws = XLSX.utils.aoa_to_sheet(summary);
-      const dataRows = mockEN50160Data.map(d => [d.parameter, d.limit, d.actualValue, d.result]);
+      const dataRows = mockEN50160Data.map(d => [d.parameter, d.limit, d.percentile95th, d.dailyMax, d.dailyMin, d.monthlyMax, d.monthlyMin, d.compliance]);
       XLSX.utils.sheet_add_aoa(ws, dataRows, { origin: -1 });
       
       XLSX.utils.book_append_sheet(wb, ws, 'EN50160 Report');
@@ -1889,8 +2346,12 @@ function EN50160ReportsView() {
                 <tr>
                   <th className="px-4 py-3 text-left font-bold">Parameter</th>
                   <th className="px-4 py-3 text-left font-bold">EN 50160 Limit</th>
-                  <th className="px-4 py-3 text-left font-bold">Actual Value</th>
-                  <th className="px-4 py-3 text-center font-bold">Result</th>
+                  <th className="px-4 py-3 text-right font-bold">95th Percentile</th>
+                  <th className="px-4 py-3 text-right font-bold">Daily Max</th>
+                  <th className="px-4 py-3 text-right font-bold">Daily Min</th>
+                  <th className="px-4 py-3 text-right font-bold">Monthly Max</th>
+                  <th className="px-4 py-3 text-right font-bold">Monthly Min</th>
+                  <th className="px-4 py-3 text-center font-bold">Compliance</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1898,13 +2359,17 @@ function EN50160ReportsView() {
                   <tr key={idx} className="hover:bg-blue-50">
                     <td className="px-4 py-3 text-sm text-slate-900 font-medium">{record.parameter}</td>
                     <td className="px-4 py-3 text-sm text-slate-700">{record.limit}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700">{record.actualValue}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700 text-right">{record.percentile95th}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700 text-right">{record.dailyMax}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700 text-right">{record.dailyMin}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700 text-right">{record.monthlyMax}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700 text-right">{record.monthlyMin}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={classNames(
                         'inline-flex px-3 py-1 rounded-full text-xs font-bold',
-                        record.result === 'Pass' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        record.compliance === 'Pass' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                       )}>
-                        {record.result}
+                        {record.compliance}
                       </span>
                     </td>
                   </tr>
@@ -3305,6 +3770,47 @@ function PQSISMaintenanceTab() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  // Column visibility management
+  const [selectedColumns, setSelectedColumns] = useState<Set<PQSISColumn>>(new Set([
+    'Request Date',
+    'Service Type',
+    'Service',
+    'Service Charging',
+    'Completion Date',
+    'Closed Case',
+    'IDR Number'
+  ]));
+
+  const allColumns: PQSISColumn[] = [
+    'Customer Group',
+    'Request Date',
+    'Service Type',
+    'Service',
+    'Service Charging',
+    'Charged Dept',
+    'Completion Date',
+    'Closed Case',
+    'In-Progress',
+    'Before Target',
+    'Planned Reply',
+    'Actual Reply',
+    'Planned Report',
+    'Actual Report',
+    'IDR Number'
+  ];
+
+  const toggleColumn = (column: PQSISColumn) => {
+    setSelectedColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(column)) {
+        next.delete(column);
+      } else {
+        next.add(column);
+      }
+      return next;
+    });
+  };
+
   // Click outside to close date pickers
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -3493,6 +3999,30 @@ function PQSISMaintenanceTab() {
         </div>
       </div>
 
+      {/* Select Columns Section */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
+        <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+          <Database className="w-4 h-4" />
+          Select Columns to Display:
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+          {allColumns.map((column) => (
+            <label
+              key={column}
+              className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg hover:bg-blue-50 cursor-pointer transition-colors"
+            >
+              <input
+                type="checkbox"
+                checked={selectedColumns.has(column)}
+                onChange={() => toggleColumn(column)}
+                className="w-4 h-4 text-blue-600 rounded"
+              />
+              <span className="text-xs font-medium text-slate-700">{column}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
       {/* Filters */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-4">
@@ -3616,21 +4146,51 @@ function PQSISMaintenanceTab() {
               <tr>
                 <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Case No.</th>
                 <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Customer Name</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Customer Group</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Request Date</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Service Type</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Service</th>
-                <th className="px-3 py-3 text-right font-bold whitespace-nowrap">Service Charging (k)</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Charged Dept</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Completion Date</th>
-                <th className="px-3 py-3 text-center font-bold whitespace-nowrap">Closed Case</th>
-                <th className="px-3 py-3 text-center font-bold whitespace-nowrap">In-Progress</th>
-                <th className="px-3 py-3 text-center font-bold whitespace-nowrap">Before Target</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Planned Reply</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Actual Reply</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Planned Report</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Actual Report</th>
-                <th className="px-3 py-3 text-left font-bold whitespace-nowrap">IDR Number</th>
+                {selectedColumns.has('Customer Group') && (
+                  <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Customer Group</th>
+                )}
+                {selectedColumns.has('Request Date') && (
+                  <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Request Date</th>
+                )}
+                {selectedColumns.has('Service Type') && (
+                  <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Service Type</th>
+                )}
+                {selectedColumns.has('Service') && (
+                  <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Service</th>
+                )}
+                {selectedColumns.has('Service Charging') && (
+                  <th className="px-3 py-3 text-right font-bold whitespace-nowrap">Service Charging (k)</th>
+                )}
+                {selectedColumns.has('Charged Dept') && (
+                  <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Charged Dept</th>
+                )}
+                {selectedColumns.has('Completion Date') && (
+                  <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Completion Date</th>
+                )}
+                {selectedColumns.has('Closed Case') && (
+                  <th className="px-3 py-3 text-center font-bold whitespace-nowrap">Closed Case</th>
+                )}
+                {selectedColumns.has('In-Progress') && (
+                  <th className="px-3 py-3 text-center font-bold whitespace-nowrap">In-Progress</th>
+                )}
+                {selectedColumns.has('Before Target') && (
+                  <th className="px-3 py-3 text-center font-bold whitespace-nowrap">Before Target</th>
+                )}
+                {selectedColumns.has('Planned Reply') && (
+                  <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Planned Reply</th>
+                )}
+                {selectedColumns.has('Actual Reply') && (
+                  <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Actual Reply</th>
+                )}
+                {selectedColumns.has('Planned Report') && (
+                  <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Planned Report</th>
+                )}
+                {selectedColumns.has('Actual Report') && (
+                  <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Actual Report</th>
+                )}
+                {selectedColumns.has('IDR Number') && (
+                  <th className="px-3 py-3 text-left font-bold whitespace-nowrap">IDR Number</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -3646,42 +4206,72 @@ function PQSISMaintenanceTab() {
                   <tr key={idx} className="hover:bg-blue-50">
                     <td className="px-3 py-2 text-slate-700 font-semibold">{record.caseNo}</td>
                     <td className="px-3 py-2 text-slate-700">{record.customerName}</td>
-                    <td className="px-3 py-2 text-slate-700">{record.customerGroup}</td>
-                    <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.requestDate}</td>
-                    <td className="px-3 py-2 text-slate-700">{record.serviceType}</td>
-                    <td className="px-3 py-2 text-slate-700">{record.service}</td>
-                    <td className="px-3 py-2 text-slate-700 text-right">{record.serviceCharging.toFixed(1)}</td>
-                    <td className="px-3 py-2 text-slate-700">{record.chargedDepartment}</td>
-                    <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.serviceCompletionDate}</td>
-                    <td className="px-3 py-2 text-center">
-                      <span className={classNames(
-                        'px-2 py-1 rounded-full text-xs font-semibold',
-                        record.closedCase === 'Yes' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'
-                      )}>
-                        {record.closedCase}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <span className={classNames(
-                        'px-2 py-1 rounded-full text-xs font-semibold',
-                        record.inProgressCase === 'Yes' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
-                      )}>
-                        {record.inProgressCase}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <span className={classNames(
-                        'px-2 py-1 rounded-full text-xs font-semibold',
-                        record.completedBeforeTargetDate === 'Yes' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      )}>
-                        {record.completedBeforeTargetDate}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.plannedReplyDate}</td>
-                    <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.actualReplyDate}</td>
-                    <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.plannedReportIssueDate}</td>
-                    <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.actualReportIssueDate}</td>
-                    <td className="px-3 py-2 text-slate-700 font-mono text-xs">{record.idrNumber || '-'}</td>
+                    {selectedColumns.has('Customer Group') && (
+                      <td className="px-3 py-2 text-slate-700">{record.customerGroup}</td>
+                    )}
+                    {selectedColumns.has('Request Date') && (
+                      <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.requestDate}</td>
+                    )}
+                    {selectedColumns.has('Service Type') && (
+                      <td className="px-3 py-2 text-slate-700">{record.serviceType}</td>
+                    )}
+                    {selectedColumns.has('Service') && (
+                      <td className="px-3 py-2 text-slate-700">{record.service}</td>
+                    )}
+                    {selectedColumns.has('Service Charging') && (
+                      <td className="px-3 py-2 text-slate-700 text-right">{record.serviceCharging.toFixed(1)}</td>
+                    )}
+                    {selectedColumns.has('Charged Dept') && (
+                      <td className="px-3 py-2 text-slate-700">{record.chargedDepartment}</td>
+                    )}
+                    {selectedColumns.has('Completion Date') && (
+                      <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.serviceCompletionDate}</td>
+                    )}
+                    {selectedColumns.has('Closed Case') && (
+                      <td className="px-3 py-2 text-center">
+                        <span className={classNames(
+                          'px-2 py-1 rounded-full text-xs font-semibold',
+                          record.closedCase === 'Yes' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'
+                        )}>
+                          {record.closedCase}
+                        </span>
+                      </td>
+                    )}
+                    {selectedColumns.has('In-Progress') && (
+                      <td className="px-3 py-2 text-center">
+                        <span className={classNames(
+                          'px-2 py-1 rounded-full text-xs font-semibold',
+                          record.inProgressCase === 'Yes' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
+                        )}>
+                          {record.inProgressCase}
+                        </span>
+                      </td>
+                    )}
+                    {selectedColumns.has('Before Target') && (
+                      <td className="px-3 py-2 text-center">
+                        <span className={classNames(
+                          'px-2 py-1 rounded-full text-xs font-semibold',
+                          record.completedBeforeTargetDate === 'Yes' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        )}>
+                          {record.completedBeforeTargetDate}
+                        </span>
+                      </td>
+                    )}
+                    {selectedColumns.has('Planned Reply') && (
+                      <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.plannedReplyDate}</td>
+                    )}
+                    {selectedColumns.has('Actual Reply') && (
+                      <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.actualReplyDate}</td>
+                    )}
+                    {selectedColumns.has('Planned Report') && (
+                      <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.plannedReportIssueDate}</td>
+                    )}
+                    {selectedColumns.has('Actual Report') && (
+                      <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.actualReportIssueDate}</td>
+                    )}
+                    {selectedColumns.has('IDR Number') && (
+                      <td className="px-3 py-2 text-slate-700 font-mono text-xs">{record.idrNumber || '-'}</td>
+                    )}
                   </tr>
                 ))
               )}
@@ -3727,7 +4317,7 @@ function CPDISDashboard() {
   const [toTime, setToTime] = useState('12:21:01');
   const [selectedParameters, setSelectedParameters] = useState<Set<CPDISParameter>>(new Set(['Voltage']));
   const [hasResults, setHasResults] = useState(false);
-  const [searchText, setSearchText] = useState('');
+  const [searchText] = useState('');
 
   const allParameters: CPDISParameter[] = [
     'Voltage',
@@ -4752,12 +5342,363 @@ function PQSummaryTab({ selectedReportView }: { selectedReportView: PQSummaryRep
   );
 }
 
+// Meter Raw Data Tab Component
+function MeterRawDataTab({ selectedView }: { selectedView: MeterRawDataView }) {
+  // TODO: Replace with actual database queries
+  // For now, using mock data. When implementing database integration:
+  // 1. Fetch meters from pq_meters table
+  // 2. Fetch raw/daily/weekly data based on selectedView
+  // 3. Transform data to match the export format
+
+  const allMeters = useMemo(() => {
+    const meters: Array<{ id: string; name: string; voltageLevel: string }> = [];
+    const voltageLevels = ['400KV', '132KV', '33KV', '11KV', '380V'];
+    const areas = ['APA', 'APB', 'AUS', 'AWR', 'BCH', 'BOU', 'CAN', 'CCN', 'CCS', 'CHI', 'CHY'];
+    
+    voltageLevels.forEach(vl => {
+      areas.forEach(area => {
+        for (let i = 1; i <= 5; i++) {
+          const meterNum = String(i).padStart(4, '0');
+          const harmonic = `H${i}`;
+          meters.push({
+            id: `PQMS_${vl}.${area}${meterNum}_${harmonic}`,
+            name: `PQMS_${vl}.${area}${meterNum}_${harmonic}`,
+            voltageLevel: vl
+          });
+        }
+      });
+    });
+    return meters;
+  }, []);
+
+  const [searchText, setSearchText] = useState('');
+  const [selectedVoltageLevel, setSelectedVoltageLevel] = useState<string>('All');
+  const [selectedMeter, setSelectedMeter] = useState<string | null>(null);
+  const [selectedParameter, setSelectedParameter] = useState<string>('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [timeFromHour, setTimeFromHour] = useState('00');
+  const [timeFromMin, setTimeFromMin] = useState('00');
+  const [timeToHour, setTimeToHour] = useState('23');
+  const [timeToMin, setTimeToMin] = useState('59');
+
+  const filteredMeters = useMemo(() => {
+    let filtered = allMeters;
+    
+    if (selectedVoltageLevel !== 'All') {
+      filtered = filtered.filter(m => m.voltageLevel === selectedVoltageLevel);
+    }
+    
+    if (searchText.trim()) {
+      const search = searchText.toLowerCase();
+      filtered = filtered.filter(m => m.name.toLowerCase().includes(search));
+    }
+    
+    return filtered;
+  }, [allMeters, selectedVoltageLevel, searchText]);
+
+  const handleExportData = () => {
+    if (!selectedMeter) {
+      alert('Please select a meter');
+      return;
+    }
+    if (!selectedParameter) {
+      alert('Please select a parameter');
+      return;
+    }
+    if (!dateFrom || !dateTo) {
+      alert('Please set the time range');
+      return;
+    }
+
+    // TODO: Fetch actual data from database based on:
+    // - selectedView (raw/daily/weekly)
+    // - selectedMeter
+    // - selectedParameter
+    // - dateFrom/dateTo with time range
+
+    const viewLabel = selectedView === 'raw' ? 'Raw' : selectedView === 'daily' ? 'Daily' : 'Weekly';
+    const data = [
+      ['Meter', selectedMeter],
+      ['Parameter', selectedParameter],
+      ['From', `${dateFrom} ${timeFromHour}:${timeFromMin}`],
+      ['To', `${dateTo} ${timeToHour}:${timeToMin}`],
+      ['Data Type', `${viewLabel} Data`],
+      [],
+      ['Timestamp', 'Value', 'Unit'],
+      [`${dateFrom} ${timeFromHour}:${timeFromMin}:00`, '230.5', 'V'],
+      [`${dateFrom} ${timeFromHour}:${timeFromMin}:30`, '229.8', 'V'],
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `${viewLabel} Data`);
+    XLSX.writeFile(wb, `Meter_${viewLabel}_Data_${selectedMeter}_${dateFrom}_${dateTo}.xlsx`);
+  };
+
+  const rawDataParameters = [
+    'Voltage',
+    'Frequency',
+    'Voltage Unbalance',
+    'Power Factor',
+    'Voltage THD',
+    '5th Harmonics',
+    '7th Harmonics',
+    'Voltage Flickering'
+  ];
+
+  const dailyDataParameters = [
+    'Voltage',
+    'Frequency',
+    'Voltage Unbalance',
+    'Power Factor',
+    'Voltage Flickering'
+  ];
+
+  const weeklyDataParameters = [
+    'Voltage THD',
+    '5th Harmonics',
+    '7th Harmonics'
+  ];
+
+  const parameters = selectedView === 'raw' 
+    ? rawDataParameters 
+    : selectedView === 'daily'
+    ? dailyDataParameters
+    : weeklyDataParameters;
+
+  const maxTimeRange = selectedView === 'raw' ? '1 month' : '1 year';
+  const buttonLabel = selectedView === 'raw' 
+    ? 'Get Raw Data' 
+    : selectedView === 'daily'
+    ? 'Get Daily Data'
+    : 'Get Weekly Data';
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3 pb-4 border-b border-slate-200">
+        <Database className="w-6 h-6 text-blue-600" />
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">
+            {selectedView === 'raw' && 'Raw Data'}
+            {selectedView === 'daily' && 'Daily Data'}
+            {selectedView === 'weekly' && 'Weekly Data'}
+          </h2>
+          <p className="text-sm text-slate-600">
+            Export meter data for analysis
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="space-y-4">
+          <div className="bg-slate-50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-bold">1</span>
+              <h3 className="text-sm font-semibold text-blue-900">
+                {selectedView === 'raw' ? 'Select one meter from the list:' : 'Select meter(s) from the list:'}
+              </h3>
+            </div>
+          </div>
+
+          <div className="bg-slate-50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-bold">2</span>
+              <h3 className="text-sm font-semibold text-blue-900">Select parameter:</h3>
+            </div>
+            <select
+              value={selectedParameter}
+              onChange={(e) => setSelectedParameter(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Select parameter</option>
+              {parameters.map(param => (
+                <option key={param} value={param}>{param}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="bg-slate-50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-bold">3</span>
+              <h3 className="text-sm font-semibold text-blue-900">Set time range: (Max. of {maxTimeRange})</h3>
+            </div>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">From:</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="flex-1 px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="YYYY-MM-DD"
+                  />
+                  <select
+                    value={timeFromHour}
+                    onChange={(e) => setTimeFromHour(e.target.value)}
+                    className="w-16 px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => {
+                      const h = String(i).padStart(2, '0');
+                      return <option key={h} value={h}>{h}</option>;
+                    })}
+                  </select>
+                  <span className="text-slate-600">:</span>
+                  <select
+                    value={timeFromMin}
+                    onChange={(e) => setTimeFromMin(e.target.value)}
+                    className="w-16 px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {Array.from({ length: 60 }, (_, i) => {
+                      const m = String(i).padStart(2, '0');
+                      return <option key={m} value={m}>{m}</option>;
+                    })}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">To:</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="flex-1 px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="YYYY-MM-DD"
+                  />
+                  <select
+                    value={timeToHour}
+                    onChange={(e) => setTimeToHour(e.target.value)}
+                    className="w-16 px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => {
+                      const h = String(i).padStart(2, '0');
+                      return <option key={h} value={h}>{h}</option>;
+                    })}
+                  </select>
+                  <span className="text-slate-600">:</span>
+                  <select
+                    value={timeToMin}
+                    onChange={(e) => setTimeToMin(e.target.value)}
+                    className="w-16 px-2 py-1 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {Array.from({ length: 60 }, (_, i) => {
+                      const m = String(i).padStart(2, '0');
+                      return <option key={m} value={m}>{m}</option>;
+                    })}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleExportData}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold shadow-sm"
+          >
+            <Download className="w-5 h-5" />
+            {buttonLabel}
+          </button>
+        </div>
+
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="text-2xl font-bold text-slate-900">{filteredMeters.length}</div>
+            {selectedMeter && (
+              <div className="bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
+                <div className="text-xs font-semibold text-blue-700 mb-1">Selected Meter:</div>
+                <div className="text-sm font-mono text-blue-900">{selectedMeter}</div>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-lg">
+            <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 text-center">
+              <h3 className="text-sm font-semibold text-slate-700">Available List</h3>
+            </div>
+
+            {selectedView === 'raw' && (
+              <div className="p-3 border-b border-slate-200">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder="Search"
+                    className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="p-4 border-b border-slate-200 bg-cyan-50">
+              <h4 className="text-sm font-semibold text-slate-700 mb-3">Voltage Level:</h4>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="voltageLevel"
+                    checked={selectedVoltageLevel === 'All'}
+                    onChange={() => setSelectedVoltageLevel('All')}
+                    className="w-4 h-4 text-blue-600"
+                  />
+                  <span className="text-sm text-slate-700">All</span>
+                </label>
+                {['400KV', '132KV', '33KV', '11KV', '380V'].map(vl => (
+                  <label key={vl} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="voltageLevel"
+                      checked={selectedVoltageLevel === vl}
+                      onChange={() => setSelectedVoltageLevel(vl)}
+                      className="w-4 h-4 text-blue-600"
+                    />
+                    <span className="text-sm text-slate-700">{vl}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="max-h-96 overflow-y-auto">
+              <div className="p-4 space-y-2">
+                {filteredMeters.slice(0, 50).map(meter => (
+                  <label key={meter.id} className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-2 py-1 rounded transition-colors">
+                    <input
+                      type="radio"
+                      name="meter"
+                      checked={selectedMeter === meter.name}
+                      onChange={() => setSelectedMeter(meter.name)}
+                      className="w-4 h-4 text-blue-600"
+                    />
+                    <span className="text-sm text-slate-700 font-mono">{meter.name}</span>
+                  </label>
+                ))}
+                {filteredMeters.length > 50 && (
+                  <div className="text-xs text-slate-500 italic pt-2 border-t border-slate-200">
+                    Showing first 50 of {filteredMeters.length} meters. Use search to narrow results.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Reporting() {
   const [activeTab, setActiveTab] = useState<ReportingTab>('pqSummary');
   const [pqSummaryReportView, setPqSummaryReportView] = useState<PQSummaryReportView>('voltageDipSummary');
   const [showPqSummaryDropdown, setShowPqSummaryDropdown] = useState(false);
   const [complianceReportView, setComplianceReportView] = useState<ComplianceSummaryReportView>('pqStandards');
   const [showComplianceDropdown, setShowComplianceDropdown] = useState(false);
+  const [meterRawDataView, setMeterRawDataView] = useState<MeterRawDataView>('raw');
+  const [showMeterRawDataDropdown, setShowMeterRawDataDropdown] = useState(false);
 
   const tabs = useMemo(
     () =>
@@ -4766,7 +5707,8 @@ export default function Reporting() {
         { id: 'complianceSummary', label: 'Compliance Summary' },
         { id: 'meterCommunication', label: 'Meter Communication' },
         { id: 'dynamicReport', label: 'Dynamic Report' },
-        { id: 'pqsisMaintenance', label: 'PQSIS Maintenance' }
+        { id: 'pqsisMaintenance', label: 'PQSIS Maintenance' },
+        { id: 'meterRawData', label: 'Meter Raw Data' }
       ] as const,
     []
   );
@@ -4781,6 +5723,12 @@ export default function Reporting() {
     { value: 'voltageDipBenchmarking', label: 'Voltage Dip Benchmarking' },
     { value: 'individualHarmonics', label: 'Individual Harmonic Reports' },
     { value: 'en50160', label: 'EN50160 Reports' }
+  ];
+
+  const meterRawDataOptions = [
+    { value: 'raw', label: 'Raw Data' },
+    { value: 'daily', label: 'Daily Data' },
+    { value: 'weekly', label: 'Weekly Data' }
   ];
 
   return (
@@ -4897,6 +5845,54 @@ export default function Reporting() {
                   </div>
                 );
               }
+              if (t.id === 'meterRawData') {
+                return (
+                  <div key={t.id} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab(t.id);
+                        setShowMeterRawDataDropdown(!showMeterRawDataDropdown);
+                      }}
+                      className={classNames(
+                        'py-3 px-2 text-sm font-semibold transition-colors flex items-center gap-2',
+                        activeTab === t.id
+                          ? 'text-blue-600 border-b-2 border-blue-600'
+                          : 'text-slate-600 hover:text-slate-900'
+                      )}
+                    >
+                      {t.label}
+                      <ChevronRight className={classNames(
+                        'w-4 h-4 transition-transform',
+                        showMeterRawDataDropdown && activeTab === t.id ? 'rotate-90' : ''
+                      )} />
+                    </button>
+                    {showMeterRawDataDropdown && activeTab === t.id && (
+                      <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-50">
+                        {meterRawDataOptions.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => {
+                              setMeterRawDataView(opt.value as MeterRawDataView);
+                              setShowMeterRawDataDropdown(false);
+                            }}
+                            className={classNames(
+                              'w-full text-left px-4 py-3 text-sm transition-colors hover:bg-blue-50',
+                              meterRawDataView === opt.value ? 'bg-blue-100 text-blue-700 font-semibold' : 'text-slate-700'
+                            )}
+                          >
+                            {opt.value === meterRawDataView && (
+                              <Check className="w-4 h-4 inline mr-2" />
+                            )}
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
               return (
                 <button
                   key={t.id}
@@ -4927,6 +5923,8 @@ export default function Reporting() {
         {activeTab === 'dynamicReport' && <ReportBuilder events={[]} substations={[]} />}
 
         {activeTab === 'pqsisMaintenance' && <PQSISMaintenanceTab />}
+
+        {activeTab === 'meterRawData' && <MeterRawDataTab selectedView={meterRawDataView} />}
       </div>
     </div>
   );
