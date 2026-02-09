@@ -13,8 +13,9 @@ export default function Navigation({ currentView, onViewChange, collapsed, onTog
 
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { id: 'events', icon: Activity, label: 'Event Management' },
-    { id: 'eventGrouping', icon: GitBranch, label: 'Event Grouping' },
+    { id: 'events', icon: Activity, label: 'Event Management', subItems: [
+      { id: 'eventGrouping', icon: GitBranch, label: 'Event Grouping' }
+    ] },
     { id: 'assets', icon: DatabaseIcon, label: 'Asset Management' },
     { id: 'reporting', icon: FileText, label: 'Reporting' },
     { id: 'notifications', icon: Bell, label: 'Notifications' },
@@ -66,27 +67,54 @@ export default function Navigation({ currentView, onViewChange, collapsed, onTog
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentView === item.id;
+            const hasSubItems = item.subItems && item.subItems.length > 0;
+            const isSubItemActive = hasSubItems && item.subItems.some(sub => sub.id === currentView);
 
             return (
-              <div key={item.id} className="relative group">
-                <button
-                  onClick={() => onViewChange(item.id)}
-                  className={`w-full flex items-center gap-3 rounded-lg transition-all ${
-                    collapsed ? 'px-3 py-3 justify-center' : 'px-4 py-3'
-                  } ${
-                    isActive
-                      ? 'bg-gradient-to-r from-blue-600 to-cyan-600 shadow-lg shadow-blue-500/30'
-                      : 'hover:bg-slate-700/50'
-                  }`}
-                  title={collapsed ? item.label : ''}
-                >
-                  <Icon className="w-5 h-5" />
-                  {!collapsed && <span className="text-sm font-medium">{item.label}</span>}
-                </button>
-                {collapsed && (
-                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-slate-900 text-white text-sm rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50 pointer-events-none">
-                    {item.label}
-                    <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-slate-900"></div>
+              <div key={item.id}>
+                <div className="relative group">
+                  <button
+                    onClick={() => onViewChange(item.id)}
+                    className={`w-full flex items-center gap-3 rounded-lg transition-all ${
+                      collapsed ? 'px-3 py-3 justify-center' : 'px-4 py-3'
+                    } ${
+                      isActive || isSubItemActive
+                        ? 'bg-gradient-to-r from-blue-600 to-cyan-600 shadow-lg shadow-blue-500/30'
+                        : 'hover:bg-slate-700/50'
+                    }`}
+                    title={collapsed ? item.label : ''}
+                  >
+                    <Icon className="w-5 h-5" />
+                    {!collapsed && <span className="text-sm font-medium">{item.label}</span>}
+                  </button>
+                  {collapsed && (
+                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-slate-900 text-white text-sm rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50 pointer-events-none">
+                      {item.label}
+                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-slate-900"></div>
+                    </div>
+                  )}
+                </div>
+                {/* Sub-items */}
+                {hasSubItems && !collapsed && (
+                  <div className="ml-4 mt-1 space-y-1">
+                    {item.subItems.map((subItem) => {
+                      const SubIcon = subItem.icon;
+                      const isSubActive = currentView === subItem.id;
+                      return (
+                        <button
+                          key={subItem.id}
+                          onClick={() => onViewChange(subItem.id)}
+                          className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg transition-all ${
+                            isSubActive
+                              ? 'bg-blue-500/20 text-blue-300'
+                              : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                          }`}
+                        >
+                          <SubIcon className="w-4 h-4" />
+                          <span className="text-xs font-medium">{subItem.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

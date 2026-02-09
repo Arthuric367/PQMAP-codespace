@@ -4,9 +4,8 @@ import { PQEvent, Substation, EventCustomerImpact, PQMeter, FilterProfile } from
 import { EventTreeNode, EventFilter } from '../../types/eventTypes';
 import EventDetails from './EventDetails';
 import AdvancedFilterModal from './AdvancedFilterModal';
-import { MotherEventGroupingService } from '../../services/mother-event-grouping';
 import { ExportService } from '../../services/exportService';
-import { Activity, Plus, GitBranch, Filter, Search, Calendar, Users, AlertTriangle, Group, Check, X, Save, Edit2, Trash2, RotateCcw, ChevronDown, Download, Upload, FileDown, ArrowUpDown, ArrowUp, ArrowDown, Clock, Sliders } from 'lucide-react';
+import { Activity, Plus, GitBranch, Filter, Search, Calendar, Users, AlertTriangle, Check, X, Save, Edit2, Trash2, RotateCcw, ChevronDown, Download, Upload, FileDown, ArrowUpDown, ArrowUp, ArrowDown, Clock, Sliders } from 'lucide-react';
 
 export default function EventManagement() {
   const [events, setEvents] = useState<PQEvent[]>([]);
@@ -14,13 +13,12 @@ export default function EventManagement() {
   const [selectedEvent, setSelectedEvent] = useState<PQEvent | null>(null);
   const [impacts, setImpacts] = useState<EventCustomerImpact[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'list' | 'tree'>('tree');
+  const [viewMode] = useState<'list' | 'tree'>('list'); // Fixed to list view only
   const [showFilters, setShowFilters] = useState(true);
   
-  // Multi-select and grouping states
+  // Multi-select states
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
-  const [groupingInProgress, setGroupingInProgress] = useState(false);
   
   // Filter states
   const [filters, setFilters] = useState<EventFilter>({
@@ -1058,110 +1056,6 @@ export default function EventManagement() {
     setCurrentPage(1);
   }, [filters, tableSortField, tableSortDirection, rowsPerPage]);
 
-  const handleGroupEvents = async (eventIds: string[]) => {
-    if (eventIds.length < 2) {
-      alert('Please select at least 2 events to group.');
-      return;
-    }
-
-    setGroupingInProgress(true);
-    
-    try {
-      const selectedEvents = events.filter(e => eventIds.includes(e.id));
-      const motherEvents = selectedEvents.filter(e => e.is_mother_event);
-      const standaloneEvents = selectedEvents.filter(e => !e.is_mother_event && !e.parent_event_id);
-      
-      console.log('🔧 [handleGroupEvents]', {
-        totalSelected: eventIds.length,
-        motherCount: motherEvents.length,
-        standaloneCount: standaloneEvents.length
-      });
-      
-      // Scenario 1: Add children to existing mother (1 mother + N standalone)
-      if (motherEvents.length === 1 && standaloneEvents.length > 0) {
-        const motherEventId = motherEvents[0].id;
-        const childEventIds = standaloneEvents.map(e => e.id);
-        
-        console.log('➕ Adding children to existing mother:', {
-          motherEventId,
-          childCount: childEventIds.length
-        });
-        
-        const success = await MotherEventGroupingService.addChildrenToMotherEvent(motherEventId, childEventIds);
-        
-        if (success) {
-          console.log('✅ Children added successfully');
-          await loadData();
-          setSelectedEventIds(new Set());
-          setIsMultiSelectMode(false);
-          alert(`Successfully added ${childEventIds.length} event(s) to the group.`);
-        } else {
-          throw new Error('Failed to add children to mother event');
-        }
-        return;
-      }
-      
-      // Scenario 2: Create new mother-child group (N standalone, no mothers)
-      if (motherEvents.length === 0 && standaloneEvents.length >= 2) {
-        const validation = MotherEventGroupingService.canGroupEvents(selectedEvents);
-        
-        if (!validation.canGroup) {
-          alert(validation.reason);
-          return;
-        }
-        
-        console.log('🆕 Creating new mother-child group');
-        const result = await MotherEventGroupingService.performManualGrouping(eventIds);
-        
-        if (result) {
-          console.log('✅ Events grouped successfully:', result);
-          await loadData();
-          setSelectedEventIds(new Set());
-          setIsMultiSelectMode(false);
-          alert('Events grouped successfully!');
-        }
-        return;
-      }
-      
-      // Invalid scenario
-      if (motherEvents.length > 1) {
-        alert('Cannot select multiple mother events. Please select only ONE mother event to add children.');
-        return;
-      }
-      
-      alert('Invalid selection. Select either:\n- 2+ standalone events to create new group\n- 1 mother event + 1+ standalone events to add children');
-      
-    } catch (error) {
-      console.error('❌ Error grouping events:', error);
-      alert('Failed to group events. Please try again.');
-    } finally {
-      setGroupingInProgress(false);
-    }
-  };
-
-  // Handle automatic grouping
-  const handleAutoGroupEvents = async () => {
-    setGroupingInProgress(true);
-    
-    try {
-      const ungroupedEvents = events.filter(e => !e.parent_event_id && !e.is_mother_event);
-      const results = await MotherEventGroupingService.performAutomaticGrouping(ungroupedEvents);
-      
-      if (results.length > 0) {
-        console.log(`Automatically grouped ${results.length} event groups`);
-        await loadData(); // Reload events to show new groupings
-        alert(`Successfully created ${results.length} event groups automatically.`);
-      } else {
-        alert('No events were suitable for automatic grouping.');
-      }
-    } catch (error) {
-      console.error('Error performing automatic grouping:', error);
-      alert('Failed to perform automatic grouping. Please try again.');
-    } finally {
-      setGroupingInProgress(false);
-    }
-  };
-
   // Handle multi-select toggle
   const toggleEventSelection = (eventId: string) => {
     const newSelection = new Set(selectedEventIds);
@@ -1173,219 +1067,7 @@ export default function EventManagement() {
     setSelectedEventIds(newSelection);
   };
 
-  // Handle select all/none
-  const handleSelectAll = () => {
-    // Select all mother events and standalone events (but not child events)
-    // Only voltage_dip and voltage_swell types
-    const selectableEvents = finalEvents.filter(e => 
-      !e.parent_event_id && 
-      (e.event_type === 'voltage_dip' || e.event_type === 'voltage_swell')
-    );
-    setSelectedEventIds(new Set(selectableEvents.map(e => e.id)));
-  };
-
-  const handleSelectNone = () => {
-    setSelectedEventIds(new Set());
-  };
-
-  // Manual Event Creation Handlers
-  const validateEventForm = () => {
-    const errors: Record<string, string> = {};
-    
-    // Required fields
-    if (!eventFormData.event_type) {
-      errors.event_type = 'Event type is required';
-    }
-    if (!eventFormData.timestamp) {
-      errors.timestamp = 'Timestamp is required';
-    } else {
-      const eventDate = new Date(eventFormData.timestamp);
-      if (eventDate > new Date()) {
-        errors.timestamp = 'Event cannot be in the future';
-      }
-    }
-    if (!eventFormData.substation_id) {
-      errors.substation_id = 'Substation is required';
-    }
-    if (!eventFormData.severity) {
-      errors.severity = 'Severity is required';
-    }
-    
-    // Mother/Child event validation
-    if (eventFormData.is_child_event && !eventFormData.parent_event_id) {
-      errors.parent_event_id = 'Mother event is required for child events';
-    }
-    
-    // Number validations
-    if (eventFormData.duration_ms && (eventFormData.duration_ms < 1 || eventFormData.duration_ms > 300000)) {
-      errors.duration_ms = 'Duration must be between 1ms and 300,000ms (5 minutes)';
-    }
-    if (eventFormData.remaining_voltage && (eventFormData.remaining_voltage < 0 || eventFormData.remaining_voltage > 100)) {
-      errors.remaining_voltage = 'Remaining voltage must be between 0% and 100%';
-    }
-    if (eventFormData.magnitude && eventFormData.magnitude < 0) {
-      errors.magnitude = 'Magnitude must be positive';
-    }
-    
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  // Old modal functions removed - now using CreateVoltageDipWorkspace in new tab
-
-  const handleSubmitCreateEvent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log('📝 Form submitted, validating...');
-    
-    // Validate form
-    if (!validateEventForm()) {
-      console.log('❌ Validation failed:', formErrors);
-      alert('Please fix all validation errors before creating the event.');
-      return;
-    }
-    
-    console.log('✅ Validation passed, creating event...');
-    console.log('📋 Form data:', eventFormData);
-    setCreatingEvent(true);
-    
-    try {
-      // Step 1: Create the event
-      const { data: newEvent, error: eventError } = await supabase
-        .from('pq_events')
-        .insert({
-          event_type: eventFormData.event_type,
-          timestamp: eventFormData.timestamp,
-          substation_id: eventFormData.substation_id || null,
-          meter_id: eventFormData.meter_id || null,
-          duration_ms: eventFormData.duration_ms || null,
-          remaining_voltage: eventFormData.remaining_voltage || null,
-          affected_phases: eventFormData.affected_phases,
-          severity: eventFormData.severity,
-          magnitude: eventFormData.magnitude || null,
-          customer_count: 0, // Will be calculated
-          address: eventFormData.address || null,
-          cause: eventFormData.cause || null,
-          equipment_type: eventFormData.equipment_type || null,
-          weather: eventFormData.weather || null,
-          remarks: eventFormData.remarks || null,
-          status: 'new',
-          is_mother_event: false,
-          is_child_event: eventFormData.is_child_event,
-          parent_event_id: eventFormData.is_child_event ? eventFormData.parent_event_id : null,
-          false_event: false,
-          is_late_event: false,
-          is_special_event: false,
-          manual_create_idr: true
-        })
-        .select()
-        .single();
-
-      if (eventError) throw eventError;
-
-      console.log('✅ Event created successfully:', newEvent.id);
-
-      // Step 2: Auto-calculate customer impacts using customer_transformer_matching
-      if (newEvent && eventFormData.meter_id) {
-        console.log('🔍 Searching for customer impacts...');
-        console.log('   Meter ID:', eventFormData.meter_id);
-        
-        // First get the meter to find its circuit_id and substation_id
-        const { data: meter, error: meterError } = await supabase
-          .from('pq_meters')
-          .select('circuit_id, substation_id')
-          .eq('id', eventFormData.meter_id)
-          .single();
-
-        if (!meterError && meter && meter.substation_id && meter.circuit_id) {
-          console.log('   Substation:', meter.substation_id);
-          console.log('   Circuit:', meter.circuit_id);
-          
-          // Get matching customers for this substation and circuit
-          const { data: matchings, error: matchingError } = await supabase
-            .from('customer_transformer_matching')
-            .select('customer_id, customer:customers(*)')
-            .eq('substation_id', meter.substation_id)
-            .eq('circuit_id', meter.circuit_id)
-            .eq('active', true);
-
-        console.log('📊 Found matchings:', matchings?.length || 0);
-
-        if (!matchingError && matchings && matchings.length > 0) {
-          // Map severity to impact level
-          const impactLevelMap: Record<string, string> = {
-            'critical': 'severe',
-            'high': 'moderate',
-            'medium': 'minor',
-            'low': 'minor'
-          };
-          
-          const impactLevel = impactLevelMap[eventFormData.severity] || 'minor';
-          const downtimeMin = Math.round((eventFormData.duration_ms || 0) / 60000);
-
-          console.log('💡 Creating impact records:', {
-            count: matchings.length,
-            impactLevel,
-            downtimeMin
-          });
-
-          // Create customer impact records
-          const impactRecords = matchings.map(m => ({
-            event_id: newEvent.id,
-            customer_id: m.customer_id,
-            impact_level: impactLevel,
-            estimated_downtime_min: downtimeMin
-          }));
-
-          const { error: impactError } = await supabase
-            .from('event_customer_impact')
-            .insert(impactRecords);
-
-          if (impactError) {
-            console.error('❌ Error creating customer impacts:', impactError);
-          } else {
-            console.log('✅ Customer impacts created successfully');
-          }
-
-          // Update event with customer count
-          console.log('🔄 Updating event customer count:', matchings.length);
-          await supabase
-            .from('pq_events')
-            .update({ customer_count: matchings.length })
-            .eq('id', newEvent.id);
-        }
-        }
-      }
-
-      // Step 3: Success - reload data and navigate to new event
-      console.log('🔄 Reloading data...');
-      await loadData();
-      handleCloseCreateEventModal();
-      
-      // Navigate to the newly created event
-      if (newEvent) {
-        console.log('🎯 Navigating to new event:', newEvent.id);
-        const event = events.find(e => e.id === newEvent.id) || newEvent;
-        handleEventSelect(event as PQEvent);
-      }
-      
-      console.log('🎉 Event creation complete!');
-      alert('Event created successfully!');
-    } catch (error) {
-      console.error('❌ Error creating event:', error);
-      alert('Failed to create event. Please try again.');
-    } finally {
-      setCreatingEvent(false);
-    }
-  };
-
-  const handleTogglePhase = (phase: string) => {
-    setEventFormData(prev => {
-      const phases = prev.affected_phases.includes(phase)
-        ? prev.affected_phases.filter(p => p !== phase)
-        : [...prev.affected_phases, phase];
-      return { ...prev, affected_phases: phases };
-    });
-  };
+  // Manual Event Creation: Now handled by CreateVoltageDipWorkspace component in separate tab
 
   // Table sort handler for list view
   const handleTableSort = (field: typeof tableSortField) => {
@@ -1427,17 +1109,6 @@ export default function EventManagement() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => setViewMode(viewMode === 'tree' ? 'list' : 'tree')}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border transition-all text-sm ${
-                  viewMode === 'tree' 
-                    ? 'bg-purple-600 text-white border-purple-600' 
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                }`}
-              >
-                <GitBranch className="w-4 h-4" />
-                {viewMode === 'tree' ? 'Tree View' : 'List View'}
-              </button>
               <button
                 onClick={() => setShowFilters(!showFilters)}
                 className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border transition-all text-sm ${
@@ -1539,66 +1210,6 @@ export default function EventManagement() {
                   )}
                 </div>
               )}
-
-              {/* Multi-select and Grouping Controls */}
-              <button
-                onClick={() => {
-                  const newMode = !isMultiSelectMode;
-                  console.log('🎯 [Multi-Select Button Clicked]', {
-                    previousMode: isMultiSelectMode,
-                    newMode: newMode,
-                    buttonText: newMode ? 'Exit Select' : 'Multi-Select',
-                    filteredEventsCount: finalEvents.length,
-                    viewMode: viewMode
-                  });
-                  setIsMultiSelectMode(newMode);
-                }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
-                  isMultiSelectMode 
-                    ? 'bg-green-600 text-white border-green-600' 
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                }`}
-              >
-                <Check className="w-4 h-4" />
-                {isMultiSelectMode ? 'Exit Select' : 'Multi-Select'}
-              </button>
-
-              {isMultiSelectMode && (
-                <>
-                  <button
-                    onClick={handleSelectAll}
-                    className="flex items-center gap-2 px-3 py-2 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-all"
-                  >
-                    Select All
-                  </button>
-                  <button
-                    onClick={handleSelectNone}
-                    className="flex items-center gap-2 px-3 py-2 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-all"
-                  >
-                    <X className="w-4 h-4" />
-                    Clear
-                  </button>
-                  {selectedEventIds.size > 1 && (
-                    <button
-                      onClick={() => handleGroupEvents(Array.from(selectedEventIds))}
-                      disabled={groupingInProgress}
-                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-all"
-                    >
-                      <Group className="w-4 h-4" />
-                      Group ({selectedEventIds.size})
-                    </button>
-                  )}
-                </>
-              )}
-
-              <button
-                onClick={handleAutoGroupEvents}
-                disabled={groupingInProgress}
-                className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-all text-sm"
-              >
-                <GitBranch className="w-4 h-4" />
-                Auto Group
-              </button>
             </div>
             <div className="flex items-center gap-3">
               <button

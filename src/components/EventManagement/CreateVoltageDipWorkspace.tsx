@@ -9,6 +9,7 @@ interface EventRow {
   timestamp: string;
   voltage_level: string;
   substation_id: string;
+  meter_id: string; // PQ Meter *
   circuit_id: string; // Tx No
   v1: number;
   v2: number;
@@ -27,6 +28,9 @@ interface SystemFlags {
 export default function CreateVoltageDipWorkspace() {
   const [rows, setRows] = useState<EventRow[]>([]);
   const [substations, setSubstations] = useState<Substation[]>([]);
+  const [meters, setMeters] = useState<PQMeter[]>([]);
+  const [meterSearchTerm, setMeterSearchTerm] = useState<Record<string, string>>({});
+  const [showMeterDropdown, setShowMeterDropdown] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [systemFlags, setSystemFlags] = useState<SystemFlags>({
@@ -41,6 +45,18 @@ export default function CreateVoltageDipWorkspace() {
     addRow();
   }, []);
 
+  // Close meter dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.meter-dropdown-container')) {
+        setShowMeterDropdown({});
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const loadData = async () => {
     try {
       const { data: substationsData } = await supabase
@@ -48,7 +64,13 @@ export default function CreateVoltageDipWorkspace() {
         .select('*')
         .order('name');
 
+      const { data: metersData } = await supabase
+        .from('pq_meters')
+        .select('*')
+        .order('meter_id');
+
       setSubstations(substationsData || []);
+      setMeters(metersData || []);
     } catch (error) {
       console.error('❌ Error loading data:', error);
       alert('Failed to load substations and meters. Please refresh the page.');
@@ -64,6 +86,7 @@ export default function CreateVoltageDipWorkspace() {
       timestamp: new Date().toISOString().slice(0, 16),
       voltage_level: '132kV',
       substation_id: '',
+      meter_id: '',
       circuit_id: '',
       v1: 98.2,
       v2: 96.7,
@@ -131,6 +154,10 @@ export default function CreateVoltageDipWorkspace() {
         errors[`${row.id}_substation_id`] = 'Required';
         isValid = false;
       }
+      if (!row.meter_id || row.meter_id.trim() === '') {
+        errors[`${row.id}_meter_id`] = 'Required';
+        isValid = false;
+      }
       if (!row.circuit_id || row.circuit_id.trim() === '') {
         errors[`${row.id}_circuit_id`] = 'Required';
         isValid = false;
@@ -186,7 +213,7 @@ export default function CreateVoltageDipWorkspace() {
         event_type: 'voltage_dip' as const,
         timestamp: motherRow.timestamp,
         substation_id: motherRow.substation_id,
-        meter_id: null, // Manual creation - no meter reference
+        meter_id: motherRow.meter_id || null,
         circuit_id: motherRow.circuit_id,
         v1: motherRow.v1,
         v2: motherRow.v2,
@@ -228,7 +255,7 @@ export default function CreateVoltageDipWorkspace() {
           event_type: 'voltage_dip' as const,
           timestamp: childRow.timestamp,
           substation_id: childRow.substation_id,
-          meter_id: null,
+          meter_id: childRow.meter_id || null,
           circuit_id: childRow.circuit_id,
           v1: childRow.v1,
           v2: childRow.v2,
@@ -396,6 +423,7 @@ export default function CreateVoltageDipWorkspace() {
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">Incident Time *</th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">Voltage Level *</th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">Source Substation *</th>
+                <th className="px-3 py-3 text-left font-semibold text-slate-700">PQ Meter *</th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">Tx No *</th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">VL1 (%) *</th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">VL2 (%) *</th>
@@ -454,6 +482,56 @@ export default function CreateVoltageDipWorkspace() {
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
                     </select>
+                  </td>
+                  <td className="px-3 py-3 relative meter-dropdown-container">
+                    <input
+                      type="text"
+                      value={meterSearchTerm[row.id] || meters.find(m => m.id === row.meter_id)?.meter_id || ''}
+                      onChange={(e) => {
+                        setMeterSearchTerm({ ...meterSearchTerm, [row.id]: e.target.value });
+                        setShowMeterDropdown({ ...showMeterDropdown, [row.id]: true });
+                      }}
+                      onFocus={() => setShowMeterDropdown({ ...showMeterDropdown, [row.id]: true })}
+                      placeholder="Search meter..."
+                      className={`w-44 px-2 py-1 border rounded focus:ring-2 focus:ring-blue-500 ${
+                        validationErrors[`${row.id}_meter_id`] ? 'border-red-500' : 'border-slate-300'
+                      }`}
+                    />
+                    {showMeterDropdown[row.id] && (
+                      <div className="absolute z-10 mt-1 w-64 bg-white border border-slate-300 rounded shadow-lg max-h-48 overflow-y-auto">
+                        {meters
+                          .filter(m => {
+                            // Filter by substation if selected, otherwise show all
+                            const matchesSubstation = !row.substation_id || m.substation_id === row.substation_id;
+                            // Filter by search term
+                            const searchTerm = (meterSearchTerm[row.id] || '').toLowerCase();
+                            const matchesSearch = !searchTerm || m.meter_id.toLowerCase().includes(searchTerm);
+                            return matchesSubstation && matchesSearch;
+                          })
+                          .map(m => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => {
+                                updateRow(row.id, 'meter_id', m.id);
+                                setMeterSearchTerm({ ...meterSearchTerm, [row.id]: m.meter_id });
+                                setShowMeterDropdown({ ...showMeterDropdown, [row.id]: false });
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm"
+                            >
+                              {m.meter_id}
+                            </button>
+                          ))}
+                        {meters.filter(m => {
+                          const matchesSubstation = !row.substation_id || m.substation_id === row.substation_id;
+                          const searchTerm = (meterSearchTerm[row.id] || '').toLowerCase();
+                          const matchesSearch = !searchTerm || m.meter_id.toLowerCase().includes(searchTerm);
+                          return matchesSubstation && matchesSearch;
+                        }).length === 0 && (
+                          <div className="px-3 py-2 text-sm text-slate-500 italic">No meters found</div>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-3">
                     <input
