@@ -911,6 +911,323 @@ const { data: substations } = await supabase
 
 ---
 
+### Multi-Select Filter Dropdowns (Substation & PQ Meter)
+
+**IMPORTANT RULE**: When implementing multi-select filters for substations or PQ meters in filter panels, use searchable dropdown patterns with counter displays and bulk selection controls.
+
+#### Pattern: Substation Multi-Select Filter
+
+**Use When:**
+- Filtering events/data by multiple substations
+- Basic or Advanced filter sections
+- Need to show selection count and search functionality
+
+**Standard Implementation:**
+
+```tsx
+// 1. Required State Variables
+const [showSubstationDropdown, setShowSubstationDropdown] = useState(false);
+const [substationSearchQuery, setSubstationSearchQuery] = useState('');
+const [selectedSubstationIds, setSelectedSubstationIds] = useState<string[]>([]);
+
+// 2. Load Substations Data
+useEffect(() => {
+  const loadData = async () => {
+    const { data: substations } = await supabase
+      .from('substations')
+      .select('*')
+      .order('code');
+    setSubstations(substations || []);
+  };
+  loadData();
+}, []);
+
+// 3. Filter UI Component
+<div>
+  <label className="block text-sm font-medium mb-1">
+    Source Substation ({substations.length} total, {selectedSubstationIds.length} selected)
+  </label>
+  <div className="relative substation-dropdown-container">
+    <button
+      onClick={() => setShowSubstationDropdown(!showSubstationDropdown)}
+      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-left text-sm hover:bg-slate-50 transition-all flex items-center justify-between"
+    >
+      <span className="text-slate-700">
+        {selectedSubstationIds.length === 0 ? 'Select substations...' : `${selectedSubstationIds.length} substation(s)`}
+      </span>
+      <ChevronDown className="w-4 h-4 text-slate-400" />
+    </button>
+    
+    {showSubstationDropdown && (
+      <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-96 overflow-y-auto">
+        {/* Search Input */}
+        <div className="sticky top-0 bg-white p-2 border-b border-slate-200">
+          <input
+            type="text"
+            placeholder="Search by code or name..."
+            value={substationSearchQuery}
+            onChange={(e) => setSubstationSearchQuery(e.target.value)}
+            className="w-full px-3 py-1.5 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+
+        {/* Select All / Clear All Buttons */}
+        <div className="p-2 border-b border-slate-200 flex gap-2">
+          <button
+            onClick={() => {
+              const filteredSubstations = substations
+                .filter(s => {
+                  const search = substationSearchQuery.toLowerCase();
+                  return search === '' || 
+                    s.code?.toLowerCase().includes(search) || 
+                    s.name?.toLowerCase().includes(search);
+                })
+                .map(s => s.id);
+              setSelectedSubstationIds(filteredSubstations);
+            }}
+            className="flex-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-medium"
+          >
+            Select All
+          </button>
+          <button
+            onClick={() => setSelectedSubstationIds([])}
+            className="flex-1 px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 font-medium"
+          >
+            Clear All
+          </button>
+        </div>
+
+        {/* Checkbox List */}
+        <div className="max-h-64 overflow-y-auto">
+          {substations
+            .filter(substation => {
+              const search = substationSearchQuery.toLowerCase();
+              return search === '' || 
+                substation.code?.toLowerCase().includes(search) || 
+                substation.name?.toLowerCase().includes(search);
+            })
+            .map(substation => (
+              <label
+                key={substation.id}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedSubstationIds.includes(substation.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedSubstationIds(prev => [...prev, substation.id]);
+                    } else {
+                      setSelectedSubstationIds(prev => prev.filter(id => id !== substation.id));
+                    }
+                  }}
+                  className="rounded text-blue-600"
+                />
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-slate-700">
+                    {substation.code} - {substation.name}
+                  </div>
+                </div>
+              </label>
+            ))}
+        </div>
+      </div>
+    )}
+  </div>
+</div>
+
+// 4. Click Outside Handler
+useEffect(() => {
+  const handleClickOutside = (event: MouseEvent) => {
+    const target = event.target as HTMLElement;
+    if (showSubstationDropdown && !target.closest('.substation-dropdown-container')) {
+      setShowSubstationDropdown(false);
+    }
+  };
+  document.addEventListener('mousedown', handleClickOutside);
+  return () => document.removeEventListener('mousedown', handleClickOutside);
+}, [showSubstationDropdown]);
+```
+
+**Key Features:**
+- **Search Functionality**: Searches both `code` and `name` fields (case-insensitive)
+- **Display Format**: Shows "CODE - Name" format (e.g., "APA - Airport A")
+- **Counter Display**: Shows "X total, Y selected" in label
+- **Bulk Actions**: Select All / Clear All buttons (respects current search filter)
+- **Sticky Search**: Search input stays at top when scrolling
+- **Max Height**: `max-h-96` for dropdown, `max-h-64` for scrollable list
+- **Z-Index**: `z-20` for dropdown positioning
+
+---
+
+#### Pattern: PQ Meter Multi-Select Filter
+
+**Use When:**
+- Filtering events/data by PQ meter IDs
+- Basic or Advanced filter sections
+- Need simple meter_id search without additional metadata
+
+**Standard Implementation:**
+
+```tsx
+// 1. Required State Variables
+const [showBasicMeterDropdown, setShowBasicMeterDropdown] = useState(false);
+const [basicMeterSearchQuery, setBasicMeterSearchQuery] = useState('');
+const [filters, setFilters] = useState<EventFilter>({
+  meterIds: [],
+  // ... other filter fields
+});
+
+// 2. Load PQ Meters Data
+useEffect(() => {
+  const loadData = async () => {
+    const { data: meters } = await supabase
+      .from('pq_meters')
+      .select('*')
+      .order('meter_id', { ascending: true });
+    setMeters(meters || []);
+  };
+  loadData();
+}, []);
+
+// 3. Filter UI Component
+<div>
+  <label className="block text-sm font-medium mb-1">
+    PQ Meters ({meters.length} total, {filters.meterIds.length} selected)
+  </label>
+  <div className="relative basic-meter-dropdown-container">
+    <button
+      onClick={() => setShowBasicMeterDropdown(!showBasicMeterDropdown)}
+      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-left text-sm hover:bg-slate-50 transition-all flex items-center justify-between"
+    >
+      <span className="text-slate-700">
+        {filters.meterIds.length === 0 ? 'Select meters...' : `${filters.meterIds.length} meter(s)`}
+      </span>
+      <ChevronDown className="w-4 h-4 text-slate-400" />
+    </button>
+    
+    {showBasicMeterDropdown && (
+      <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-96 overflow-y-auto">
+        {/* Search Input */}
+        <div className="sticky top-0 bg-white p-2 border-b border-slate-200">
+          <input
+            type="text"
+            placeholder="Search by meter ID..."
+            value={basicMeterSearchQuery}
+            onChange={(e) => setBasicMeterSearchQuery(e.target.value)}
+            className="w-full px-3 py-1.5 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+
+        {/* Select All / Clear All Buttons */}
+        <div className="p-2 border-b border-slate-200 flex gap-2">
+          <button
+            onClick={() => {
+              const filteredMeters = meters
+                .filter(m => {
+                  const search = basicMeterSearchQuery.toLowerCase();
+                  return search === '' || m.meter_id.toLowerCase().includes(search);
+                })
+                .map(m => m.id);
+              setFilters(prev => ({ ...prev, meterIds: filteredMeters }));
+            }}
+            className="flex-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-medium"
+          >
+            Select All
+          </button>
+          <button
+            onClick={() => setFilters(prev => ({ ...prev, meterIds: [] }))}
+            className="flex-1 px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 font-medium"
+          >
+            Clear All
+          </button>
+        </div>
+
+        {/* Checkbox List */}
+        <div className="max-h-64 overflow-y-auto">
+          {meters
+            .filter(meter => {
+              const search = basicMeterSearchQuery.toLowerCase();
+              return search === '' || meter.meter_id.toLowerCase().includes(search);
+            })
+            .map(meter => (
+              <label
+                key={meter.id}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100"
+              >
+                <input
+                  type="checkbox"
+                  checked={filters.meterIds.includes(meter.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setFilters(prev => ({ ...prev, meterIds: [...prev.meterIds, meter.id] }));
+                    } else {
+                      setFilters(prev => ({ ...prev, meterIds: prev.meterIds.filter(id => id !== meter.id) }));
+                    }
+                  }}
+                  className="rounded text-blue-600"
+                />
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-slate-700">
+                    {meter.meter_id}
+                  </div>
+                </div>
+              </label>
+            ))}
+        </div>
+      </div>
+    )}
+  </div>
+</div>
+
+// 4. Click Outside Handler
+useEffect(() => {
+  const handleClickOutside = (event: MouseEvent) => {
+    const target = event.target as HTMLElement;
+    if (showBasicMeterDropdown && !target.closest('.basic-meter-dropdown-container')) {
+      setShowBasicMeterDropdown(false);
+    }
+  };
+  document.addEventListener('mousedown', handleClickOutside);
+  return () => document.removeEventListener('mousedown', handleClickOutside);
+}, [showBasicMeterDropdown]);
+```
+
+**Key Features:**
+- **Search Functionality**: Searches only `meter_id` field (case-insensitive)
+- **Display Format**: Shows just the meter_id (e.g., "PQM-001", "METER-132KV-A")
+- **Counter Display**: Shows "X total, Y selected" in label
+- **Bulk Actions**: Select All / Clear All buttons (respects current search filter)
+- **Simplified Display**: No additional metadata shown (location, voltage level, etc.)
+- **Sticky Search**: Search input stays at top when scrolling
+- **Max Height**: `max-h-96` for dropdown, `max-h-64` for scrollable list
+
+---
+
+#### Comparison: Substation vs PQ Meter Filter
+
+| Feature | Substation Filter | PQ Meter Filter |
+|---------|-------------------|-----------------|
+| **Search Fields** | `code` + `name` | `meter_id` only |
+| **Display Format** | "CODE - Name" | "meter_id" |
+| **Placeholder** | "Search by code or name..." | "Search by meter ID..." |
+| **State Variable** | `selectedSubstationIds: string[]` | `filters.meterIds: string[]` |
+| **Container Class** | `.substation-dropdown-container` | `.basic-meter-dropdown-container` |
+| **Data Source** | `substations` table | `pq_meters` table |
+| **Sort Order** | By `code` | By `meter_id` |
+| **Additional Info** | None | None (simplified from Advanced filter) |
+
+**When to Use Which:**
+- **Substation Filter**: When users need to identify substations by short codes or full names
+- **PQ Meter Filter**: When users only need to find meters by their unique identifier
+
+**Components Using These Patterns:**
+- `EventManagement.tsx` - Basic Filters section (both patterns)
+- Filter panels in dashboard widgets
+- Any multi-select filter requiring search functionality
+
+---
+
 ### Dashboard Config Modal Pattern
 
 **IMPORTANT RULE**: For dashboard widgets with complex filtering needs (3+ filter types), use a comprehensive config modal instead of inline filter dropdowns. This provides better UX for profile management and multiple filter categories.

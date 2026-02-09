@@ -85,6 +85,15 @@ export default function EventManagement() {
   // Advanced Filter Modal states
   const [showAdvancedFilterModal, setShowAdvancedFilterModal] = useState(false);
   const [transformerNumbers, setTransformerNumbers] = useState<string[]>([]);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [quickDatePreset, setQuickDatePreset] = useState<string>('custom');
+  
+  // Basic Filters - Substation & Meter dropdowns
+  const [showSubstationDropdown, setShowSubstationDropdown] = useState(false);
+  const [substationSearchQuery, setSubstationSearchQuery] = useState('');
+  const [selectedSubstationIds, setSelectedSubstationIds] = useState<string[]>([]);
+  const [showBasicMeterDropdown, setShowBasicMeterDropdown] = useState(false);
+  const [basicMeterSearchQuery, setBasicMeterSearchQuery] = useState('');
 
   // Manual Event Creation - Removed (now uses new tab workspace)
 
@@ -118,11 +127,17 @@ export default function EventManagement() {
       if (showSortDropdown && !target.closest('.sort-dropdown-container')) {
         setShowSortDropdown(false);
       }
+      if (showSubstationDropdown && !target.closest('.substation-dropdown-container')) {
+        setShowSubstationDropdown(false);
+      }
+      if (showBasicMeterDropdown && !target.closest('.basic-meter-dropdown-container')) {
+        setShowBasicMeterDropdown(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showMeterDropdown, showProfileDropdown, showVoltageLevelDropdown, showEventTypeDropdown, showExportDropdown, showImportDropdown, showSortDropdown]);
+  }, [showMeterDropdown, showProfileDropdown, showVoltageLevelDropdown, showEventTypeDropdown, showExportDropdown, showImportDropdown, showSortDropdown, showSubstationDropdown, showBasicMeterDropdown]);
 
   const loadData = async () => {
     try {
@@ -467,6 +482,30 @@ export default function EventManagement() {
     } catch (error) {
       console.error('Error setting default profile:', error);
     }
+  };
+
+  const handleQuickDatePreset = (preset: string) => {
+    setQuickDatePreset(preset);
+    const now = new Date();
+    let startDate = '';
+    let endDate = now.toISOString().slice(0, 16); // Current time in datetime-local format
+
+    switch (preset) {
+      case '24h':
+        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 16);
+        break;
+      case '7d':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16);
+        break;
+      case '30d':
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16);
+        break;
+      case 'custom':
+        // Don't auto-set dates for custom
+        return;
+    }
+
+    setFilters(prev => ({ ...prev, startDate, endDate }));
   };
 
   const handleResetFilters = () => {
@@ -1125,7 +1164,7 @@ export default function EventManagement() {
               <div className="relative">
                 <button
                   onClick={() => setShowProfileDialog(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg border bg-white text-slate-700 border-slate-300 hover:bg-slate-50 transition-all"
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg border bg-white text-slate-700 border-slate-300 hover:bg-slate-50 transition-all text-sm"
                 >
                   <Save className="w-4 h-4" />
                   Save Profile
@@ -1136,13 +1175,13 @@ export default function EventManagement() {
                 <div className="relative profile-dropdown-container">
                   <button
                     onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-                    className="px-4 py-2 pr-10 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all min-w-[200px] text-left"
+                    className="px-3 py-1.5 pr-8 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all min-w-[180px] text-left text-sm"
                   >
                     {selectedProfileId 
                       ? filterProfiles.find(p => p.id === selectedProfileId)?.name || 'Select Profile...'
                       : 'Select Profile...'}
                   </button>
-                  <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                  <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
                   
                   {showProfileDropdown && (
                     <div className="absolute left-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-20 min-w-[250px] max-h-[300px] overflow-y-auto">
@@ -1218,21 +1257,21 @@ export default function EventManagement() {
                   const url = `/create-voltage-dip-event?return_url=${encodeURIComponent(window.location.href)}`;
                   window.open(url, '_blank');
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:shadow-lg transition-all"
+                className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:shadow-lg transition-all text-sm"
                 title="Create Voltage Dip Event (opens in new tab)"
               >
-                <Plus className="w-5 h-5" />
-                <span className="font-semibold">Create Voltage Dip Event</span>
+                <Plus className="w-4 h-4" />
+                <span>Create Voltage Dip Event</span>
               </button>
 
               {/* Import Button with Dropdown */}
               <div className="relative import-dropdown-container">
                 <button
                   onClick={() => setShowImportDropdown(!showImportDropdown)}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-lg transition-all"
+                  className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-lg transition-all text-sm"
                 >
-                  <Upload className="w-5 h-5" />
-                  <span className="font-semibold">Import</span>
+                  <Upload className="w-4 h-4" />
+                  <span>Import</span>
                   <ChevronDown className="w-4 h-4" />
                 </button>
 
@@ -1265,386 +1304,794 @@ export default function EventManagement() {
             </div>
           </div>
 
-          {/* Advanced Filters Panel */}
+          {/* Filter Panel with Basic and Advanced Sections */}
           {showFilters && (
             <div className="bg-white rounded-xl shadow-lg border border-slate-100 p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <Search className="w-5 h-5" />
-                  Advanced Filters
-                </h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setShowAdvancedFilterModal(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-lg transition-all"
-                    title="Open Advanced Filters"
-                  >
-                    <Sliders className="w-4 h-4" />
-                    Advanced Filter
-                  </button>
-                  <button
-                    onClick={handleResetFilters}
-                    className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-all"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    Reset All
-                  </button>
+              {/* Basic Filters Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Search className="w-5 h-5" />
+                    Basic Filters
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-lg transition-all"
+                    >
+                      <Sliders className="w-4 h-4" />
+                      Advanced Filters
+                      <ChevronDown className={`w-4 h-4 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+                    </button>
+                    <button
+                      onClick={handleResetFilters}
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-all"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      Reset All
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Row 1: Date Range and Voltage Level */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Date Range with Quick Presets */}
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium mb-1">Date/Time Range</label>
+                      <div className="flex gap-2 mb-2">
+                        {[
+                          { value: '24h', label: 'Last 24h' },
+                          { value: '7d', label: 'Last 7d' },
+                          { value: '30d', label: 'Last 30d' },
+                          { value: 'custom', label: 'Custom' }
+                        ].map(preset => (
+                          <button
+                            key={preset.value}
+                            onClick={() => handleQuickDatePreset(preset.value)}
+                            className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-all ${
+                              quickDatePreset === preset.value
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="datetime-local"
+                          value={filters.startDate}
+                          onChange={(e) => {
+                            setFilters((prev: any) => ({ ...prev, startDate: e.target.value }));
+                            setQuickDatePreset('custom');
+                            if (e.target.value) setTimeout(() => e.target.blur(), 100);
+                          }}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                          placeholder="Start Date"
+                        />
+                        <input
+                          type="datetime-local"
+                          value={filters.endDate}
+                          onChange={(e) => {
+                            setFilters((prev: any) => ({ ...prev, endDate: e.target.value }));
+                            setQuickDatePreset('custom');
+                            if (e.target.value) setTimeout(() => e.target.blur(), 100);
+                          }}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                          placeholder="End Date"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Voltage Level Filter */}
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium mb-1">
+                        Voltage Level {filters.voltageLevels.length > 0 && `(${filters.voltageLevels.length})`}
+                      </label>
+                      <div className="relative voltage-dropdown-container">
+                        <button
+                          onClick={() => setShowVoltageLevelDropdown(!showVoltageLevelDropdown)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-left text-sm hover:bg-slate-50 transition-all flex items-center justify-between"
+                        >
+                          <span className="text-slate-700">
+                            {filters.voltageLevels.length === 0 ? 'Select levels...' : `${filters.voltageLevels.length} level(s)`}
+                          </span>
+                          <ChevronDown className="w-4 h-4 text-slate-400" />
+                        </button>
+                        
+                        {showVoltageLevelDropdown && (
+                          <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                            <div className="p-2 border-b border-slate-200 flex gap-2">
+                              <button
+                                onClick={() => {
+                                  const allVoltageLevels = ['400kV', '132kV', '33kV', '11kV', '380V'];
+                                  setFilters(prev => ({ ...prev, voltageLevels: allVoltageLevels }));
+                                }}
+                                className="flex-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-medium"
+                              >
+                                Select All
+                              </button>
+                              <button
+                                onClick={() => setFilters(prev => ({ ...prev, voltageLevels: [] }))}
+                                className="flex-1 px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 font-medium"
+                              >
+                                Clear All
+                              </button>
+                            </div>
+                            <div className="p-2">
+                              {['400kV', '132kV', '33kV', '11kV', '380V'].map(voltage => (
+                                <label
+                                  key={voltage}
+                                  className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-b-0"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={filters.voltageLevels.includes(voltage)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setFilters(prev => ({ ...prev, voltageLevels: [...prev.voltageLevels, voltage] }));
+                                      } else {
+                                        setFilters(prev => ({ ...prev, voltageLevels: prev.voltageLevels.filter(v => v !== voltage) }));
+                                      }
+                                    }}
+                                    className="rounded text-blue-600"
+                                  />
+                                  <span className="text-sm font-medium text-slate-700">⚡ {voltage}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 2: Substation and PQ Meter Filters */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Substation Filter */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Source Substation ({substations.length} total, {selectedSubstationIds.length} selected)
+                      </label>
+                      <div className="relative substation-dropdown-container">
+                        <button
+                          onClick={() => setShowSubstationDropdown(!showSubstationDropdown)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-left text-sm hover:bg-slate-50 transition-all flex items-center justify-between"
+                        >
+                          <span className="text-slate-700">
+                            {selectedSubstationIds.length === 0 ? 'Select substations...' : `${selectedSubstationIds.length} substation(s)`}
+                          </span>
+                          <ChevronDown className="w-4 h-4 text-slate-400" />
+                        </button>
+                        
+                        {showSubstationDropdown && (
+                          <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-96 overflow-y-auto">
+                            <div className="sticky top-0 bg-white p-2 border-b border-slate-200">
+                              <input
+                                type="text"
+                                placeholder="Search by code or name..."
+                                value={substationSearchQuery}
+                                onChange={(e) => setSubstationSearchQuery(e.target.value)}
+                                className="w-full px-3 py-1.5 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+
+                            <div className="p-2 border-b border-slate-200 flex gap-2">
+                              <button
+                                onClick={() => {
+                                  const filteredSubstations = substations
+                                    .filter(s => {
+                                      const search = substationSearchQuery.toLowerCase();
+                                      return search === '' || 
+                                        s.code?.toLowerCase().includes(search) || 
+                                        s.name?.toLowerCase().includes(search);
+                                    })
+                                    .map(s => s.id);
+                                  setSelectedSubstationIds(filteredSubstations);
+                                }}
+                                className="flex-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-medium"
+                              >
+                                Select All
+                              </button>
+                              <button
+                                onClick={() => setSelectedSubstationIds([])}
+                                className="flex-1 px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 font-medium"
+                              >
+                                Clear All
+                              </button>
+                            </div>
+
+                            <div className="max-h-64 overflow-y-auto">
+                              {substations
+                                .filter(substation => {
+                                  const search = substationSearchQuery.toLowerCase();
+                                  return search === '' || 
+                                    substation.code?.toLowerCase().includes(search) || 
+                                    substation.name?.toLowerCase().includes(search);
+                                })
+                                .map(substation => (
+                                  <label
+                                    key={substation.id}
+                                    className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedSubstationIds.includes(substation.id)}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setSelectedSubstationIds(prev => [...prev, substation.id]);
+                                        } else {
+                                          setSelectedSubstationIds(prev => prev.filter(id => id !== substation.id));
+                                        }
+                                      }}
+                                      className="rounded text-blue-600"
+                                    />
+                                    <div className="flex-1">
+                                      <div className="text-sm font-medium text-slate-700">
+                                        {substation.code} - {substation.name}
+                                      </div>
+                                    </div>
+                                  </label>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* PQ Meter Filter */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        PQ Meters ({meters.length} total, {filters.meterIds.length} selected)
+                      </label>
+                      <div className="relative basic-meter-dropdown-container">
+                        <button
+                          onClick={() => setShowBasicMeterDropdown(!showBasicMeterDropdown)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-left text-sm hover:bg-slate-50 transition-all flex items-center justify-between"
+                        >
+                          <span className="text-slate-700">
+                            {filters.meterIds.length === 0 ? 'Select meters...' : `${filters.meterIds.length} meter(s)`}
+                          </span>
+                          <ChevronDown className="w-4 h-4 text-slate-400" />
+                        </button>
+                        
+                        {showBasicMeterDropdown && (
+                          <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-96 overflow-y-auto">
+                            <div className="sticky top-0 bg-white p-2 border-b border-slate-200">
+                              <input
+                                type="text"
+                                placeholder="Search by meter ID..."
+                                value={basicMeterSearchQuery}
+                                onChange={(e) => setBasicMeterSearchQuery(e.target.value)}
+                                className="w-full px-3 py-1.5 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+
+                            <div className="p-2 border-b border-slate-200 flex gap-2">
+                              <button
+                                onClick={() => {
+                                  const filteredMeters = meters
+                                    .filter(m => {
+                                      const search = basicMeterSearchQuery.toLowerCase();
+                                      return search === '' || m.meter_id.toLowerCase().includes(search);
+                                    })
+                                    .map(m => m.id);
+                                  setFilters(prev => ({ ...prev, meterIds: filteredMeters }));
+                                }}
+                                className="flex-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-medium"
+                              >
+                                Select All
+                              </button>
+                              <button
+                                onClick={() => setFilters(prev => ({ ...prev, meterIds: [] }))}
+                                className="flex-1 px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 font-medium"
+                              >
+                                Clear All
+                              </button>
+                            </div>
+
+                            <div className="max-h-64 overflow-y-auto">
+                              {meters
+                                .filter(meter => {
+                                  const search = basicMeterSearchQuery.toLowerCase();
+                                  return search === '' || meter.meter_id.toLowerCase().includes(search);
+                                })
+                                .map(meter => (
+                                  <label
+                                    key={meter.id}
+                                    className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={filters.meterIds.includes(meter.id)}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setFilters(prev => ({ ...prev, meterIds: [...prev.meterIds, meter.id] }));
+                                        } else {
+                                          setFilters(prev => ({ ...prev, meterIds: prev.meterIds.filter(id => id !== meter.id) }));
+                                        }
+                                      }}
+                                      className="rounded text-blue-600"
+                                    />
+                                    <div className="flex-1">
+                                      <div className="text-sm font-medium text-slate-700">
+                                        {meter.meter_id}
+                                      </div>
+                                    </div>
+                                  </label>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 3: VL1/VL2/VL3 Voltage Ranges - Responsive Layout */}
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Voltage Ranges (%)</label>
+                    <div className="flex flex-wrap gap-4">
+                      {/* VL1 Range */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-700 w-10">VL1:</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          placeholder="Min"
+                          value={filters.minV1 || ''}
+                          onChange={(e) => setFilters((prev: any) => ({ ...prev, minV1: e.target.value ? parseFloat(e.target.value) : null }))}
+                          className="w-20 px-2 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                        <span className="text-slate-500 text-xs">to</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          placeholder="Max"
+                          value={filters.maxV1 || ''}
+                          onChange={(e) => setFilters((prev: any) => ({ ...prev, maxV1: e.target.value ? parseFloat(e.target.value) : null }))}
+                          className="w-20 px-2 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                      </div>
+
+                      {/* VL2 Range */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-700 w-10">VL2:</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          placeholder="Min"
+                          value={filters.minV2 || ''}
+                          onChange={(e) => setFilters((prev: any) => ({ ...prev, minV2: e.target.value ? parseFloat(e.target.value) : null }))}
+                          className="w-20 px-2 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                        <span className="text-slate-500 text-xs">to</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          placeholder="Max"
+                          value={filters.maxV2 || ''}
+                          onChange={(e) => setFilters((prev: any) => ({ ...prev, maxV2: e.target.value ? parseFloat(e.target.value) : null }))}
+                          className="w-20 px-2 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                      </div>
+
+                      {/* VL3 Range */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-700 w-10">VL3:</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          placeholder="Min"
+                          value={filters.minV3 || ''}
+                          onChange={(e) => setFilters((prev: any) => ({ ...prev, minV3: e.target.value ? parseFloat(e.target.value) : null }))}
+                          className="w-20 px-2 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                        <span className="text-slate-500 text-xs">to</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          placeholder="Max"
+                          value={filters.maxV3 || ''}
+                          onChange={(e) => setFilters((prev: any) => ({ ...prev, maxV3: e.target.value ? parseFloat(e.target.value) : null }))}
+                          className="w-20 px-2 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Checkboxes Row */}
+                <div className="flex items-center gap-6">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={!filters.showOnlyStandaloneEvents}
+                      onChange={(e) => setFilters((prev: any) => ({ ...prev, showOnlyStandaloneEvents: !e.target.checked }))}
+                      className="rounded"
+                    />
+                    <span className="text-sm">Include Child Event</span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={filters.showFalseEventsOnly}
+                      onChange={(e) => setFilters((prev: any) => ({ ...prev, showFalseEventsOnly: e.target.checked }))}
+                      className="rounded"
+                    />
+                    <span className="text-sm">Fault Indicator (FI)</span>
+                  </label>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Date Range */}
-                <div>
-                  <label className="block text-sm font-medium mb-1">Start Date</label>
-                  <input
-                    type="datetime-local"
-                    value={filters.startDate}
-                    onChange={(e) => {
-                      setFilters((prev: any) => ({ ...prev, startDate: e.target.value }));
-                      // Auto-close on selection
-                      if (e.target.value) {
-                        setTimeout(() => e.target.blur(), 100);
-                      }
-                    }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all duration-200"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">End Date</label>
-                  <input
-                    type="datetime-local"
-                    value={filters.endDate}
-                    onChange={(e) => {
-                      setFilters((prev: any) => ({ ...prev, endDate: e.target.value }));
-                      // Auto-close on selection
-                      if (e.target.value) {
-                        setTimeout(() => e.target.blur(), 100);
-                      }
-                    }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all duration-200"
-                  />
-                </div>
+              {/* Advanced Filters Section (Collapsible) */}
+              {showAdvancedFilters && (
+                <div className="mt-6 pt-6 border-t border-slate-200 space-y-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2 text-slate-700">
+                    <Sliders className="w-5 h-5" />
+                    Advanced Filters
+                  </h3>
 
-                {/* Duration Range - Compressed */}
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium mb-1">Duration (ms)</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      placeholder="Min"
-                      value={filters.minDuration}
-                      onChange={(e) => setFilters((prev: any) => ({ ...prev, minDuration: parseInt(e.target.value) || 0 }))}
-                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                    />
-                    <span className="text-slate-500">to</span>
-                    <input
-                      type="number"
-                      placeholder="Max"
-                      value={filters.maxDuration}
-                      onChange={(e) => setFilters((prev: any) => ({ ...prev, maxDuration: parseInt(e.target.value) || 10000 }))}
-                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                    />
-                  </div>
-                </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Technical IDs Section */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1">IDR No.</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 999801-1"
+                        value={filters.idrNumber || ''}
+                        onChange={(e) => setFilters((prev: any) => ({ ...prev, idrNumber: e.target.value }))}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      />
+                    </div>
 
-                {/* Event Type Filter */}
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Event Type {filters.eventTypes.length > 0 && `(${filters.eventTypes.length})`}
-                  </label>
-                  <div className="relative event-type-dropdown-container">
-                    <button
-                      onClick={() => setShowEventTypeDropdown(!showEventTypeDropdown)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-left text-sm hover:bg-slate-50 transition-all flex items-center justify-between"
-                    >
-                      <span className="text-slate-700">
-                        {filters.eventTypes.length === 0 ? 'Select event types...' : `${filters.eventTypes.length} type(s) selected`}
-                      </span>
-                      <ChevronDown className="w-4 h-4 text-slate-400" />
-                    </button>
-                    
-                    {showEventTypeDropdown && (
-                      <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                        {/* Select All / Clear All */}
-                        <div className="p-2 border-b border-slate-200 flex gap-2">
-                          <button
-                            onClick={() => {
-                              const allEventTypes = ['voltage_dip', 'voltage_swell', 'harmonic', 'interruption', 'transient', 'flicker'];
-                              setFilters(prev => ({ ...prev, eventTypes: allEventTypes }));
-                            }}
-                            className="flex-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-medium"
-                          >
-                            Select All
-                          </button>
-                          <button
-                            onClick={() => setFilters(prev => ({ ...prev, eventTypes: [] }))}
-                            className="flex-1 px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 font-medium"
-                          >
-                            Clear All
-                          </button>
-                        </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Tx No. (Circuit)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. H1, H2, H3"
+                        value={filters.transformerNumbers?.join(', ') || ''}
+                        onChange={(e) => setFilters((prev: any) => ({ ...prev, transformerNumbers: e.target.value.split(',').map(v => v.trim()).filter(Boolean) }))}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      />
+                    </div>
 
-                        <div className="p-2">
-                          {[
-                            { value: 'voltage_dip', label: 'Voltage Dip' },
-                            { value: 'voltage_swell', label: 'Voltage Swell' },
-                            { value: 'harmonic', label: 'Harmonic' },
-                            { value: 'interruption', label: 'Interruption' },
-                            { value: 'transient', label: 'Transient' },
-                            { value: 'flicker', label: 'Flicker' }
-                          ].map(eventType => (
-                            <label
-                              key={eventType.value}
-                              className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-b-0"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={filters.eventTypes.includes(eventType.value)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setFilters(prev => ({ ...prev, eventTypes: [...prev.eventTypes, eventType.value] }));
-                                  } else {
-                                    setFilters(prev => ({ ...prev, eventTypes: prev.eventTypes.filter(v => v !== eventType.value) }));
-                                  }
-                                }}
-                                className="rounded text-blue-600"
-                              />
-                              <span className="text-sm font-medium text-slate-700">{eventType.label}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Dx No.</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. D1"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        disabled
+                        title="Coming soon"
+                      />
+                    </div>
 
-                {/* Voltage Level Filter */}
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Voltage Level (Event Filter) {filters.voltageLevels.length > 0 && `(${filters.voltageLevels.length})`}
-                  </label>
-                  <div className="relative voltage-dropdown-container">
-                    <button
-                      onClick={() => setShowVoltageLevelDropdown(!showVoltageLevelDropdown)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-left text-sm hover:bg-slate-50 transition-all flex items-center justify-between"
-                    >
-                      <span className="text-slate-700">
-                        {filters.voltageLevels.length === 0 ? 'Select voltage levels...' : `${filters.voltageLevels.length} level(s) selected`}
-                      </span>
-                      <ChevronDown className="w-4 h-4 text-slate-400" />
-                    </button>
-                    
-                    {showVoltageLevelDropdown && (
-                      <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                        {/* Select All / Clear All */}
-                        <div className="p-2 border-b border-slate-200 flex gap-2">
-                          <button
-                            onClick={() => {
-                              const allVoltageLevels = ['400kV', '132kV', '33kV', '11kV', '380V'];
-                              setFilters(prev => ({ ...prev, voltageLevels: allVoltageLevels }));
-                            }}
-                            className="flex-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-medium"
-                          >
-                            Select All
-                          </button>
-                          <button
-                            onClick={() => setFilters(prev => ({ ...prev, voltageLevels: [] }))}
-                            className="flex-1 px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 font-medium"
-                          >
-                            Clear All
-                          </button>
-                        </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Ring Number</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. HWL00004"
+                        value={filters.ringNumber || ''}
+                        onChange={(e) => setFilters((prev: any) => ({ ...prev, ringNumber: e.target.value }))}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      />
+                    </div>
 
-                        <div className="p-2">
-                          {['400kV', '132kV', '33kV', '11kV', '380V'].map(voltage => (
-                            <label
-                              key={voltage}
-                              className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-b-0"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={filters.voltageLevels.includes(voltage)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setFilters(prev => ({ ...prev, voltageLevels: [...prev.voltageLevels, voltage] }));
-                                  } else {
-                                    setFilters(prev => ({ ...prev, voltageLevels: prev.voltageLevels.filter(v => v !== voltage) }));
-                                  }
-                                }}
-                                className="rounded text-blue-600"
-                              />
-                              <span className="text-sm font-medium text-slate-700">⚡ {voltage}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                    {/* Customer Information Section */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Customer S/S Name</label>
+                      <input
+                        type="text"
+                        placeholder="Coming soon"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        disabled
+                        title="Coming soon"
+                      />
+                    </div>
 
-                {/* PQ Meter Filter with Voltage Level Grouping */}
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium mb-1">
-                    PQ Meters ({meters.length} total, {filters.meterIds.length} selected)
-                  </label>
-                  <div className="relative meter-dropdown-container">
-                    <button
-                      onClick={() => setShowMeterDropdown(!showMeterDropdown)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-left text-sm hover:bg-slate-50 transition-all flex items-center justify-between"
-                    >
-                      <span className="text-slate-700">
-                        {filters.meterIds.length === 0 ? 'Select meters...' : `${filters.meterIds.length} meter(s) selected`}
-                      </span>
-                      <ChevronDown className="w-4 h-4 text-slate-400" />
-                    </button>
-                    
-                    {showMeterDropdown && (
-                      <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-96 overflow-y-auto">
-                        {/* Search Box */}
-                        <div className="sticky top-0 bg-white p-2 border-b border-slate-200">
-                          <input
-                            type="text"
-                            placeholder="Search meters..."
-                            value={meterSearchQuery}
-                            onChange={(e) => setMeterSearchQuery(e.target.value)}
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Customer A/C No.</label>
+                      <input
+                        type="text"
+                        placeholder="Coming soon"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        disabled
+                        title="Coming soon"
+                      />
+                    </div>
 
-                        {/* Voltage Level Filter for Meter List */}
-                        <div className="p-2 border-b border-slate-200 bg-slate-50">
-                          <div className="text-xs font-semibold text-slate-600 mb-2">Filter by Voltage Level:</div>
-                          <div className="flex flex-wrap gap-1">
-                            {['400kV', '132kV', '33kV', '11kV', '380V'].map(level => (
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Customer Class</label>
+                      <input
+                        type="text"
+                        placeholder="Coming soon"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        disabled
+                        title="Coming soon"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Transformer Class</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 2M, 3E"
+                        value={filters.transformerNumbers?.join(', ') || ''}
+                        onChange={(e) => setFilters((prev: any) => ({ ...prev, transformerNumbers: e.target.value.split(',').map(v => v.trim()).filter(Boolean) }))}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      />
+                    </div>
+
+                    {/* Event Type Filter */}
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Event Type {filters.eventTypes.length > 0 && `(${filters.eventTypes.length})`}
+                      </label>
+                      <div className="relative event-type-dropdown-container">
+                        <button
+                          onClick={() => setShowEventTypeDropdown(!showEventTypeDropdown)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-left text-sm hover:bg-slate-50 transition-all flex items-center justify-between"
+                        >
+                          <span className="text-slate-700">
+                            {filters.eventTypes.length === 0 ? 'Select types...' : `${filters.eventTypes.length} type(s)`}
+                          </span>
+                          <ChevronDown className="w-4 h-4 text-slate-400" />
+                        </button>
+                        
+                        {showEventTypeDropdown && (
+                          <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                            <div className="p-2 border-b border-slate-200 flex gap-2">
                               <button
-                                key={level}
                                 onClick={() => {
-                                  setSelectedVoltageLevelsForMeters(prev =>
-                                    prev.includes(level) ? prev.filter(l => l !== level) : [...prev, level]
-                                  );
+                                  const allEventTypes = ['voltage_dip', 'voltage_swell', 'harmonic', 'interruption', 'transient', 'flicker'];
+                                  setFilters(prev => ({ ...prev, eventTypes: allEventTypes }));
                                 }}
-                                className={`px-2 py-1 rounded text-xs font-medium transition-all ${
-                                  selectedVoltageLevelsForMeters.includes(level)
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-100'
-                                }`}
+                                className="flex-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-medium"
                               >
-                                {level}
+                                Select All
                               </button>
-                            ))}
-                            {selectedVoltageLevelsForMeters.length > 0 && (
                               <button
-                                onClick={() => setSelectedVoltageLevelsForMeters([])}
-                                className="px-2 py-1 rounded text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100"
+                                onClick={() => setFilters(prev => ({ ...prev, eventTypes: [] }))}
+                                className="flex-1 px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 font-medium"
                               >
-                                Clear
+                                Clear All
                               </button>
-                            )}
+                            </div>
+                            <div className="p-2">
+                              {[
+                                { value: 'voltage_dip', label: 'Voltage Dip' },
+                                { value: 'voltage_swell', label: 'Voltage Swell' },
+                                { value: 'harmonic', label: 'Harmonic' },
+                                { value: 'interruption', label: 'Interruption' },
+                                { value: 'transient', label: 'Transient' },
+                                { value: 'flicker', label: 'Flicker' }
+                              ].map(eventType => (
+                                <label
+                                  key={eventType.value}
+                                  className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-b-0"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={filters.eventTypes.includes(eventType.value)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setFilters(prev => ({ ...prev, eventTypes: [...prev.eventTypes, eventType.value] }));
+                                      } else {
+                                        setFilters(prev => ({ ...prev, eventTypes: prev.eventTypes.filter(v => v !== eventType.value) }));
+                                      }
+                                    }}
+                                    className="rounded text-blue-600"
+                                  />
+                                  <span className="text-sm font-medium text-slate-700">{eventType.label}</span>
+                                </label>
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        )}
+                      </div>
+                    </div>
 
-                        {/* Select All / Clear All */}
-                        <div className="p-2 border-b border-slate-200 flex gap-2">
-                          <button
-                            onClick={() => {
-                              const filteredMeterIds = meters
-                                .filter(m => {
+                    {/* PQ Meter Filter (Source Substation) */}
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium mb-1">
+                        Source Substation / PQ Meters ({meters.length} total, {filters.meterIds.length} selected)
+                      </label>
+                      <div className="relative meter-dropdown-container">
+                        <button
+                          onClick={() => setShowMeterDropdown(!showMeterDropdown)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-left text-sm hover:bg-slate-50 transition-all flex items-center justify-between"
+                        >
+                          <span className="text-slate-700">
+                            {filters.meterIds.length === 0 ? 'Select meters...' : `${filters.meterIds.length} meter(s) selected`}
+                          </span>
+                          <ChevronDown className="w-4 h-4 text-slate-400" />
+                        </button>
+                        
+                        {showMeterDropdown && (
+                          <div className="absolute z-20 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-96 overflow-y-auto">
+                            <div className="sticky top-0 bg-white p-2 border-b border-slate-200">
+                              <input
+                                type="text"
+                                placeholder="Search meters..."
+                                value={meterSearchQuery}
+                                onChange={(e) => setMeterSearchQuery(e.target.value)}
+                                className="w-full px-3 py-1.5 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+
+                            <div className="p-2 border-b border-slate-200 bg-slate-50">
+                              <div className="text-xs font-semibold text-slate-600 mb-2">Filter by Voltage Level:</div>
+                              <div className="flex flex-wrap gap-1">
+                                {['400kV', '132kV', '33kV', '11kV', '380V'].map(level => (
+                                  <button
+                                    key={level}
+                                    onClick={() => {
+                                      setSelectedVoltageLevelsForMeters(prev =>
+                                        prev.includes(level) ? prev.filter(l => l !== level) : [...prev, level]
+                                      );
+                                    }}
+                                    className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+                                      selectedVoltageLevelsForMeters.includes(level)
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    {level}
+                                  </button>
+                                ))}
+                                {selectedVoltageLevelsForMeters.length > 0 && (
+                                  <button
+                                    onClick={() => setSelectedVoltageLevelsForMeters([])}
+                                    className="px-2 py-1 rounded text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100"
+                                  >
+                                    Clear
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="p-2 border-b border-slate-200 flex gap-2">
+                              <button
+                                onClick={() => {
+                                  const filteredMeterIds = meters
+                                    .filter(m => {
+                                      const matchesSearch = meterSearchQuery === '' || 
+                                        m.meter_id.toLowerCase().includes(meterSearchQuery.toLowerCase());
+                                      const matchesVoltage = selectedVoltageLevelsForMeters.length === 0 ||
+                                        (m.voltage_level && selectedVoltageLevelsForMeters.includes(m.voltage_level));
+                                      return matchesSearch && matchesVoltage;
+                                    })
+                                    .map(m => m.id);
+                                  setFilters(prev => ({ ...prev, meterIds: filteredMeterIds }));
+                                }}
+                                className="flex-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-medium"
+                              >
+                                Select All
+                              </button>
+                              <button
+                                onClick={() => setFilters(prev => ({ ...prev, meterIds: [] }))}
+                                className="flex-1 px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 font-medium"
+                              >
+                                Clear All
+                              </button>
+                            </div>
+
+                            <div className="max-h-64 overflow-y-auto">
+                              {meters
+                                .filter(meter => {
                                   const matchesSearch = meterSearchQuery === '' || 
-                                    m.meter_id.toLowerCase().includes(meterSearchQuery.toLowerCase());
+                                    meter.meter_id.toLowerCase().includes(meterSearchQuery.toLowerCase());
                                   const matchesVoltage = selectedVoltageLevelsForMeters.length === 0 ||
-                                    (m.voltage_level && selectedVoltageLevelsForMeters.includes(m.voltage_level));
+                                    (meter.voltage_level && selectedVoltageLevelsForMeters.includes(meter.voltage_level));
                                   return matchesSearch && matchesVoltage;
                                 })
-                                .map(m => m.id);
-                              setFilters(prev => ({ ...prev, meterIds: filteredMeterIds }));
-                            }}
-                            className="flex-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-medium"
-                          >
-                            Select All
-                          </button>
-                          <button
-                            onClick={() => setFilters(prev => ({ ...prev, meterIds: [] }))}
-                            className="flex-1 px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 font-medium"
-                          >
-                            Clear All
-                          </button>
-                        </div>
-
-                        {/* Meter List */}
-                        <div className="max-h-64 overflow-y-auto">
-                          {meters
-                            .filter(meter => {
-                              const matchesSearch = meterSearchQuery === '' || 
-                                meter.meter_id.toLowerCase().includes(meterSearchQuery.toLowerCase());
-                              const matchesVoltage = selectedVoltageLevelsForMeters.length === 0 ||
-                                (meter.voltage_level && selectedVoltageLevelsForMeters.includes(meter.voltage_level));
-                              return matchesSearch && matchesVoltage;
-                            })
-                            .map(meter => (
-                              <label
-                                key={meter.id}
-                                className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={filters.meterIds.includes(meter.id)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setFilters(prev => ({ ...prev, meterIds: [...prev.meterIds, meter.id] }));
-                                    } else {
-                                      setFilters(prev => ({ ...prev, meterIds: prev.meterIds.filter(id => id !== meter.id) }));
-                                    }
-                                  }}
-                                  className="rounded text-blue-600"
-                                />
-                                <div className="flex-1">
-                                  <div className="text-sm font-medium text-slate-700">
-                                    {meter.meter_id} | {meter.location}
-                                  </div>
-                                  <div className="text-xs text-slate-500">
-                                    {meter.voltage_level && <span>⚡ {meter.voltage_level}</span>}
-                                  </div>
-                                </div>
-                              </label>
-                            ))}
-                        </div>
+                                .map(meter => (
+                                  <label
+                                    key={meter.id}
+                                    className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={filters.meterIds.includes(meter.id)}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setFilters(prev => ({ ...prev, meterIds: [...prev.meterIds, meter.id] }));
+                                        } else {
+                                          setFilters(prev => ({ ...prev, meterIds: prev.meterIds.filter(id => id !== meter.id) }));
+                                        }
+                                      }}
+                                      className="rounded text-blue-600"
+                                    />
+                                    <div className="flex-1">
+                                      <div className="text-sm font-medium text-slate-700">
+                                        {meter.meter_id} | {meter.location}
+                                      </div>
+                                      <div className="text-xs text-slate-500">
+                                        {meter.voltage_level && <span>⚡ {meter.voltage_level}</span>}
+                                      </div>
+                                    </div>
+                                  </label>
+                                ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
+
+                    {/* Voltage Remain Magnitude Ranges */}
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium mb-1">Voltage Remain Magnitude (%)</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          placeholder="Min"
+                          value={filters.minRemainingVoltage}
+                          onChange={(e) => setFilters((prev: any) => ({ ...prev, minRemainingVoltage: parseInt(e.target.value) || 0 }))}
+                          className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                        <span className="text-slate-500">to</span>
+                        <input
+                          type="number"
+                          placeholder="Max"
+                          value={filters.maxRemainingVoltage}
+                          onChange={(e) => setFilters((prev: any) => ({ ...prev, maxRemainingVoltage: parseInt(e.target.value) || 100 }))}
+                          className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Duration Range */}
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium mb-1">Duration (ms)</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          placeholder="Min"
+                          value={filters.minDuration}
+                          onChange={(e) => setFilters((prev: any) => ({ ...prev, minDuration: parseInt(e.target.value) || 0 }))}
+                          className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                        <span className="text-slate-500">to</span>
+                        <input
+                          type="number"
+                          placeholder="Max"
+                          value={filters.maxDuration}
+                          onChange={(e) => setFilters((prev: any) => ({ ...prev, maxDuration: parseInt(e.target.value) || 10000 }))}
+                          className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Additional flags */}
+                  <div className="flex items-center gap-6 mt-4">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={filters.showLateEventsOnly}
+                        onChange={(e) => setFilters((prev: any) => ({ ...prev, showLateEventsOnly: e.target.checked }))}
+                        className="rounded"
+                      />
+                      <span className="text-sm">Show only late events</span>
+                    </label>
                   </div>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-6 mt-4">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={filters.showMotherEventsWithoutChildren}
-                    onChange={(e) => setFilters((prev: any) => ({ ...prev, showMotherEventsWithoutChildren: e.target.checked }))}
-                    className="rounded"
-                  />
-                  <span className="text-sm">Show only mother events without child</span>
-                </label>
-                
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={filters.showFalseEventsOnly}
-                    onChange={(e) => setFilters((prev: any) => ({ ...prev, showFalseEventsOnly: e.target.checked }))}
-                    className="rounded"
-                  />
-                  <span className="text-sm">Show false events only</span>
-                </label>
-                
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={filters.showLateEventsOnly}
-                    onChange={(e) => setFilters((prev: any) => ({ ...prev, showLateEventsOnly: e.target.checked }))}
-                    className="rounded"
-                  />
-                  <span className="text-sm">Show only late events</span>
-                </label>
-              </div>
+              )}
             </div>
           )}
 
