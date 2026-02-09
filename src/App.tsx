@@ -9,6 +9,7 @@ import GlobalNotificationStatus from './components/GlobalNotificationStatus';
 import TyphoonModeIndicator from './components/TyphoonModeIndicator';
 import Dashboard from './components/Dashboard/Dashboard';
 import EventManagement from './components/EventManagement/EventManagement';
+import EventGroupingMaintenance from './components/EventManagement/EventGroupingMaintenance';
 import AssetManagement from './components/AssetManagement';
 import Reporting from './components/Reporting';
 import Notifications from './components/Notifications';
@@ -67,6 +68,7 @@ function AppContent() {
         {currentView !== 'reporting' && <CriticalMessageBar />}
         {currentView === 'dashboard' && <Dashboard onNavigateToMeter={handleNavigateToMeter} />}
         {currentView === 'events' && <EventManagement />}
+        {currentView === 'eventGrouping' && <EventGroupingMaintenance />}
         {currentView === 'assets' && <AssetManagement selectedMeterId={selectedMeterId} onClearSelectedMeter={() => setSelectedMeterId(null)} />}
         {currentView === 'reporting' && <Reporting />}
         {currentView === 'notifications' && <Notifications />}

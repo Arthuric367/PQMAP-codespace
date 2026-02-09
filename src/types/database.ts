@@ -247,10 +247,13 @@ export interface PQEvent {
   weather: string | null;
   total_cmi: number | null;
    // IDR (Incident Data Record) Fields
-  fault_type: string | null;
+  fault_type: string | null; // Deprecated - use non_clp_system_fault instead
   weather_condition: string | null;
   responsible_oc: string | null;
   manual_create_idr: boolean;
+  // Manual Event Creation Fields (Migration 20260209)
+  min_volt_recorded: boolean;
+  non_clp_system_fault: boolean;
   substation?: Substation;
   meter?: PQMeter;
   customer_impacts?: EventCustomerImpact[];

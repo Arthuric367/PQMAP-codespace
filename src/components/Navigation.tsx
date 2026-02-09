@@ -1,4 +1,4 @@
-import { LayoutDashboard, Activity, Database as DatabaseIcon, FileText, Bell, Settings, LogOut, BarChart3, Wrench, Database, ChevronLeft, ChevronRight, Users, MapPin, Network, Scale, Target, Settings2, FileCode, FlaskConical } from 'lucide-react';
+import { LayoutDashboard, Activity, Database as DatabaseIcon, FileText, Bell, LogOut, Wrench, Database, ChevronLeft, ChevronRight, Users, MapPin, Network, Scale, Target, Settings2, GitBranch } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface NavigationProps {
@@ -14,6 +14,7 @@ export default function Navigation({ currentView, onViewChange, collapsed, onTog
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { id: 'events', icon: Activity, label: 'Event Management' },
+    { id: 'eventGrouping', icon: GitBranch, label: 'Event Grouping' },
     { id: 'assets', icon: DatabaseIcon, label: 'Asset Management' },
     { id: 'reporting', icon: FileText, label: 'Reporting' },
     { id: 'notifications', icon: Bell, label: 'Notifications' },
