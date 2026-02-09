@@ -9,7 +9,7 @@ import CustomerEventHistoryPanel from './CustomerEventHistoryPanel';
 import PSBGConfigModal from './PSBGConfigModal';
 import { EventAuditService } from '../../services/eventAuditService';
 
-type TabType = 'overview' | 'technical' | 'impact' | 'services' | 'children' | 'timeline' | 'idr';
+type TabType = 'overview' | 'technical' | 'impact' | 'services' | 'timeline' | 'idr';
 
 interface EventDetailsProps {
   event: PQEvent;
@@ -21,7 +21,7 @@ interface EventDetailsProps {
   onEventUpdated?: () => void;
 }
 
-export default function EventDetails({ event: initialEvent, substation: initialSubstation, impacts: initialImpacts, initialTab, onStatusChange, onEventDeleted, onEventUpdated }: EventDetailsProps) {
+export default function EventDetails({ event: initialEvent, substation: initialSubstation, impacts: initialImpacts, initialTab, onStatusChange: _onStatusChange, onEventDeleted, onEventUpdated }: EventDetailsProps) {
   // Navigation state
   const [currentEvent, setCurrentEvent] = useState<PQEvent>(initialEvent);
   const [currentSubstation, setCurrentSubstation] = useState<Substation | undefined>(initialSubstation);
@@ -121,6 +121,10 @@ export default function EventDetails({ event: initialEvent, substation: initialS
 
   // Waveform data state
   const [waveformCsvData, setWaveformCsvData] = useState<string | null>(null);
+
+  // Combined events table states
+  const [editingRemarkId, setEditingRemarkId] = useState<string | null>(null);
+  const [remarkValues, setRemarkValues] = useState<Record<string, string>>({});
 
   // PSBG Cause management state
   const [showPSBGConfig, setShowPSBGConfig] = useState(false);
@@ -879,7 +883,10 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     }
   };
 
-  // PSBG Cause handler
+  // REMOVED: PSBG Cause handler (dropdown removed from Overview tab)
+  // Cause field now displays psbg_cause or idr cause as read-only text
+  // Uncomment if needed in future:
+  /*
   const handlePsbgCauseChange = async (newPsbgCause: string) => {
     const validValues: Array<'VEGETATION' | 'DAMAGED BY THIRD PARTY' | 'UNCONFIRMED' | 'ANIMALS, BIRDS, INSECTS'> = [
       'VEGETATION', 'DAMAGED BY THIRD PARTY', 'UNCONFIRMED', 'ANIMALS, BIRDS, INSECTS'
@@ -908,6 +915,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
       alert('Failed to update PSBG cause. Please try again.');
     }
   };
+  */
 
   // IDR CSV Upload Functions
   const handleDownloadIDRTemplate = () => {
@@ -1159,6 +1167,82 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     return parts.join(', ');
   };
 
+  // Calculate voltage summary from mother + child events
+  const calculateVoltageSummary = (): Record<string, { minVoltage: number | null; maxDuration: number | null }> => {
+    const allEvents = currentEvent.is_mother_event 
+      ? [currentEvent, ...childEvents] 
+      : [currentEvent];
+    
+    const voltageLevels = ['380V', '11kV', '132kV', '400kV'] as const;
+    
+    const result: Record<string, { minVoltage: number | null; maxDuration: number | null }> = {};
+    
+    voltageLevels.forEach(level => {
+      const eventsAtLevel = allEvents.filter(e => 
+        e.meter?.voltage_level === level || currentMeter?.voltage_level === level
+      );
+      
+      if (eventsAtLevel.length === 0) {
+        result[level] = { minVoltage: null, maxDuration: null };
+        return;
+      }
+      
+      // Find minimum voltage (lowest value from v1, v2, v3)
+      const minVoltage = Math.min(...eventsAtLevel.flatMap(e => 
+        [e.v1, e.v2, e.v3].filter(v => v !== null && v !== undefined) as number[]
+      ));
+      
+      // Find maximum duration
+      const maxDuration = Math.max(...eventsAtLevel.map(e => e.duration_ms || 0));
+      
+      result[level] = { 
+        minVoltage: isFinite(minVoltage) ? minVoltage : null, 
+        maxDuration: isFinite(maxDuration) ? maxDuration : null 
+      };
+    });
+    
+    return result;
+  };
+
+  // Handle remark edit save
+  const handleRemarkSave = async (eventId: string) => {
+    const newRemark = remarkValues[eventId] || '';
+    
+    try {
+      const { error } = await supabase
+        .from('pq_events')
+        .update({ remarks: newRemark })
+        .eq('id', eventId);
+      
+      if (error) throw error;
+      
+      // Update local state
+      if (eventId === currentEvent.id) {
+        setCurrentEvent({ ...currentEvent, remarks: newRemark });
+      } else {
+        setChildEvents(childEvents.map(child => 
+          child.id === eventId ? { ...child, remarks: newRemark } : child
+        ));
+      }
+      
+      setEditingRemarkId(null);
+      console.log(`✅ Remark updated for event ${eventId}`);
+    } catch (error) {
+      console.error('❌ Error updating remark:', error);
+      alert('Failed to update remark');
+    }
+  };
+
+  // Initialize remark values when events load
+  useEffect(() => {
+    const allEvents = [currentEvent, ...childEvents];
+    const initialRemarks: Record<string, string> = {};
+    allEvents.forEach(event => {
+      initialRemarks[event.id] = event.remarks || '';
+    });
+    setRemarkValues(initialRemarks);
+  }, [currentEvent.id, childEvents]);
+
   return (
     <div className="space-y-6">
       {/* Back Navigation - only show when viewing child event */}
@@ -1322,18 +1406,6 @@ export default function EventDetails({ event: initialEvent, substation: initialS
               PQ Services ({services.length})
             </div>
           </button>
-          {currentEvent.is_mother_event && (
-            <button
-              onClick={() => setActiveTab('children')}
-              className={`px-4 py-2 font-semibold text-sm whitespace-nowrap transition-all ${
-                activeTab === 'children'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Child Events ({childEvents.length})
-            </button>
-          )}
           <button
             onClick={() => setActiveTab('timeline')}
             className={`px-4 py-2 font-semibold text-sm whitespace-nowrap transition-all ${
@@ -1364,277 +1436,161 @@ export default function EventDetails({ event: initialEvent, substation: initialS
       <div className="tab-content">
         {/* OVERVIEW TAB */}
         {activeTab === 'overview' && (
-          <div className="space-y-6 animate-fadeIn">
-            {/* AC1 - Core Event Data Card */}
-            <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-3">
-                <h3 className="font-semibold text-white flex items-center gap-2">
-                  <Clock className="w-5 h-5" />
-                  Core Event Data
-                </h3>
-              </div>
-              <div className="p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Incident Time */}
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Incident Time</label>
-                    <p className="text-base font-semibold text-slate-900 mt-1">
-                      {new Date(currentEvent.timestamp).toLocaleDateString('en-GB', { 
-                        day: '2-digit', 
-                        month: '2-digit', 
-                        year: 'numeric' 
-                      })} {new Date(currentEvent.timestamp).toLocaleTimeString('en-GB', { 
-                        hour: '2-digit', 
-                        minute: '2-digit', 
-                        second: '2-digit',
-                        hour12: false 
-                      })}
-                    </p>
+          <div className="space-y-4 animate-fadeIn">
+            {/* 2-Column Layout: Overview Card (Left) + Voltage Summary (Right) */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Left Column: Consolidated Overview Card */}
+              <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                <div className="bg-slate-600 px-3 py-2">
+                  <h3 className="font-semibold text-white text-sm">Overview</h3>
+                </div>
+                <div className="p-4">
+                  {/* 2-Column Grid Layout */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Left Column */}
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Incident Time</label>
+                        <p className="text-xs text-slate-900 mt-1">
+                          {new Date(currentEvent.timestamp).toLocaleDateString('en-GB', { 
+                            day: '2-digit', 
+                            month: '2-digit', 
+                            year: 'numeric' 
+                          })} {new Date(currentEvent.timestamp).toLocaleTimeString('en-GB', { 
+                            hour: '2-digit', 
+                            minute: '2-digit', 
+                            second: '2-digit',
+                            hour12: false 
+                          })}
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Source Substation</label>
+                        <p className="text-xs text-slate-900 mt-1">
+                          {currentSubstation ? currentSubstation.name : 'N/A'}
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Voltage Level</label>
+                        <p className="text-xs text-slate-900 mt-1">
+                          {currentMeter?.voltage_level || 'N/A'}
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ring No.</label>
+                        <p className="text-xs text-slate-900 mt-1">
+                          TTNR0003
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Right Column */}
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Email Sent Time</label>
+                        <p className="text-xs text-slate-900 mt-1">
+                          {new Date(currentEvent.timestamp).toLocaleDateString('en-GB', { 
+                            day: '2-digit', 
+                            month: '2-digit', 
+                            year: 'numeric' 
+                          })} 14:24:12
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Incident Condition</label>
+                        <p className="text-xs text-slate-900 mt-1">
+                          OC+ {currentMeter?.voltage_level || '11kV'} dip event
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Voltage Level */}
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Voltage Level</label>
-                    <p className="text-base font-semibold text-slate-900 mt-1">
-                      {currentMeter?.voltage_level || 'N/A'}
-                    </p>
+                  {/* V1, V2, V3 Percentages */}
+                  <div className="mt-4 pt-4 border-t border-slate-200">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">VL1(%)</label>
+                        <p className="text-xs text-slate-900 mt-1">
+                          {currentEvent.v1 !== null && currentEvent.v1 !== undefined ? currentEvent.v1.toFixed(1) : 'N/A'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">VL2(%)</label>
+                        <p className="text-xs text-slate-900 mt-1">
+                          {currentEvent.v2 !== null && currentEvent.v2 !== undefined ? currentEvent.v2.toFixed(1) : 'N/A'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">VL3(%)</label>
+                        <p className="text-xs text-slate-900 mt-1">
+                          {currentEvent.v3 !== null && currentEvent.v3 !== undefined ? currentEvent.v3.toFixed(1) : 'N/A'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Source Substation */}
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Source Substation</label>
-                    <p className="text-base font-semibold text-slate-900 mt-1">
-                      {currentSubstation ? `${currentSubstation.code} - ${currentSubstation.name}` : 'N/A'}
+                  {/* Cause */}
+                  <div className="mt-4 pt-4 border-t border-slate-200">
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Cause</label>
+                    <p className="text-xs text-slate-900 mt-1">
+                      {currentEvent.psbg_cause || currentEvent.cause || 'Not specified'}
                     </p>
-                    {currentMeter?.site_id && (
-                      <p className="text-xs text-slate-500 mt-0.5">Site ID: {currentMeter.site_id}</p>
-                    )}
-                  </div>
-
-                  {/* Transformer No. & Ring Number */}
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Transformer No. & Ring Number</label>
-                    <p className="text-base font-semibold text-slate-900 mt-1">
-                      {currentMeter?.circuit_id || 'N/A'} • TTNR0003
-                    </p>
-                    {currentMeter?.meter_id && (
-                      <p className="text-xs text-slate-500 mt-0.5">Meter: {currentMeter.meter_id}</p>
-                    )}
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* AC2 - Magnitude & Duration Card */}
-            <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-r from-purple-500 to-purple-600 px-4 py-3">
-                <h3 className="font-semibold text-white flex items-center gap-2">
-                  <Zap className="w-5 h-5" />
-                  Magnitude & Duration
-                </h3>
-              </div>
-              <div className="p-4">
-                <div className="grid grid-cols-4 gap-4">
-                  {/* Phase Percentages */}
-                  <div className="text-center p-3 bg-purple-50 rounded-lg">
-                    <label className="text-xs font-semibold text-purple-700 uppercase tracking-wide block mb-1">VL1 (%)</label>
-                    <p className="text-2xl font-bold text-purple-900">
-                      {currentEvent.v1 !== null && currentEvent.v1 !== undefined ? currentEvent.v1.toFixed(2) : 'N/A'}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-0.5">Phase A</p>
-                  </div>
-
-                  <div className="text-center p-3 bg-purple-50 rounded-lg">
-                    <label className="text-xs font-semibold text-purple-700 uppercase tracking-wide block mb-1">VL2 (%)</label>
-                    <p className="text-2xl font-bold text-purple-900">
-                      {currentEvent.v2 !== null && currentEvent.v2 !== undefined ? currentEvent.v2.toFixed(2) : 'N/A'}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-0.5">Phase B</p>
-                  </div>
-
-                  <div className="text-center p-3 bg-purple-50 rounded-lg">
-                    <label className="text-xs font-semibold text-purple-700 uppercase tracking-wide block mb-1">VL3 (%)</label>
-                    <p className="text-2xl font-bold text-purple-900">
-                      {currentEvent.v3 !== null && currentEvent.v3 !== undefined ? currentEvent.v3.toFixed(2) : 'N/A'}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-0.5">Phase C</p>
-                  </div>
-
-                  {/* Duration */}
-                  <div className="text-center p-3 bg-purple-50 rounded-lg">
-                    <label className="text-xs font-semibold text-purple-700 uppercase tracking-wide block mb-1">Duration</label>
-                    <p className="text-2xl font-bold text-purple-900">
-                      {currentEvent.duration_ms !== null && currentEvent.duration_ms !== undefined
-                        ? currentEvent.duration_ms < 1000
-                          ? `${currentEvent.duration_ms}ms`
-                          : `${(currentEvent.duration_ms / 1000).toFixed(2)}s`
-                        : 'N/A'
-                      }
-                    </p>
-                    <p className="text-xs text-slate-500 mt-0.5">Total time</p>
-                  </div>
+              {/* Right Column: Voltage Summary Table */}
+              <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                <div className="bg-indigo-600 px-3 py-2">
+                  <h3 className="font-semibold text-white text-sm">Voltage Summary</h3>
                 </div>
-              </div>
-            </div>
-
-            {/* AC3 - Binary Indicators Row */}
-            <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-3">
-                <h3 className="font-semibold text-white flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5" />
-                  Event Indicators
-                </h3>
-              </div>
-              <div className="p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Min Volt Indicator */}
-                  <div className="p-3 bg-slate-50 rounded-lg">
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Min Volt (Below 70%)</label>
-                    <div className="flex items-center gap-2">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600">Metric</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600">380V</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600">11kV</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600">132kV</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600">400kV</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
                       {(() => {
-                        const hasMinVoltage = 
-                          (currentEvent.v1 !== null && currentEvent.v1 < 70) ||
-                          (currentEvent.v2 !== null && currentEvent.v2 < 70) ||
-                          (currentEvent.v3 !== null && currentEvent.v3 < 70);
-                        return hasMinVoltage ? (
+                        const summary = calculateVoltageSummary();
+                        return (
                           <>
-                            <CheckCircle className="w-5 h-5 text-green-600" />
-                            <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold">Yes</span>
-                          </>
-                        ) : (
-                          <>
-                            <XCircle className="w-5 h-5 text-red-600" />
-                            <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-semibold">No</span>
+                            <tr className="hover:bg-slate-50">
+                              <td className="px-3 py-2 font-medium text-slate-700">Min Voltage (%)</td>
+                              <td className="px-3 py-2 text-center text-slate-900">{summary['380V'].minVoltage !== null ? summary['380V'].minVoltage.toFixed(1) : 'N/A'}</td>
+                              <td className="px-3 py-2 text-center text-slate-900">{summary['11kV'].minVoltage !== null ? summary['11kV'].minVoltage.toFixed(1) : 'N/A'}</td>
+                              <td className="px-3 py-2 text-center text-slate-900">{summary['132kV'].minVoltage !== null ? summary['132kV'].minVoltage.toFixed(1) : 'N/A'}</td>
+                              <td className="px-3 py-2 text-center text-slate-900">{summary['400kV'].minVoltage !== null ? summary['400kV'].minVoltage.toFixed(1) : 'N/A'}</td>
+                            </tr>
+                            <tr className="hover:bg-slate-50">
+                              <td className="px-3 py-2 font-medium text-slate-700">Max Duration (ms)</td>
+                              <td className="px-3 py-2 text-center text-slate-900">{summary['380V'].maxDuration !== null ? summary['380V'].maxDuration : 'N/A'}</td>
+                              <td className="px-3 py-2 text-center text-slate-900">{summary['11kV'].maxDuration !== null ? summary['11kV'].maxDuration : 'N/A'}</td>
+                              <td className="px-3 py-2 text-center text-slate-900">{summary['132kV'].maxDuration !== null ? summary['132kV'].maxDuration : 'N/A'}</td>
+                              <td className="px-3 py-2 text-center text-slate-900">{summary['400kV'].maxDuration !== null ? summary['400kV'].maxDuration : 'N/A'}</td>
+                            </tr>
                           </>
                         );
                       })()}
-                    </div>
-                  </div>
-
-                  {/* False Alarm */}
-                  <div className="p-3 bg-slate-50 rounded-lg">
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">False Alarm</label>
-                    <div className="flex items-center gap-2">
-                      {currentEvent.false_event ? (
-                        <>
-                          <CheckCircle className="w-5 h-5 text-green-600" />
-                          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold">Yes</span>
-                        </>
-                      ) : (
-                        <>
-                          <XCircle className="w-5 h-5 text-red-600" />
-                          <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-semibold">No</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
+                    </tbody>
+                  </table>
                 </div>
-              </div>
-            </div>
-
-            {/* AC4 - Classification & Workflow Card */}
-            <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-r from-slate-500 to-slate-600 px-4 py-3">
-                <h3 className="font-semibold text-white flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Classification & Workflow
-                </h3>
-              </div>
-              <div className="p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Event Type & Severity */}
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Event Type</label>
-                    <p className="text-base font-semibold text-slate-900 mt-1 capitalize">
-                      {currentEvent.event_type.replace('_', ' ')}
-                    </p>
-                    <div className="mt-2">
-                      <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Severity</label>
-                      <span className={`inline-block mt-1 px-3 py-1 rounded-full text-sm font-semibold capitalize ${
-                        currentEvent.severity === 'critical' ? 'bg-red-100 text-red-700' :
-                        currentEvent.severity === 'high' ? 'bg-orange-100 text-orange-700' :
-                        currentEvent.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        {currentEvent.severity}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Status */}
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Status</label>
-                    <div className="mt-1">
-                      <span className={`inline-block px-4 py-2 rounded-lg text-base font-semibold ${
-                        currentEvent.status === 'new' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
-                        currentEvent.status === 'investigating' ? 'bg-blue-100 text-blue-800 border border-blue-300' :
-                        currentEvent.status === 'resolved' ? 'bg-green-100 text-green-800 border border-green-300' :
-                        'bg-slate-100 text-slate-800 border border-slate-300'
-                      }`}>
-                        {currentEvent.status === 'new' ? 'New' : 
-                         currentEvent.status === 'investigating' ? 'Investigating' : 
-                         currentEvent.status === 'resolved' ? 'Closed' : 
-                         currentEvent.status}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-2">
-                      Event ID: <span className="font-mono text-slate-700">{currentEvent.id.slice(0, 8)}...</span>
-                    </p>
-                  </div>
-                </div>
-
-                {/* Additional Information Row */}
-                <div className="mt-4 pt-4 border-t border-slate-200">
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <label className="text-xs font-semibold text-slate-600">Magnitude</label>
-                      <p className="text-slate-900 font-medium mt-0.5">
-                        {currentEvent.magnitude !== null && currentEvent.magnitude !== undefined 
-                          ? `${currentEvent.magnitude.toFixed(2)}%` 
-                          : 'N/A'}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-600">Affected Phases</label>
-                      <p className="text-slate-900 font-medium mt-0.5">
-                        {currentEvent.affected_phases.join(', ')}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-600">Customer Count</label>
-                      <p className="text-slate-900 font-medium mt-0.5">
-                        {currentEvent.customer_count !== null ? currentEvent.customer_count : 'N/A'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Region & OC Information */}
-                {(currentMeter?.region || currentMeter?.oc) && (
-                  <div className="mt-4 pt-4 border-t border-slate-200">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      {currentMeter.region && (
-                        <div>
-                          <label className="text-xs font-semibold text-slate-600">Region</label>
-                          <p className="text-slate-900 font-medium mt-0.5">{currentMeter.region}</p>
-                        </div>
-                      )}
-                      {currentMeter.oc && (
-                        <div>
-                          <label className="text-xs font-semibold text-slate-600">Operating Center (OC)</label>
-                          <p className="text-slate-900 font-medium mt-0.5">{currentMeter.oc}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
             {/* Harmonic Information Card - Only for harmonic events */}
             {currentEvent.event_type === 'harmonic' && (
               <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-                <div className="bg-gradient-to-r from-purple-500 to-purple-600 px-4 py-3">
+                <div className="bg-purple-600 px-4 py-3">
                   <h3 className="font-semibold text-white flex items-center gap-2">
                     <Zap className="w-5 h-5" />
                     Harmonic Information
@@ -1807,64 +1763,6 @@ export default function EventDetails({ event: initialEvent, substation: initialS
               </div>
             )}
 
-            {/* PSBG Cause Field */}
-            <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-blue-700 text-sm font-semibold">PSBG Cause:</span>
-                <button
-                  onClick={() => setShowPSBGConfig(true)}
-                  className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors"
-                  title="Manage PSBG Cause Options"
-                >
-                  <Wrench className="w-4 h-4" />
-                </button>
-              </div>
-              <select
-                value={currentEvent.psbg_cause || ''}
-                onChange={(e) => handlePsbgCauseChange(e.target.value)}
-                className="w-full px-3 py-2 border border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Select PSBG Cause</option>
-                {psbgOptions.map(option => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Cause Display (PSBG takes priority, falls back to IDR cause) */}
-            {(currentEvent.psbg_cause || currentEvent.cause) && (
-              <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg">
-                <span className="text-slate-600 text-sm font-semibold">
-                  {currentEvent.psbg_cause ? 'Cause (IDR):' : 'Cause:'}
-                </span>
-                <p className="text-slate-900 mt-1">
-                  {currentEvent.psbg_cause ? (currentEvent.cause || 'Not specified') : currentEvent.cause}
-                </p>
-              </div>
-            )}
-
-            {/* Status Management */}
-            <div>
-              <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                <span>Status Management</span>
-              </h3>
-              <div className="flex gap-2">
-                {['new', 'acknowledged', 'investigating', 'resolved'].map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => onStatusChange(currentEvent.id, status)}
-                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                      currentEvent.status === status
-                        ? 'bg-blue-600 text-white shadow-lg'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {status.charAt(0).toUpperCase() + status.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* False Event Actions - Only show for voltage_dip and voltage_swell */}
             {(() => {
               console.log('🔍 [Convert Button Condition]', {
@@ -1893,6 +1791,285 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                     <CheckCircle className="w-5 h-5" />
                     Convert to normal event
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* Combined Mother/Child Events Table */}
+            {(currentEvent.is_mother_event || !currentEvent.parent_event_id) && (
+              <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                <div className="bg-gradient-to-r from-purple-500 to-purple-600 px-4 py-3 flex items-center justify-between">
+                  <h3 className="font-semibold text-white flex items-center gap-2">
+                    <GitBranch className="w-5 h-5" />
+                    Event Details {currentEvent.is_mother_event && `(Mother + ${childEvents.length} Children)`}
+                  </h3>
+                  {currentEvent.is_mother_event && childEvents.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      {!isUngroupMode && !isMarkFalseMode ? (
+                        <>
+                          <button
+                            onClick={handleUngroupMode}
+                            disabled={ungrouping || markingFalse}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-slate-400 text-sm font-medium"
+                          >
+                            <Ungroup className="w-4 h-4" />
+                            Ungroup
+                          </button>
+                          {childEvents.some(child => !child.false_event) && (
+                            <button
+                              onClick={handleMarkFalseMode}
+                              disabled={ungrouping || markingFalse}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:bg-slate-400 text-sm font-medium"
+                            >
+                              <XCircle className="w-4 h-4" />
+                              Mark False
+                            </button>
+                          )}
+                        </>
+                      ) : isUngroupMode ? (
+                        <>
+                          <button
+                            onClick={handleCancelUngroup}
+                            disabled={ungrouping}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-slate-500 text-white rounded-lg hover:bg-slate-600 text-sm font-medium"
+                          >
+                            <XIcon className="w-4 h-4" />
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleSaveUngroup}
+                            disabled={ungrouping || selectedChildIds.length === 0}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-slate-400 text-sm font-medium"
+                          >
+                            <Save className="w-4 h-4" />
+                            {ungrouping ? 'Saving...' : `Save (${selectedChildIds.length})`}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={handleCancelMarkFalse}
+                            disabled={markingFalse}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-slate-500 text-white rounded-lg hover:bg-slate-600 text-sm font-medium"
+                          >
+                            <XIcon className="w-4 h-4" />
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleSaveMarkFalse}
+                            disabled={markingFalse || selectedFalseChildIds.length === 0}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-slate-400 text-sm font-medium"
+                          >
+                            <Save className="w-4 h-4" />
+                            {markingFalse ? 'Saving...' : `Save (${selectedFalseChildIds.length})`}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        {(isUngroupMode || isMarkFalseMode) && (
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">
+                            <input
+                              type="checkbox"
+                              checked={isUngroupMode 
+                                ? selectedChildIds.length === childEvents.length && childEvents.length > 0
+                                : selectedFalseChildIds.length === childEvents.filter(c => !c.false_event).length && childEvents.filter(c => !c.false_event).length > 0
+                              }
+                              onChange={isUngroupMode ? handleSelectAllChildren : handleSelectAllForMarkFalse}
+                              className="h-4 w-4 rounded border-slate-300"
+                            />
+                          </th>
+                        )}
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">FI</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Incident Time</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Voltage Level</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Source Substation</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Tx No</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase">V1(%)</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase">V2(%)</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase">V3(%)</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase">Duration (ms)</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase">VL1(%) at 380</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase">VL2(%) at 380</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase">VL3(%) at 380</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase">Min volt</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase">FR Trigger</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase">Auto Group</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Remark</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {/* Mother Event Row */}
+                      {(() => {
+                        const minVolt = Math.min(...[currentEvent.v1, currentEvent.v2, currentEvent.v3].filter(v => v !== null && v !== undefined) as number[]);
+                        return (
+                          <tr className="bg-purple-50 hover:bg-purple-100">
+                            {(isUngroupMode || isMarkFalseMode) && <td className="px-3 py-2"></td>}
+                            <td className="px-3 py-2 font-bold text-purple-700">1</td>
+                            <td className="px-3 py-2">
+                              {new Date(currentEvent.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })} {new Date(currentEvent.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                            </td>
+                            <td className="px-3 py-2">{currentMeter?.voltage_level || 'N/A'}</td>
+                            <td className="px-3 py-2">{currentSubstation?.code || 'N/A'}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{currentMeter?.circuit_id || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center">{currentEvent.v1?.toFixed(1) || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center">{currentEvent.v2?.toFixed(1) || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center">{currentEvent.v3?.toFixed(1) || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center">{currentEvent.duration_ms || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center">{currentEvent.v1?.toFixed(1) || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center">{currentEvent.v2?.toFixed(1) || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center">{currentEvent.v3?.toFixed(1) || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center">{isFinite(minVolt) ? (minVolt < 70 ? 'Yes' : 'No') : 'N/A'}</td>
+                            <td className="px-3 py-2 text-center">{currentEvent.false_event ? 'No' : 'Yes'}</td>
+                            <td className="px-3 py-2 text-center">{currentEvent.is_mother_event ? 'Yes' : 'No'}</td>
+                            <td className="px-3 py-2">
+                              {editingRemarkId === currentEvent.id ? (
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="text"
+                                    value={remarkValues[currentEvent.id] || ''}
+                                    onChange={(e) => setRemarkValues({ ...remarkValues, [currentEvent.id]: e.target.value })}
+                                    className="px-2 py-1 border border-slate-300 rounded text-xs w-full"
+                                    autoFocus
+                                  />
+                                  <button
+                                    onClick={() => handleRemarkSave(currentEvent.id)}
+                                    className="p-1 text-green-600 hover:bg-green-50 rounded"
+                                    title="Save"
+                                  >
+                                    <Save className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setEditingRemarkId(null);
+                                      setRemarkValues({ ...remarkValues, [currentEvent.id]: currentEvent.remarks || '' });
+                                    }}
+                                    className="p-1 text-slate-600 hover:bg-slate-50 rounded"
+                                    title="Cancel"
+                                  >
+                                    <XIcon className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs truncate">{currentEvent.remarks || '-'}</span>
+                                  <button
+                                    onClick={() => setEditingRemarkId(currentEvent.id)}
+                                    className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                                    title="Edit remark"
+                                  >
+                                    <Edit className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })()}
+                      
+                      {/* Child Event Rows (sorted by timestamp desc) */}
+                      {[...childEvents].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map((childEvent) => {
+                        const minVolt = Math.min(...[childEvent.v1, childEvent.v2, childEvent.v3].filter(v => v !== null && v !== undefined) as number[]);
+                        const isFalseEvent = childEvent.false_event;
+                        const isDisabledInMarkFalseMode = isMarkFalseMode && isFalseEvent;
+                        
+                        return (
+                          <tr 
+                            key={childEvent.id} 
+                            className={`hover:bg-slate-50 ${selectedChildIds.includes(childEvent.id) ? 'bg-blue-50' : ''} ${selectedFalseChildIds.includes(childEvent.id) ? 'bg-red-50' : ''} ${isDisabledInMarkFalseMode ? 'opacity-50' : ''} ${isFalseEvent ? 'bg-orange-50' : ''}`}
+                          >
+                            {isUngroupMode && (
+                              <td className="px-3 py-2">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedChildIds.includes(childEvent.id)}
+                                  onChange={() => handleCheckboxChange(childEvent.id)}
+                                  className="h-4 w-4 rounded border-slate-300"
+                                />
+                              </td>
+                            )}
+                            {isMarkFalseMode && (
+                              <td className="px-3 py-2">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedFalseChildIds.includes(childEvent.id)}
+                                  onChange={() => handleMarkFalseCheckboxChange(childEvent.id)}
+                                  disabled={isFalseEvent}
+                                  className="h-4 w-4 rounded border-slate-300 disabled:opacity-50"
+                                  title={isFalseEvent ? 'Already marked as false event' : 'Select to mark as false'}
+                                />
+                              </td>
+                            )}
+                            <td className="px-3 py-2 font-bold text-slate-600">
+                              0{isFalseEvent && <span className="ml-1 text-xs text-orange-600">(F)</span>}
+                            </td>
+                            <td className="px-3 py-2 text-xs">
+                              {new Date(childEvent.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })} {new Date(childEvent.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                            </td>
+                            <td className="px-3 py-2 text-xs">{childEvent.meter?.voltage_level || 'N/A'}</td>
+                            <td className="px-3 py-2 text-xs">{childEvent.substation?.code || 'N/A'}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{childEvent.meter?.circuit_id || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center text-xs">{childEvent.v1?.toFixed(1) || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center text-xs">{childEvent.v2?.toFixed(1) || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center text-xs">{childEvent.v3?.toFixed(1) || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center text-xs">{childEvent.duration_ms || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center text-xs">{childEvent.v1?.toFixed(1) || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center text-xs">{childEvent.v2?.toFixed(1) || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center text-xs">{childEvent.v3?.toFixed(1) || 'N/A'}</td>
+                            <td className="px-3 py-2 text-center text-xs">{isFinite(minVolt) ? (minVolt < 70 ? 'Yes' : 'No') : 'N/A'}</td>
+                            <td className="px-3 py-2 text-center text-xs">{childEvent.false_event ? 'No' : 'Yes'}</td>
+                            <td className="px-3 py-2 text-center text-xs">Yes</td>
+                            <td className="px-3 py-2">
+                              {editingRemarkId === childEvent.id ? (
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="text"
+                                    value={remarkValues[childEvent.id] || ''}
+                                    onChange={(e) => setRemarkValues({ ...remarkValues, [childEvent.id]: e.target.value })}
+                                    className="px-2 py-1 border border-slate-300 rounded text-xs w-full"
+                                    autoFocus
+                                  />
+                                  <button
+                                    onClick={() => handleRemarkSave(childEvent.id)}
+                                    className="p-1 text-green-600 hover:bg-green-50 rounded"
+                                    title="Save"
+                                  >
+                                    <Save className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setEditingRemarkId(null);
+                                      setRemarkValues({ ...remarkValues, [childEvent.id]: childEvent.remarks || '' });
+                                    }}
+                                    className="p-1 text-slate-600 hover:bg-slate-50 rounded"
+                                    title="Cancel"
+                                  >
+                                    <XIcon className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs truncate">{childEvent.remarks || '-'}</span>
+                                  <button
+                                    onClick={() => setEditingRemarkId(childEvent.id)}
+                                    className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                                    title="Edit remark"
+                                  >
+                                    <Edit className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
@@ -2136,8 +2313,9 @@ export default function EventDetails({ event: initialEvent, substation: initialS
           </div>
         )}
 
-        {/* CHILD EVENTS TAB */}
-        {activeTab === 'children' && currentEvent.is_mother_event && (
+        {/* CHILD EVENTS TAB - REMOVED: Child events are now displayed in Overview tab */}
+        {/* The Combined Mother/Child Events Table in Overview tab shows all child events */}
+        {false && activeTab === 'overview' && currentEvent.is_mother_event && (
           <div className="space-y-6 animate-fadeIn">
             {/* Collapsible Header */}
             <button
@@ -2783,7 +2961,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                   <Filter className="w-4 h-4 text-slate-600" />
                   <select
                     value={auditLogFilter}
-                    onChange={(e) => setAuditLogFilter(e.target.value)}
+                    onChange={(e) => setAuditLogFilter(e.target.value as EventOperationType | 'all')}
                     className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   >
                     <option value="all">All Operations</option>
@@ -2846,7 +3024,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                         
                         return categoryMap[auditLogFilter]?.includes(log.operation_type) || false;
                       })
-                      .map((log, index) => {
+                      .map((log) => {
                         const color = EventAuditService.getOperationTypeColor(log.operation_type);
                         const icon = EventAuditService.getOperationTypeIcon(log.operation_type);
                         const label = EventAuditService.getOperationTypeLabel(log.operation_type);
