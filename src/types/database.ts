@@ -336,22 +336,27 @@ export interface HarmonicEvent {
 
 export interface IDRRecord {
   id: string;
-  event_id: string;
-  // IDR Core Information
-  idr_no: string | null;
+  event_id: string | null; // Nullable - IDR can exist before being mapped to event
+  // IDR Core Information (from Excel import)
+  idr_no: string; // REQUIRED - Primary identifier
+  occurrence_time: string; // REQUIRED - Timestamp from Excel
+  voltage_level: '400kV' | '132kV' | '11kV' | '380V' | '11' | '132' | '400' | null; // Support both formats
+  source_substation: string | null; // SOURCE SUBSTATION column
+  incident_location: string | null; // INCIDENT LOCATION column
+  region: string | null; // REGION column (NR, WER, etc.)
+  duration_ms: number | null; // DURATION (MS) column
   status: string | null;
-  voltage_level: '400kV' | '132kV' | '11kV' | '380V' | null;
-  duration_ms: number | null;
-  // Fault & Asset Location
+  // Voltage measurements (VL1, VL2, VL3 from Excel)
   v1: number | null;
   v2: number | null;
   v3: number | null;
+  // Fault & Asset Location
   address: string | null;
   circuit: string | null;
   equipment_type: string | null;
   // Root Cause Analysis
   cause_group: string | null;
-  cause: string; // REQUIRED
+  cause: string | null; // Made nullable for bulk import
   faulty_component: string | null;
   remarks: string | null;
   // Extended Technical Details
@@ -367,15 +372,22 @@ export interface IDRRecord {
   weather_condition: string | null;
   responsible_oc: string | null;
   total_cmi: number | null;
+  // Sensitive Customer Flag (REQUIRED in Excel)
+  affected_sensitive_customer: boolean; // REQUIRED field from Excel import
   // CSV-specific fields
   equipment_affected: string | null;
   restoration_actions: string | null;
   notes: string | null;
   // Metadata
   uploaded_by: string | null;
-  upload_source: 'csv_import' | 'manual_entry';
+  upload_source: 'excel_import' | 'csv_import' | 'manual_entry';
+  is_mapped: boolean; // Indicates if IDR is mapped to an event
+  mapped_at: string | null; // Timestamp when mapped to event
+  mapped_by: string | null; // User who performed the mapping
   created_at: string;
   updated_at: string;
+  // Joined relations
+  event?: PQEvent; // Optional: linked event if mapped
 }
 
 export interface Notification {

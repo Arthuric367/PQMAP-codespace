@@ -21,6 +21,7 @@ import MeterHierarchy from './components/MeterHierarchy';
 import WeightingFactors from './pages/DataMaintenance/WeightingFactors';
 import PQBenchmarking from './pages/DataMaintenance/PQBenchmarking';
 import SystemParameters from './pages/SystemParameters';
+import IDRReports from './components/IDRManagement/IDRReports';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -69,6 +70,7 @@ function AppContent() {
         {currentView === 'dashboard' && <Dashboard onNavigateToMeter={handleNavigateToMeter} />}
         {currentView === 'events' && <EventManagement />}
         {currentView === 'eventGrouping' && <EventGroupingMaintenance />}
+        {currentView === 'idrReports' && <IDRReports />}
         {currentView === 'assets' && <AssetManagement selectedMeterId={selectedMeterId} onClearSelectedMeter={() => setSelectedMeterId(null)} />}
         {currentView === 'reporting' && <Reporting />}
         {currentView === 'notifications' && <Notifications />}

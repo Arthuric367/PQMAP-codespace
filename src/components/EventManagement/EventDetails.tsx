@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Clock, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Upload, FileDown, Wrench, Eye, EyeOff, Filter } from 'lucide-react';
+import { Clock, Zap, AlertTriangle, Users, ArrowLeft, GitBranch, Trash2, ChevronDown, ChevronUp, CheckCircle, XCircle, Ungroup, Download, FileText, Edit, Save, X as XIcon, Wrench, Eye, EyeOff, Filter, Search } from 'lucide-react';
 import { PQEvent, Substation, EventCustomerImpact, IDRRecord, PQServiceRecord, PQMeter, Customer, EventAuditLog, EventOperationType } from '../../types/database';
 import { supabase } from '../../lib/supabase';
+import toast from 'react-hot-toast';
 import WaveformViewer from './WaveformViewer';
 import { MotherEventGroupingService } from '../../services/mother-event-grouping';
 import { ExportService } from '../../services/exportService';
@@ -61,7 +62,6 @@ export default function EventDetails({ event: initialEvent, substation: initialS
 
   // IDR upload states
   const [showUploadDropdown, setShowUploadDropdown] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importResults, setImportResults] = useState<{
     successful: number;
@@ -73,6 +73,16 @@ export default function EventDetails({ event: initialEvent, substation: initialS
   const [isEditingIDR, setIsEditingIDR] = useState(false);
   const [idrRecord, setIDRRecord] = useState<IDRRecord | null>(null);
   const [loadingIDR, setLoadingIDR] = useState(false);
+  
+  // Match IDR panel states
+  const [showMatchIDRPanel, setShowMatchIDRPanel] = useState(false);
+  const [timeRangeFromMinutes, setTimeRangeFromMinutes] = useState<number>(5);
+  const [timeRangeToMinutes, setTimeRangeToMinutes] = useState<number>(5);
+  const [outageTypeFilter, setOutageTypeFilter] = useState<string>('ALL');
+  const [matchedIDRs, setMatchedIDRs] = useState<IDRRecord[]>([]);
+  const [selectedMatchedIDRId, setSelectedMatchedIDRId] = useState<string | null>(null);
+  const [searchingIDRs, setSearchingIDRs] = useState(false);
+  
   const [idrFormData, setIDRFormData] = useState({
     idr_no: '',
     status: currentEvent.status,
@@ -386,6 +396,90 @@ export default function EventDetails({ event: initialEvent, substation: initialS
       console.error('Error loading IDR record:', error);
     } finally {
       setLoadingIDR(false);
+    }
+  };
+
+  // Search for matching IDRs based on time range and outage type
+  const handleSearchMatchingIDRs = async () => {
+    setSearchingIDRs(true);
+    try {
+      // Calculate time range based on event occurrence time
+      const eventTime = new Date(currentEvent.timestamp);
+      const fromTime = new Date(eventTime.getTime() - timeRangeFromMinutes * 60 * 1000);
+      const toTime = new Date(eventTime.getTime() + timeRangeToMinutes * 60 * 1000);
+
+      console.log('🔍 Searching IDRs:', {
+        eventTime: eventTime.toISOString(),
+        fromTime: fromTime.toISOString(),
+        toTime: toTime.toISOString(),
+        outageType: outageTypeFilter
+      });
+
+      let query = supabase
+        .from('idr_records')
+        .select('*')
+        .eq('is_mapped', false)
+        .gte('occurrence_time', fromTime.toISOString())
+        .lte('occurrence_time', toTime.toISOString())
+        .order('occurrence_time', { ascending: false });
+
+      // Apply outage type filter if not 'ALL'
+      if (outageTypeFilter !== 'ALL') {
+        query = query.eq('outage_type', outageTypeFilter);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+
+      setMatchedIDRs(data || []);
+      console.log(`✅ Found ${data?.length || 0} matching IDRs`);
+    } catch (error) {
+      console.error('Error searching matching IDRs:', error);
+      toast.error('Failed to search matching IDRs');
+    } finally {
+      setSearchingIDRs(false);
+    }
+  };
+
+  // Handle Match IDR panel reset
+  const handleResetMatchFilters = () => {
+    setTimeRangeFromMinutes(5);
+    setTimeRangeToMinutes(5);
+    setOutageTypeFilter('ALL');
+    setMatchedIDRs([]);
+    setSelectedMatchedIDRId(null);
+  };
+
+  // Save matched IDR to event
+  const handleSaveMatchedIDR = async () => {
+    if (!selectedMatchedIDRId) {
+      toast.error('Please select an IDR record');
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const { error } = await supabase
+        .from('idr_records')
+        .update({
+          event_id: currentEvent.id,
+          is_mapped: true,
+          mapped_at: new Date().toISOString(),
+          mapped_by: user?.id || null,
+        })
+        .eq('id', selectedMatchedIDRId);
+
+      if (error) throw error;
+
+      toast.success('IDR matched and mapped to event successfully');
+      setShowMatchIDRPanel(false);
+      handleResetMatchFilters();
+      await loadIDRRecord(currentEvent.id);
+    } catch (error: any) {
+      console.error('Error matching IDR:', error);
+      toast.error('Failed to match IDR to event');
     }
   };
 
@@ -880,274 +974,6 @@ export default function EventDetails({ event: initialEvent, substation: initialS
       alert(`Failed to export event as ${format.toUpperCase()}. Please try again.`);
     } finally {
       setIsExporting(false);
-    }
-  };
-
-  // REMOVED: PSBG Cause handler (dropdown removed from Overview tab)
-  // Cause field now displays psbg_cause or idr cause as read-only text
-  // Uncomment if needed in future:
-  /*
-  const handlePsbgCauseChange = async (newPsbgCause: string) => {
-    const validValues: Array<'VEGETATION' | 'DAMAGED BY THIRD PARTY' | 'UNCONFIRMED' | 'ANIMALS, BIRDS, INSECTS'> = [
-      'VEGETATION', 'DAMAGED BY THIRD PARTY', 'UNCONFIRMED', 'ANIMALS, BIRDS, INSECTS'
-    ];
-    const validatedValue = validValues.includes(newPsbgCause as any) ? newPsbgCause as typeof validValues[number] : null;
-
-    try {
-      const { error } = await supabase
-        .from('pq_events')
-        .update({ psbg_cause: validatedValue })
-        .eq('id', currentEvent.id);
-
-      if (error) throw error;
-
-      // Update local state
-      setCurrentEvent({ ...currentEvent, psbg_cause: validatedValue });
-
-      // Notify parent to reload data
-      if (onEventUpdated) {
-        onEventUpdated();
-      }
-
-      console.log('✅ PSBG cause updated successfully');
-    } catch (error) {
-      console.error('❌ Error updating PSBG cause:', error);
-      alert('Failed to update PSBG cause. Please try again.');
-    }
-  };
-  */
-
-  // IDR CSV Upload Functions
-  const handleDownloadIDRTemplate = () => {
-    const headers = [
-      'Event ID',
-      'Cause',
-      'Duration (minutes)',
-      'Equipment Affected',
-      'Restoration Actions',
-      'Notes'
-    ];
-
-    const exampleRow = [
-      'example-event-id',
-      'Equipment Failure',
-      '15',
-      'Transformer TR-001',
-      'Replaced fuse, restored power',
-      'Scheduled maintenance recommended'
-    ];
-
-    const commentLines = [
-      '# IDR CSV Import Template',
-      '# Required fields: Event ID, Cause, Duration (minutes)',
-      '# Optional fields: Equipment Affected, Restoration Actions, Notes',
-      '# Event ID must exist in the system',
-      '# Other fields will be auto-populated from the event record',
-      ''
-    ];
-
-    const csvContent = [
-      ...commentLines,
-      headers.join(','),
-      exampleRow.join(',')
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `IDR_Import_Template_${Date.now()}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-
-    console.log('✅ IDR CSV template downloaded');
-  };
-
-  const validateIDRRow = async (row: any, rowIndex: number): Promise<{ valid: boolean; errors: Array<{ row: number; column: string; message: string }> }> => {
-    const errors: Array<{ row: number; column: string; message: string }> = [];
-
-    // Required: Event ID
-    if (!row['Event ID'] || row['Event ID'].trim() === '') {
-      errors.push({ row: rowIndex, column: 'Event ID', message: 'Event ID is required' });
-    }
-
-    // Required: Cause
-    if (!row['Cause'] || row['Cause'].trim() === '') {
-      errors.push({ row: rowIndex, column: 'Cause', message: 'Cause is required' });
-    }
-
-    // Required: Duration (minutes)
-    if (!row['Duration (minutes)'] || row['Duration (minutes)'].trim() === '') {
-      errors.push({ row: rowIndex, column: 'Duration (minutes)', message: 'Duration is required' });
-    } else {
-      const duration = parseInt(row['Duration (minutes)']);
-      if (isNaN(duration) || duration < 0) {
-        errors.push({ row: rowIndex, column: 'Duration (minutes)', message: 'Duration must be a positive number' });
-      }
-    }
-
-    // Validate Event ID exists in database
-    if (row['Event ID'] && row['Event ID'].trim() !== '') {
-      const { data: eventData, error: eventError } = await supabase
-        .from('pq_events')
-        .select('id')
-        .eq('id', row['Event ID'].trim())
-        .single();
-
-      if (eventError || !eventData) {
-        errors.push({ row: rowIndex, column: 'Event ID', message: `Event ID '${row['Event ID']}' not found in system` });
-      }
-    }
-
-    return { valid: errors.length === 0, errors };
-  };
-
-  const handleImportIDRCSV = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    setShowUploadDropdown(false);
-
-    try {
-      const text = await file.text();
-      const lines = text.split('\n').filter(line => line.trim() && !line.trim().startsWith('#'));
-      
-      if (lines.length < 2) {
-        alert('CSV file is empty or invalid');
-        setIsUploading(false);
-        return;
-      }
-
-      // Parse CSV
-      const headers = lines[0].split(',').map(h => h.trim());
-      const rows = lines.slice(1).map(line => {
-        const values = line.split(',').map(v => v.trim());
-        const row: any = {};
-        headers.forEach((header, index) => {
-          row[header] = values[index] || '';
-        });
-        return row;
-      });
-
-      console.log(`📋 Parsing ${rows.length} IDR records from CSV`);
-
-      // Validate all rows
-      const validationResults = await Promise.all(
-        rows.map((row, index) => validateIDRRow(row, index + 2)) // +2 because of header and 1-indexed
-      );
-
-      const allErrors = validationResults.flatMap(r => r.errors);
-      const validRows = rows.filter((_, index) => validationResults[index].valid);
-
-      console.log(`✅ Valid rows: ${validRows.length}, ❌ Invalid rows: ${rows.length - validRows.length}`);
-
-      // Import valid rows
-      let successful = 0;
-      let failed = 0;
-      const importErrors: Array<{ row: number; column: string; message: string; eventId?: string }> = [...allErrors];
-
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-
-      for (let i = 0; i < validRows.length; i++) {
-        const row = validRows[i];
-        const originalIndex = rows.indexOf(row) + 2;
-
-        try {
-          const eventId = row['Event ID'].trim();
-          const durationMinutes = parseInt(row['Duration (minutes)']);
-
-          // Fetch event data to auto-populate fields
-          const { data: eventData, error: eventFetchError } = await supabase
-            .from('pq_events')
-            .select('*')
-            .eq('id', eventId)
-            .single();
-
-          if (eventFetchError || !eventData) {
-            throw new Error(`Failed to fetch event data for ${eventId}`);
-          }
-
-          // Prepare IDR record with auto-populated fields from event
-          const idrData = {
-            event_id: eventId,
-            idr_no: eventData.idr_no || null,
-            status: eventData.status || null,
-            voltage_level: eventData.voltage_level || null,
-            address: eventData.address || null,
-            duration_ms: durationMinutes * 60 * 1000, // Convert minutes to milliseconds
-            v1: eventData.v1 || null,
-            v2: eventData.v2 || null,
-            v3: eventData.v3 || null,
-            equipment_type: eventData.equipment_type || null,
-            cause_group: eventData.cause_group || null,
-            cause: row['Cause'].trim(), // From CSV (REQUIRED)
-            remarks: eventData.remarks || null,
-            object_part_group: eventData.object_part_group || null,
-            object_part_code: eventData.object_part_code || null,
-            damage_group: eventData.damage_group || null,
-            damage_code: eventData.damage_code || null,
-            fault_type: eventData.fault_type || null,
-            outage_type: eventData.outage_type || null,
-            weather: eventData.weather || null,
-            weather_condition: eventData.weather_condition || null,
-            responsible_oc: eventData.responsible_oc || null,
-            total_cmi: eventData.total_cmi || null,
-            equipment_affected: row['Equipment Affected']?.trim() || null,
-            restoration_actions: row['Restoration Actions']?.trim() || null,
-            notes: row['Notes']?.trim() || null,
-            uploaded_by: user?.id || null,
-            upload_source: 'csv_import' as const,
-          };
-
-          // Upsert IDR record
-          const { error: upsertError } = await supabase
-            .from('idr_records')
-            .upsert(idrData, {
-              onConflict: 'event_id',
-              ignoreDuplicates: false
-            });
-
-          if (upsertError) {
-            throw upsertError;
-          }
-
-          successful++;
-          console.log(`✅ Row ${originalIndex}: IDR record imported for event ${eventId}`);
-        } catch (error: any) {
-          failed++;
-          importErrors.push({
-            row: originalIndex,
-            column: 'Import',
-            message: error.message || 'Failed to import record',
-            eventId: row['Event ID']
-          });
-          console.error(`❌ Row ${originalIndex}: Import failed`, error);
-        }
-      }
-
-      // Show results
-      setImportResults({
-        successful,
-        failed: failed + (rows.length - validRows.length),
-        errors: importErrors
-      });
-      setShowImportModal(true);
-
-      // Reload IDR record if we just imported for current event
-      if (validRows.some(r => r['Event ID'].trim() === currentEvent.id)) {
-        await loadIDRRecord(currentEvent.id);
-      }
-
-      if (onEventUpdated) onEventUpdated();
-
-    } catch (error: any) {
-      console.error('CSV import error:', error);
-      alert(`Failed to import CSV: ${error.message}`);
-    } finally {
-      setIsUploading(false);
-      // Reset file input
-      event.target.value = '';
     }
   };
 
@@ -3170,50 +2996,71 @@ export default function EventDetails({ event: initialEvent, substation: initialS
               <div className="flex items-center gap-2">
                 {!isEditingIDR ? (
                   <>
-                    {/* Upload Button with Dropdown */}
-                    <div className="relative upload-dropdown-container">
+                    {/* Match IDR Button */}
+                    {!idrRecord && (
                       <button
-                        onClick={() => setShowUploadDropdown(!showUploadDropdown)}
-                        disabled={isUploading}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all text-sm font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => setShowMatchIDRPanel(true)}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all text-sm font-semibold shadow-sm"
                       >
-                        {isUploading ? (
-                          <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                            Uploading...
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="w-4 h-4" />
-                            Upload
-                            <ChevronDown className="w-3 h-3" />
-                          </>
-                        )}
+                        <FileText className="w-4 h-4" />
+                        Match IDR
                       </button>
+                    )}
 
-                      {/* Upload Dropdown Menu */}
-                      {showUploadDropdown && !isUploading && (
-                        <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 z-30 overflow-hidden">
-                          <label className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 cursor-pointer transition-colors">
-                            <Upload className="w-4 h-4 text-blue-600" />
-                            <span className="text-sm font-medium text-slate-700">Import CSV</span>
-                            <input
-                              type="file"
-                              accept=".csv"
-                              onChange={handleImportIDRCSV}
-                              className="hidden"
-                            />
-                          </label>
-                          <button
-                            onClick={handleDownloadIDRTemplate}
-                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-green-50 transition-colors text-left"
-                          >
-                            <FileDown className="w-4 h-4 text-green-600" />
-                            <span className="text-sm font-medium text-slate-700">Download Template</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    {/* Export Button */}
+                    {idrRecord && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            // Export current IDR record to CSV
+                            const headers = [
+                              'IDR NO', 'OCCURRENCE TIME', 'VOLTAGE LEVEL', 'SOURCE SUBSTATION',
+                              'INCIDENT LOCATION', 'DURATION (MS)', 'VL1 (%)', 'VL2 (%)', 'VL3 (%)',
+                              'REGION', 'CAUSE', 'EQUIPMENT TYPE', 'WEATHER', 'CIRCUIT',
+                              'FAULTY COMPONENT', 'RESPONSIBLE O/C', 'REMARKS'
+                            ];
+                            
+                            const row = [
+                              idrRecord.idr_no || '',
+                              idrRecord.occurrence_time || '',
+                              idrRecord.voltage_level || '',
+                              idrRecord.source_substation || '',
+                              idrRecord.incident_location || '',
+                              idrRecord.duration_ms || '',
+                              idrRecord.v1 || '',
+                              idrRecord.v2 || '',
+                              idrRecord.v3 || '',
+                              idrRecord.region || '',
+                              idrRecord.cause || '',
+                              idrRecord.equipment_type || '',
+                              idrRecord.weather || '',
+                              idrRecord.circuit || '',
+                              idrRecord.faulty_component || '',
+                              idrRecord.responsible_oc || '',
+                              idrRecord.remarks || ''
+                            ];
+                            
+                            const csvContent = [headers.join(','), row.join(',')].join('\n');
+                            const blob = new Blob([csvContent], { type: 'text/csv' });
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `IDR_${idrRecord.idr_no}_${new Date().toISOString().split('T')[0]}.csv`;
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                            
+                            toast.success('IDR record exported successfully');
+                          } catch (error) {
+                            console.error('Error exporting IDR:', error);
+                            toast.error('Failed to export IDR record');
+                          }
+                        }}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all text-sm font-semibold shadow-sm"
+                      >
+                        <Download className="w-4 h-4" />
+                        Export
+                      </button>
+                    )}
 
                     {/* Edit Button */}
                     <button
@@ -4017,5 +3864,257 @@ export default function EventDetails({ event: initialEvent, substation: initialS
       currentOptions={psbgOptions}
       usedOptions={usedPsbgOptions}
     />
+  )}
+
+  {/* Match IDR Panel Modal */}
+  {showMatchIDRPanel && (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <div>
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+              <h2 className="text-xl font-bold text-slate-900">Match IDR</h2>
+            </div>
+            <p className="text-sm text-slate-600 mt-1">Matching IDR records to Event</p>
+          </div>
+          <button
+            onClick={() => {
+              setShowMatchIDRPanel(false);
+              handleResetMatchFilters();
+            }}
+            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <XIcon className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        {/* Filter Section */}
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
+          <div className="grid grid-cols-3 gap-4 items-end">
+            {/* Time Range Filter */}
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                IDR Malfunction start time range
+              </label>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-600">-</span>
+                  <input
+                    type="number"
+                    value={timeRangeFromMinutes}
+                    onChange={(e) => setTimeRangeFromMinutes(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-20 px-3 py-2 border border-slate-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    min="0"
+                  />
+                  <span className="text-slate-600">min</span>
+                </div>
+                <span className="text-slate-400 font-semibold">to</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-600">+</span>
+                  <input
+                    type="number"
+                    value={timeRangeToMinutes}
+                    onChange={(e) => setTimeRangeToMinutes(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-20 px-3 py-2 border border-slate-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    min="0"
+                  />
+                  <span className="text-slate-600">min</span>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Event time: {new Date(currentEvent.timestamp).toLocaleString('en-GB', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit'
+                })}
+              </p>
+            </div>
+
+            {/* Outage Type Filter */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Outage Type
+              </label>
+              <select
+                value={outageTypeFilter}
+                onChange={(e) => setOutageTypeFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="ALL">ALL</option>
+                <option value="Momentary">Momentary</option>
+                <option value="Sustained">Sustained</option>
+                <option value="Voltage Dip">Voltage Dip</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-3 mt-4">
+            <button
+              onClick={handleSearchMatchingIDRs}
+              disabled={searchingIDRs}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {searchingIDRs ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                  Searching...
+                </>
+              ) : (
+                <>
+                  <Search className="w-4 h-4" />
+                  Search
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleResetMatchFilters}
+              className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-medium transition-colors"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
+        {/* Results Table */}
+        <div className="flex-1 overflow-auto px-6 py-4">
+          {matchedIDRs.length === 0 ? (
+            <div className="text-center py-12 text-slate-500">
+              <FileText className="w-16 h-16 mx-auto mb-4 opacity-20" />
+              <p className="font-medium">No matching IDR records found</p>
+              <p className="text-sm mt-1">Adjust the search filters and try again</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">
+                      <input
+                        type="checkbox"
+                        checked={!!selectedMatchedIDRId}
+                        onChange={() => setSelectedMatchedIDRId(null)}
+                        className="rounded border-slate-300"
+                        disabled
+                      />
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">IDR No</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Occurrence Time</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Voltage Level</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Faulty Phase</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Incident Address / Circuit Affected</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Duration (ms)</th>
+                    <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase">V1 (%)</th>
+                    <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase">V2 (%)</th>
+                    <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase">V3 (%)</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Region</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Equipment Type</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Cause Group</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Cause</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Faulty Component</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">External / Internal</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Weather Code</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Weather Condition</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Responsible O/C</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase">Outage Type</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {matchedIDRs.map((idr) => (
+                    <tr
+                      key={idr.id}
+                      className={`hover:bg-blue-50 transition-colors cursor-pointer ${
+                        selectedMatchedIDRId === idr.id ? 'bg-blue-100' : ''
+                      }`}
+                      onClick={() => setSelectedMatchedIDRId(idr.id)}
+                    >
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedMatchedIDRId === idr.id}
+                          onChange={() => setSelectedMatchedIDRId(idr.id)}
+                          className="rounded border-slate-300"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-sm font-medium text-blue-600">{idr.idr_no}</td>
+                      <td className="px-3 py-2 text-sm text-slate-900">
+                        {new Date(idr.occurrence_time).toLocaleString('en-GB', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-slate-900">{idr.voltage_level || 'N/A'}</td>
+                      <td className="px-3 py-2 text-sm text-slate-900">
+                        {[idr.v1, idr.v2, idr.v3].filter(v => v !== null && v < 90).length > 0
+                          ? `L${[1, 2, 3].filter((_, i) => [idr.v1, idr.v2, idr.v3][i] !== null && [idr.v1, idr.v2, idr.v3][i]! < 90).join('')}`
+                          : 'N/A'}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-slate-900">
+                        <div className="max-w-xs truncate" title={idr.incident_location || idr.circuit || ''}>
+                          {idr.incident_location || idr.circuit || 'N/A'}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-sm text-slate-900">{idr.duration_ms || 'N/A'}</td>
+                      <td className="px-3 py-2 text-sm text-center text-slate-900">
+                        {idr.v1 !== null ? idr.v1.toFixed(0) : 'N/A'}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-center text-slate-900">
+                        {idr.v2 !== null ? idr.v2.toFixed(0) : 'N/A'}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-center text-slate-900">
+                        {idr.v3 !== null ? idr.v3.toFixed(0) : 'N/A'}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-slate-900">{idr.region || 'N/A'}</td>
+                      <td className="px-3 py-2 text-sm text-slate-900">{idr.equipment_type || 'N/A'}</td>
+                      <td className="px-3 py-2 text-sm text-slate-900">{idr.cause_group || 'N/A'}</td>
+                      <td className="px-3 py-2 text-sm text-slate-900">
+                        <div className="max-w-xs truncate" title={idr.cause || ''}>
+                          {idr.cause || 'N/A'}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-sm text-slate-900">{idr.faulty_component || 'N/A'}</td>
+                      <td className="px-3 py-2 text-sm text-slate-900 capitalize">{idr.external_internal || 'N/A'}</td>
+                      <td className="px-3 py-2 text-sm text-slate-900">{idr.weather || 'N/A'}</td>
+                      <td className="px-3 py-2 text-sm text-slate-900">{idr.weather_condition || 'N/A'}</td>
+                      <td className="px-3 py-2 text-sm text-slate-900">{idr.responsible_oc || 'N/A'}</td>
+                      <td className="px-3 py-2 text-sm text-slate-900">{idr.outage_type || 'N/A'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-end gap-3">
+          <button
+            onClick={() => {
+              setShowMatchIDRPanel(false);
+              handleResetMatchFilters();
+            }}
+            className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-medium transition-colors"
+          >
+            Close
+          </button>
+          <button
+            onClick={handleSaveMatchedIDR}
+            disabled={!selectedMatchedIDRId}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
   )}
 }

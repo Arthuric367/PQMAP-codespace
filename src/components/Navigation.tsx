@@ -14,7 +14,8 @@ export default function Navigation({ currentView, onViewChange, collapsed, onTog
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { id: 'events', icon: Activity, label: 'Event Management', subItems: [
-      { id: 'eventGrouping', icon: GitBranch, label: 'Event Grouping' }
+      { id: 'eventGrouping', icon: GitBranch, label: 'Event Grouping' },
+      { id: 'idrReports', icon: FileText, label: 'IDR Reports' }
     ] },
     { id: 'assets', icon: DatabaseIcon, label: 'Asset Management' },
     { id: 'reporting', icon: FileText, label: 'Reporting' },
