@@ -299,12 +299,22 @@ export default function EventList({ events, substations }: EventListProps) {
               <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">V1</th>
               <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">V2</th>
               <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">V3</th>
+              <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">VL1 (%) AT 380</th>
+              <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">VL2 (%) AT 380</th>
+              <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">VL3 (%) AT 380</th>
             </tr>
           </thead>
           <tbody>
             {paginatedEvents.map((event) => {
               const substation = event.substation_id ? substationMap[event.substation_id] : null;
               const meter = event.meter_id ? meterMap[event.meter_id] : null;
+              
+              // Generate placeholder data for 380V influence (20-30 range)
+              // TODO: Replace with actual calculation formula based on voltage level transformation
+              const vl1_380 = 20 + Math.random() * 10;
+              const vl2_380 = 20 + Math.random() * 10;
+              const vl3_380 = 20 + Math.random() * 10;
+              
               return (
                 <tr
                   key={event.id}
@@ -338,6 +348,15 @@ export default function EventList({ events, substations }: EventListProps) {
                   </td>
                   <td className="py-3 px-4 text-sm text-slate-700">
                     {event.v3 !== null && event.v3 !== undefined ? event.v3.toFixed(1) : ''}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-slate-700">
+                    {vl1_380.toFixed(1)}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-slate-700">
+                    {vl2_380.toFixed(1)}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-slate-700">
+                    {vl3_380.toFixed(1)}
                   </td>
                 </tr>
               );

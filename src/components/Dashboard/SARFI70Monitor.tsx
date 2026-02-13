@@ -29,6 +29,12 @@ interface TableEvent {
 
 type SortColumn = 'sequence' | 'substationCode' | 'voltageLevel' | 'timestamp' | 'oc' | 'sarfi70';
 type SortDirection = 'asc' | 'desc';
+type AggregationTab = 'oc' | 'location';
+
+interface AggregatedData {
+  key: string; // OC or Location
+  monthlyValues: { [month: number]: number }; // month (1-12) => SARFI-70 sum
+}
 
 export default function SARFI70Monitor({ events, substations }: SARFI70MonitorProps) {
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
@@ -41,6 +47,12 @@ export default function SARFI70Monitor({ events, substations }: SARFI70MonitorPr
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const chartRef = useRef<HTMLDivElement>(null);
+  
+  // Aggregation table states
+  const [activeTab, setActiveTab] = useState<AggregationTab>('oc');
+  const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
+  const [showYearDropdown, setShowYearDropdown] = useState(false);
+  const [aggregatedData, setAggregatedData] = useState<AggregatedData[]>([]);
 
   // Create substations map for quick lookup
   const substationsMap = new Map<string, Substation>();
@@ -104,6 +116,51 @@ export default function SARFI70Monitor({ events, substations }: SARFI70MonitorPr
 
     setMonthlyData(data);
   }, [events]);
+
+  // Calculate aggregated data by OC or Location
+  useEffect(() => {
+    // Filter valid events for selected year
+    const validEvents = events.filter(e => {
+      if (e.event_type !== 'voltage_dip') return false;
+      if (!e.is_mother_event) return false;
+      if (e.false_event) return false;
+
+      const eventDate = new Date(e.timestamp);
+      return eventDate.getFullYear() === selectedYear;
+    });
+
+    // Aggregate data
+    const aggregationMap = new Map<string, { [month: number]: number }>();
+
+    validEvents.forEach(event => {
+      const eventDate = new Date(event.timestamp);
+      const month = eventDate.getMonth() + 1; // 1-12
+      const sarfi70Value = event.sarfi_70 || 0;
+
+      // Get key based on active tab
+      let key: string;
+      if (activeTab === 'oc') {
+        key = event.meter?.oc || 'N/A';
+      } else {
+        key = event.meter?.location || 'N/A';
+      }
+
+      // Initialize if not exists
+      if (!aggregationMap.has(key)) {
+        aggregationMap.set(key, {});
+      }
+
+      const monthlyData = aggregationMap.get(key)!;
+      monthlyData[month] = (monthlyData[month] || 0) + sarfi70Value;
+    });
+
+    // Convert to array and sort by key
+    const result: AggregatedData[] = Array.from(aggregationMap.entries())
+      .map(([key, monthlyValues]) => ({ key, monthlyValues }))
+      .sort((a, b) => a.key.localeCompare(b.key));
+
+    setAggregatedData(result);
+  }, [events, activeTab, selectedYear]);
 
   // Handle chart point click
   const handleMonthClick = (monthData: MonthlyData) => {
@@ -262,18 +319,21 @@ export default function SARFI70Monitor({ events, substations }: SARFI70MonitorPr
     }
   };
 
-  // Click outside handler for dropdown
+  // Click outside handler for dropdowns
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (showExportDropdown && !target.closest('.export-dropdown-container')) {
         setShowExportDropdown(false);
       }
+      if (showYearDropdown && !target.closest('.year-dropdown-container')) {
+        setShowYearDropdown(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showExportDropdown]);
+  }, [showExportDropdown, showYearDropdown]);
 
   // Calculate max score across all years for unified Y-axis
   const maxScore = Math.max(...monthlyData.map(d => d.sarfi70Score), 1);
@@ -522,6 +582,146 @@ export default function SARFI70Monitor({ events, substations }: SARFI70MonitorPr
                     ))}
                   </tbody>
                 </table>
+
+      {/* Aggregation Table */}
+      <div className="border-t border-slate-200 pt-6 mt-6">
+        {/* Header with Tabs and Year Filter */}
+        <div className="flex items-center justify-between mb-4">
+          {/* Tabs */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveTab('oc')}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                activeTab === 'oc'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              By OC
+            </button>
+            <button
+              onClick={() => setActiveTab('location')}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                activeTab === 'location'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              By Location
+            </button>
+          </div>
+
+          {/* Year Filter */}
+          <div className="relative year-dropdown-container">
+            <button
+              onClick={() => setShowYearDropdown(!showYearDropdown)}
+              className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+            >
+              Year: {selectedYear}
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {showYearDropdown && (
+              <div className="absolute right-0 mt-2 w-32 bg-white rounded-lg shadow-xl border border-slate-200 py-2 z-50">
+                {[2023, 2024, 2025].map(year => (
+                  <button
+                    key={year}
+                    onClick={() => {
+                      setSelectedYear(year);
+                      setShowYearDropdown(false);
+                    }}
+                    className={`w-full px-4 py-2 text-left text-sm hover:bg-slate-50 ${
+                      selectedYear === year
+                        ? 'bg-blue-50 text-blue-600 font-medium'
+                        : 'text-slate-700'
+                    }`}
+                  >
+                    {year}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Table Title */}
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">
+          SARFI-70 Summary by {activeTab === 'oc' ? 'OC' : 'Location'} for {selectedYear} ({aggregatedData.length} {activeTab === 'oc' ? 'OCs' : 'Locations'})
+        </h3>
+
+        {/* Table */}
+        {aggregatedData.length === 0 ? (
+          <div className="text-center py-8 text-slate-500 bg-slate-50 rounded-lg">
+            No data available for {selectedYear}
+          </div>
+        ) : (
+          <div className="overflow-x-auto border border-slate-200 rounded-lg">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700 sticky left-0 bg-slate-50 z-10">
+                    {activeTab === 'oc' ? 'OC' : 'Location'}
+                  </th>
+                  {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, index) => (
+                    <th key={index} className="px-4 py-3 text-center font-semibold text-slate-700 min-w-[100px]">
+                      {month}
+                    </th>
+                  ))}
+                  <th className="px-4 py-3 text-center font-semibold text-slate-700 bg-blue-50 min-w-[120px]">
+                    Total
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {aggregatedData.map((row) => {
+                  // Calculate row total
+                  const rowTotal = Object.values(row.monthlyValues).reduce((sum, val) => sum + val, 0);
+
+                  return (
+                    <tr key={row.key} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-slate-700 font-medium sticky left-0 bg-white hover:bg-slate-50">
+                        {row.key}
+                      </td>
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => {
+                        const value = row.monthlyValues[month] || 0;
+                        return (
+                          <td key={month} className="px-4 py-3 text-center text-slate-700">
+                            {value > 0 ? value.toFixed(4) : '-'}
+                          </td>
+                        );
+                      })}
+                      <td className="px-4 py-3 text-center text-slate-900 font-semibold bg-blue-50">
+                        {rowTotal > 0 ? rowTotal.toFixed(4) : '-'}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {/* Summary Row */}
+                <tr className="bg-slate-100 font-semibold">
+                  <td className="px-4 py-3 text-slate-900 sticky left-0 bg-slate-100">
+                    Total
+                  </td>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => {
+                    const monthTotal = aggregatedData.reduce((sum, row) => sum + (row.monthlyValues[month] || 0), 0);
+                    return (
+                      <td key={month} className="px-4 py-3 text-center text-slate-900">
+                        {monthTotal > 0 ? monthTotal.toFixed(4) : '-'}
+                      </td>
+                    );
+                  })}
+                  <td className="px-4 py-3 text-center text-slate-900 bg-blue-100">
+                    {aggregatedData.reduce((sum, row) => 
+                      sum + Object.values(row.monthlyValues).reduce((s, v) => s + v, 0), 0
+                    ).toFixed(4)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
               </div>
 
               {/* Pagination */}

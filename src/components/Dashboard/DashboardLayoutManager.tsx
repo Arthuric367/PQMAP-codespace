@@ -22,6 +22,13 @@ export default function DashboardLayoutManager({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   useEffect(() => {
+    // Check for invalid widgets in layout
+    const invalidWidgets = layout.widgets.filter(w => !WIDGET_CATALOG[w.id]);
+    if (invalidWidgets.length > 0) {
+      console.warn('[DashboardLayoutManager] Found invalid widgets in layout:', invalidWidgets.map(w => w.id));
+      console.warn('[DashboardLayoutManager] These widgets will be filtered out. Valid widget IDs:', Object.keys(WIDGET_CATALOG));
+    }
+    
     // Get widgets that are not visible
     const visibleIds = layout.widgets.filter(w => w.visible).map(w => w.id);
     const available = Object.keys(WIDGET_CATALOG).filter(
@@ -83,7 +90,7 @@ export default function DashboardLayoutManager({
       console.log('[DashboardLayoutManager] New widget config:', newWidget);
 
       // Get current visible widgets
-      const visibleWidgets = layout.widgets.filter(w => w.visible);
+      const visibleWidgets = layout.widgets.filter(w => w.visible && WIDGET_CATALOG[w.id]);
       
       // Update rows for widgets after insertion point
       const updatedVisible = visibleWidgets.map(w => {
@@ -124,7 +131,7 @@ export default function DashboardLayoutManager({
     } else {
       // Moving existing widget beside another
       console.log('[DashboardLayoutManager] Moving existing widget beside another');
-      const visibleWidgets = layout.widgets.filter(w => w.visible);
+      const visibleWidgets = layout.widgets.filter(w => w.visible && WIDGET_CATALOG[w.id]);
       const sourceIndex = visibleWidgets.findIndex(w => w.id === draggedWidget);
       
       if (sourceIndex === -1) {
@@ -204,7 +211,7 @@ export default function DashboardLayoutManager({
       console.log('[DashboardLayoutManager] New widget config:', newWidget);
 
       // Get current visible widgets and update rows
-      const visibleWidgets = layout.widgets.filter(w => w.visible);
+      const visibleWidgets = layout.widgets.filter(w => w.visible && WIDGET_CATALOG[w.id]);
       
       // Update rows for widgets at or after insertion point
       const updatedVisible = visibleWidgets.map(w => {
@@ -241,7 +248,7 @@ export default function DashboardLayoutManager({
     } else {
       // Reordering within dashboard
       console.log('[DashboardLayoutManager] Reordering widget:', draggedWidget);
-      const visibleWidgets = layout.widgets.filter(w => w.visible);
+      const visibleWidgets = layout.widgets.filter(w => w.visible && WIDGET_CATALOG[w.id]);
       const sourceIndex = visibleWidgets.findIndex(w => w.id === draggedWidget);
       
       console.log('[DashboardLayoutManager] Source index:', sourceIndex, 'Target index:', targetIndex);
@@ -294,7 +301,7 @@ export default function DashboardLayoutManager({
 
   const handleRemoveWidget = (widgetId: WidgetId) => {
     console.log('[DashboardLayoutManager] Removing widget:', widgetId);
-    const visibleWidgets = layout.widgets.filter(w => w.visible && w.id !== widgetId);
+    const visibleWidgets = layout.widgets.filter(w => w.visible && w.id !== widgetId && WIDGET_CATALOG[w.id]);
     
     // Reorder remaining widgets
     const updatedVisible = visibleWidgets.map((w, index) => ({
@@ -371,7 +378,7 @@ export default function DashboardLayoutManager({
   };
 
   const visibleWidgets = layout.widgets
-    .filter(w => w.visible)
+    .filter(w => w.visible && WIDGET_CATALOG[w.id]) // Filter out widgets not in catalog
     .sort((a, b) => a.row - b.row);
 
   return (
@@ -441,6 +448,13 @@ export default function DashboardLayoutManager({
             
             {visibleWidgets.map((widget, index) => {
               const config = WIDGET_CATALOG[widget.id];
+              
+              // Skip widget if configuration not found in catalog
+              if (!config) {
+                console.warn(`[DashboardLayoutManager] Widget "${widget.id}" not found in WIDGET_CATALOG, skipping render`);
+                return null;
+              }
+              
               const isDragging = draggedWidget === widget.id;
               const isDropTarget = dragOverIndex === index;
               const isHalfWidth = widget.width === 6;
@@ -590,6 +604,13 @@ export default function DashboardLayoutManager({
                     {/* Second widget if paired on same row */}
                     {shouldPairWithNext && (() => {
                       const nextConfig = WIDGET_CATALOG[nextWidget.id];
+                      
+                      // Skip if next widget config not found
+                      if (!nextConfig) {
+                        console.warn(`[DashboardLayoutManager] Next widget "${nextWidget.id}" not found in WIDGET_CATALOG, skipping pair render`);
+                        return null;
+                      }
+                      
                       const nextIsDragging = draggedWidget === nextWidget.id;
                       
                       return (
@@ -767,6 +788,13 @@ export default function DashboardLayoutManager({
         <div className="p-4 space-y-3">
           {availableWidgets.map((widgetId) => {
             const config = WIDGET_CATALOG[widgetId];
+            
+            // Skip if widget config not found
+            if (!config) {
+              console.warn(`[DashboardLayoutManager] Available widget "${widgetId}" not found in WIDGET_CATALOG, skipping sidebar render`);
+              return null;
+            }
+            
             const isDragging = draggedWidget === widgetId;
 
             return (

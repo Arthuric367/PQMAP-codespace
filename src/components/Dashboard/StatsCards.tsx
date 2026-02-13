@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Zap, Building2 } from 'lucide-react';
+import { Activity, TrendingUp, Zap } from 'lucide-react';
 import { PQEvent, Substation } from '../../types/database';
 
 interface StatsCardsProps {
@@ -9,8 +9,29 @@ interface StatsCardsProps {
 export default function StatsCards({ events, substations }: StatsCardsProps) {
   const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const recentEvents = events.filter(e => new Date(e.timestamp) > last24Hours);
-  const criticalEvents = events.filter(e => e.severity === 'critical' && e.status !== 'resolved');
-  const activeSubstations = substations.filter(s => s.status === 'operational');
+  
+  // Calculate PQ events this month
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1-12
+  const eventsThisMonth = events.filter(e => {
+    const eventDate = new Date(e.timestamp);
+    return eventDate.getFullYear() === currentYear && 
+           eventDate.getMonth() + 1 === currentMonth;
+  });
+
+  // Calculate SARFI-70 for current month (same logic as SARFI70Monitor)
+  const validSarfiEvents = events.filter(
+    e => e.event_type === 'voltage_dip' && 
+         e.is_mother_event && 
+         !e.false_event &&
+         (() => {
+           const eventDate = new Date(e.timestamp);
+           return eventDate.getFullYear() === currentYear && 
+                  eventDate.getMonth() + 1 === currentMonth;
+         })()
+  );
+  const sarfi70ThisMonth = validSarfiEvents.reduce((sum, event) => sum + (event.sarfi_70 || 0), 0);
 
   const stats = [
     {
@@ -22,33 +43,25 @@ export default function StatsCards({ events, substations }: StatsCardsProps) {
       textColor: 'text-blue-600',
     },
     {
-      label: 'Critical Events',
-      value: criticalEvents.length,
-      icon: AlertTriangle,
-      color: 'from-red-500 to-red-600',
-      bgColor: 'bg-red-50',
-      textColor: 'text-red-600',
+      label: 'PQ Events This Month',
+      value: eventsThisMonth.length,
+      icon: Zap,
+      color: 'from-purple-500 to-purple-600',
+      bgColor: 'bg-purple-50',
+      textColor: 'text-purple-600',
     },
     {
-      label: 'Active Substations',
-      value: activeSubstations.length,
-      icon: Building2,
+      label: 'SARFI-70 This Month',
+      value: sarfi70ThisMonth.toFixed(4),
+      icon: TrendingUp,
       color: 'from-green-500 to-green-600',
       bgColor: 'bg-green-50',
       textColor: 'text-green-600',
     },
-    {
-      label: 'Avg. Event Duration',
-      value: `${Math.round(events.reduce((acc, e) => acc + (e.duration_ms || 0), 0) / events.length / 1000)}s`,
-      icon: Zap,
-      color: 'from-amber-500 to-amber-600',
-      bgColor: 'bg-amber-50',
-      textColor: 'text-amber-600',
-    },
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
       {stats.map((stat, index) => {
         const Icon = stat.icon;
         return (
