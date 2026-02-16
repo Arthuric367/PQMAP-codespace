@@ -17,9 +17,10 @@ import AffectedCustomerChart from './AffectedCustomerChart';
 
 interface DashboardProps {
   onNavigateToMeter?: (meterId: string) => void;
+  highlightWidgetId?: string | null;
 }
 
-export default function Dashboard({ onNavigateToMeter }: DashboardProps) {
+export default function Dashboard({ onNavigateToMeter, highlightWidgetId }: DashboardProps) {
   const { user } = useAuth();
   const [events, setEvents] = useState<PQEvent[]>([]);
   const [substations, setSubstations] = useState<Substation[]>([]);
@@ -139,28 +140,41 @@ export default function Dashboard({ onNavigateToMeter }: DashboardProps) {
   };
 
   const renderWidget = (widgetId: WidgetId) => {
-    switch (widgetId) {
-      case 'stats-cards':
-        return <StatsCards events={events} substations={substations} />;
-      case 'substation-map':
-        return <SubstationMap substations={substations} events={events} />;
-      case 'meter-map':
-        return <MeterMap substations={substations} onNavigateToMeter={onNavigateToMeter} />;
-      case 'sarfi-chart':
-        return <SARFIChart metrics={sarfiMetrics} />;
-      case 'root-cause-chart':
-        return <RootCauseChart events={events} />;
-      case 'insight-chart':
-        return <InsightChart events={events} />;
-      case 'affected-customer-chart':
-        return <AffectedCustomerChart />;
-      case 'event-list':
-        return <EventList events={events} substations={substations} />;
-      case 'sarfi-70-monitor':
-        return <SARFI70Monitor events={events} substations={substations} />;
-      default:
-        return null;
-    }
+    const isHighlighted = highlightWidgetId === widgetId;
+    const highlightClass = isHighlighted 
+      ? 'ring-4 ring-blue-500 ring-opacity-50 shadow-2xl transition-all duration-300' 
+      : '';
+    
+    const widgetContent = (() => {
+      switch (widgetId) {
+        case 'stats-cards':
+          return <StatsCards events={events} substations={substations} />;
+        case 'substation-map':
+          return <SubstationMap substations={substations} events={events} />;
+        case 'meter-map':
+          return <MeterMap substations={substations} onNavigateToMeter={onNavigateToMeter} />;
+        case 'sarfi-chart':
+          return <SARFIChart metrics={sarfiMetrics} />;
+        case 'root-cause-chart':
+          return <RootCauseChart events={events} />;
+        case 'insight-chart':
+          return <InsightChart events={events} />;
+        case 'affected-customer-chart':
+          return <AffectedCustomerChart />;
+        case 'event-list':
+          return <EventList events={events} substations={substations} />;
+        case 'sarfi-70-monitor':
+          return <SARFI70Monitor events={events} substations={substations} />;
+        default:
+          return null;
+      }
+    })();
+
+    return (
+      <div id={`widget-${widgetId}`} className={highlightClass}>
+        {widgetContent}
+      </div>
+    );
   };
 
   if (loading) {

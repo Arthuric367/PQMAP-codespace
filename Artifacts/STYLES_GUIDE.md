@@ -1,8 +1,8 @@
 # PQMAP Styles Guide
 
-**Version:** 1.6  
-**Last Updated:** January 14, 2026  
-**Purpose:** Document reusable UI patterns, export/import utilities, and design standards for PQMAP application
+**Version:** 1.7  
+**Last Updated:** February 16, 2026  
+**Purpose:** Document reusable UI patterns, export/import utilities, global search, and design standards for PQMAP application
 
 ---
 
@@ -10,16 +10,17 @@
 
 1. [Export Functionality](#export-functionality)
 2. [Import Functionality](#import-functionality)
-3. [Button Patterns](#button-patterns)
-4. [Dropdown Patterns](#dropdown-patterns)
-5. [Icon Usage](#icon-usage)
-6. [Color Scheme](#color-scheme)
-7. [Spacing & Layout](#spacing--layout)
-8. [Animation Standards](#animation-standards)
-9. [Modal Patterns](#modal-patterns)
-10. [Profile Edit Modal Patterns](#profile-edit-modal-patterns)
-11. [Data Refresh Pattern (RefreshKey)](#data-refresh-pattern-refreshkey) ⭐ NEW
-12. [Adding New Features](#adding-new-features)
+3. [Global Search Pattern](#global-search-pattern) ⭐ NEW
+4. [Button Patterns](#button-patterns)
+5. [Dropdown Patterns](#dropdown-patterns)
+6. [Icon Usage](#icon-usage)
+7. [Color Scheme](#color-scheme)
+8. [Spacing & Layout](#spacing--layout)
+9. [Animation Standards](#animation-standards)
+10. [Modal Patterns](#modal-patterns)
+11. [Profile Edit Modal Patterns](#profile-edit-modal-patterns)
+12. [Data Refresh Pattern (RefreshKey)](#data-refresh-pattern-refreshkey)
+13. [Adding New Features](#adding-new-features)
 
 ---
 
@@ -220,6 +221,413 @@ npm install exceljs
 2. **Template Download Function** - Generates CSV template with headers and example data
 3. **Import Validation Function** - Validates each row before database insertion
 4. **Import Results Modal** - Shows success/failed counts with detailed error messages
+
+---
+
+## Global Search Pattern
+
+### 🔍 Master Search Function (February 2026)
+
+**Location:** Top panel header (same level as Typhoon Mode and Global Notification Status)
+
+The global search provides instant navigation to pages, dashboard widgets, and module functions throughout the application with permission-based filtering.
+
+#### Key Features
+
+- **Always-Visible Search Box**: Permanently displayed in header for quick access
+- **Permission Filtering**: Only shows items user has access to (role-based)
+- **Three Item Types**: Pages, Dashboard Widgets, Functions (e.g., Notification Templates, PQSIS Maintenance)
+- **Substring Matching**: Simple text matching across name, description, keywords, category
+- **Recent Items**: Displays recent/frequent searches when search box is empty
+- **Keyboard Navigation**: Arrow keys + Enter to select, Escape to close
+- **Widget Highlighting**: When navigating to a widget, scrolls to it and applies 3-second highlight effect
+
+#### Search Catalog Structure
+
+**File:** `src/config/searchCatalog.ts`
+
+```typescript
+export interface SearchItem {
+  id: string;                 // Unique identifier
+  name: string;               // Display name
+  description: string;        // Detailed description
+  type: 'page' | 'widget' | 'function';
+  category: string;           // For breadcrumb display
+  keywords: string[];         // Additional search terms
+  path: string;               // Navigation path (view ID)
+  moduleId?: string;          // Permission module ID
+  parentPage?: string;        // For functions, the parent page
+}
+```
+
+**Example Entries:**
+
+```typescript
+// Page
+{
+  id: 'notifications',
+  name: 'Notifications',
+  description: 'Configure notification rules, templates, and groups',
+  type: 'page',
+  category: 'Main',
+  keywords: ['alerts', 'notifications', 'email', 'sms', 'teams'],
+  path: 'notifications',
+  moduleId: 'notifications'
+}
+
+// Dashboard Widget
+{
+  id: 'meter-map',
+  name: 'Meter Map',
+  description: 'Geographic map of PQ meters',
+  type: 'widget',
+  category: 'Dashboard',
+  keywords: ['map', 'meter', 'geo', 'location', 'device'],
+  path: 'dashboard',
+  moduleId: 'meter-map'
+}
+
+// Module Function
+{
+  id: 'notification-templates',
+  name: 'Notification Templates',
+  description: 'Manage notification message templates',
+  type: 'function',
+  category: 'Notifications',
+  keywords: ['templates', 'messages', 'email', 'sms'],
+  path: 'notifications',
+  moduleId: 'notifications',
+  parentPage: 'notifications'
+}
+```
+
+#### UI Component Implementation
+
+**File:** `src/components/GlobalSearch.tsx`
+
+```typescript
+import { Search, Command, Clock, ExternalLink, ChevronRight } from 'lucide-react';
+
+interface GlobalSearchProps {
+  onNavigate: (view: string, widgetId?: string) => void;
+}
+
+// Permission check (sync with userManagementService)
+const getRolePermissions = (role: string) => {
+  const permissions: Record<string, string[]> = {
+    system_admin: [...DASHBOARD_WIDGETS, 'events', 'analytics', ...],
+    system_owner: [...DASHBOARD_WIDGETS, 'events', 'analytics', ...],
+    manual_implementator: [...DASHBOARD_WIDGETS, 'events', ...],
+    watcher: ['stats-cards', 'event-list', 'meter-map', 'events', ...]
+  };
+  return permissions[role] || [];
+};
+
+// Filter accessible items
+const accessibleItems = useMemo(() => {
+  if (!profile) return [];
+  const allowedModules = getRolePermissions(profile.role);
+  return searchCatalog.filter(item => 
+    item.moduleId ? allowedModules.includes(item.moduleId) : true
+  );
+}, [profile]);
+
+// Filter by search query
+const filteredItems = useMemo(() => {
+  if (!query.trim()) {
+    // Show recent items when empty
+    return recentItems.map(id => 
+      accessibleItems.find(item => item.id === id)
+    ).filter(Boolean).slice(0, MAX_RECENT_ITEMS);
+  }
+
+  const searchQuery = query.toLowerCase().trim();
+  return accessibleItems.filter(item =>
+    item.name.toLowerCase().includes(searchQuery) ||
+    item.description.toLowerCase().includes(searchQuery) ||
+    item.keywords.some(kw => kw.toLowerCase().includes(searchQuery)) ||
+    item.category.toLowerCase().includes(searchQuery)
+  );
+}, [query, accessibleItems, recentItems]);
+```
+
+#### Dropdown UI Pattern
+
+```tsx
+{isOpen && (
+  <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-lg shadow-xl max-h-96 overflow-y-auto z-50">
+    {filteredItems.length === 0 ? (
+      <div className="p-4 text-center text-slate-500 text-sm">
+        {query ? 'No results found' : 'No recent searches'}
+      </div>
+    ) : (
+      <>
+        {/* Recent header (when empty search) */}
+        {!query && recentItems.length > 0 && (
+          <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-2 bg-slate-50">
+            <Clock className="w-4 h-4 text-slate-400" />
+            <span className="text-xs font-medium text-slate-600 uppercase tracking-wider">
+              Recent
+            </span>
+          </div>
+        )}
+
+        {/* Results list */}
+        <div className="py-1">
+          {filteredItems.map((item, index) => (
+            <button
+              key={item.id}
+              data-index={index}
+              onClick={() => handleSelect(item)}
+              className={`w-full px-3 py-2.5 flex items-start gap-3 text-left hover:bg-slate-50 transition-colors ${
+                index === selectedIndex ? 'bg-blue-50' : ''
+              }`}
+            >
+              {/* Type Icon */}
+              <div className="mt-0.5">{getTypeIcon(item.type)}</div>
+
+              {/* Content */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="font-medium text-slate-900 text-sm truncate">
+                    {item.name}
+                  </span>
+                  <span className={`px-1.5 py-0.5 text-xs font-medium rounded ${getTypeBadgeColor(item.type)}`}>
+                    {item.type}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 truncate">{item.description}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{item.category}</p>
+              </div>
+
+              {/* Keyboard shortcut indicator */}
+              {index === selectedIndex && (
+                <div className="flex items-center gap-1 text-xs text-slate-400 mt-0.5">
+                  <span className="px-1.5 py-0.5 bg-slate-100 rounded border border-slate-200">↵</span>
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Footer hint */}
+        <div className="px-3 py-2 border-t border-slate-100 bg-slate-50 text-xs text-slate-500 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 bg-white rounded border border-slate-200">↑↓</kbd>
+              Navigate
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 bg-white rounded border border-slate-200">↵</kbd>
+              Select
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 bg-white rounded border border-slate-200">Esc</kbd>
+              Close
+            </span>
+          </div>
+          <span className="text-slate-400">{filteredItems.length} result{filteredItems.length !== 1 ? 's' : ''}</span>
+        </div>
+      </>
+    )}
+  </div>
+)}
+```
+
+#### Navigation & Widget Highlighting
+
+**In App.tsx:**
+
+```typescript
+const [highlightWidgetId, setHighlightWidgetId] = useState<string | null>(null);
+
+const handleGlobalSearchNavigate = (view: string, widgetId?: string) => {
+  setCurrentView(view);
+  if (widgetId) {
+    // Delay to allow Dashboard to render first
+    setTimeout(() => {
+      setHighlightWidgetId(widgetId);
+      // Scroll to widget
+      const widgetElement = document.getElementById(`widget-${widgetId}`);
+      if (widgetElement) {
+        widgetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      // Clear highlight after 3 seconds
+      setTimeout(() => setHighlightWidgetId(null), 3000);
+    }, 100);
+  }
+};
+
+// Pass to Dashboard
+<Dashboard 
+  onNavigateToMeter={handleNavigateToMeter} 
+  highlightWidgetId={highlightWidgetId}
+/>
+```
+
+**In Dashboard.tsx:**
+
+```typescript
+interface DashboardProps {
+  onNavigateToMeter?: (meterId: string) => void;
+  highlightWidgetId?: string | null;
+}
+
+const renderWidget = (widgetId: WidgetId) => {
+  const isHighlighted = highlightWidgetId === widgetId;
+  const highlightClass = isHighlighted 
+    ? 'ring-4 ring-blue-500 ring-opacity-50 shadow-2xl transition-all duration-300' 
+    : '';
+  
+  return (
+    <div id={`widget-${widgetId}`} className={highlightClass}>
+      {/* Widget content */}
+    </div>
+  );
+};
+```
+
+#### Recent Items Storage
+
+**localStorage Key:** `pqmap_recent_searches`  
+**Format:** `["item-id-1", "item-id-2", "item-id-3", "item-id-4", "item-id-5"]`  
+**Max Items:** 5
+
+```typescript
+const saveToRecent = (itemId: string) => {
+  const updated = [itemId, ...recentItems.filter(id => id !== itemId)].slice(0, MAX_RECENT_ITEMS);
+  setRecentItems(updated);
+  localStorage.setItem(RECENT_ITEMS_KEY, JSON.stringify(updated));
+};
+```
+
+#### Type Icons & Badge Colors
+
+```typescript
+// Type Icons
+const getTypeIcon = (type: SearchItem['type']) => {
+  switch (type) {
+    case 'page':
+      return <ExternalLink className="w-4 h-4 text-blue-500" />;
+    case 'widget':
+      return <Command className="w-4 h-4 text-purple-500" />;
+    case 'function':
+      return <ChevronRight className="w-4 h-4 text-green-500" />;
+  }
+};
+
+// Type Badge Colors
+const getTypeBadgeColor = (type: SearchItem['type']) => {
+  switch (type) {
+    case 'page':
+      return 'bg-blue-100 text-blue-700';
+    case 'widget':
+      return 'bg-purple-100 text-purple-700';
+    case 'function':
+      return 'bg-green-100 text-green-700';
+  }
+};
+```
+
+#### Adding New Searchable Items
+
+**When adding a new page, widget, or function:**
+
+1. **Update `src/config/searchCatalog.ts`:**
+
+```typescript
+// For a new page
+{
+  id: 'newPage',
+  name: 'New Page',
+  description: 'Description of what this page does',
+  type: 'page',
+  category: 'Main',  // or 'Data Maintenance', 'Event Management', etc.
+  keywords: ['relevant', 'search', 'terms'],
+  path: 'newPage',  // View ID used in App.tsx
+  moduleId: 'newPageModule'  // Must exist in systemModules
+}
+
+// For a new dashboard widget
+{
+  id: 'new-widget',
+  name: 'New Widget',
+  description: 'Description of widget functionality',
+  type: 'widget',
+  category: 'Dashboard',
+  keywords: ['widget', 'specific', 'terms'],
+  path: 'dashboard',
+  moduleId: 'new-widget'  // Add to DASHBOARD_WIDGETS array in userManagementService
+}
+
+// For a new module function
+{
+  id: 'module-function',
+  name: 'Module Function',
+  description: 'Specific function within a module',
+  type: 'function',
+  category: 'Module Name',
+  keywords: ['function', 'action', 'terms'],
+  path: 'modulePage',  // Parent page view ID
+  moduleId: 'modulePage',
+  parentPage: 'modulePage'
+}
+```
+
+2. **Ensure permission module exists in `userManagementService.ts`:**
+
+```typescript
+// For widgets, add to DASHBOARD_WIDGETS array
+const DASHBOARD_WIDGETS = [
+  'stats-cards',
+  'substation-map',
+  'new-widget',  // Add your new widget
+  // ...
+];
+
+// For pages/functions, ensure moduleId exists in systemModules
+const systemModules: SystemModule[] = [
+  {
+    id: 'newPageModule',
+    name: 'New Page',
+    category: 'Main',
+    description: 'Description'
+  },
+  // ...
+];
+```
+
+3. **Update role permissions in `GlobalSearch.tsx`** (sync with `userManagementService.ts`):
+
+```typescript
+const getRolePermissions = (role: string) => {
+  const permissions: Record<string, string[]> = {
+    system_admin: [...DASHBOARD_WIDGETS, 'events', 'newPageModule', ...],
+    system_owner: [...DASHBOARD_WIDGETS, 'events', 'newPageModule', ...],
+    manual_implementator: [...DASHBOARD_WIDGETS, 'events', 'newPageModule', ...],
+    watcher: ['stats-cards', 'event-list', 'meter-map', 'events']  // Limited access
+  };
+  return permissions[role] || [];
+};
+```
+
+#### Search Behavior by Role
+
+| Role | Access Level |
+|------|--------------|
+| **System Admin** | All 10 widgets + All pages/functions |
+| **System Owner** | All 10 widgets + All pages/functions |
+| **Manual Implementator** | All 10 widgets + Most pages (except User Management, System Settings write access) |
+| **Watcher** | Only 3 widgets (Stats Cards, Event List, Meter Map) + Read-only pages |
+
+#### Components Using This Pattern
+
+- **GlobalSearch.tsx**: Main search component
+- **App.tsx**: Integration and navigation handler
+- **Dashboard.tsx**: Widget highlighting and scroll-to-view
+- **searchCatalog.ts**: Searchable items catalog (58 items total: 15 pages + 10 widgets + 11 functions)
+
+---
 
 ### Complete Import Implementation
 

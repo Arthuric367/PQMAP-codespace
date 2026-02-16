@@ -126,7 +126,19 @@ export const mockUAMUsers: UAMUser[] = [
 
 // System modules for permission management
 export const systemModules: SystemModule[] = [
-  { id: 'dashboard', name: 'Dashboard', description: 'System overview and statistics', category: 'Core' },
+  // Dashboard Widgets - Widget-level permissions
+  { id: 'stats-cards', name: 'Stats Cards', description: 'Dashboard statistics overview cards', category: 'Dashboard' },
+  { id: 'substation-map', name: 'Substation Map', description: 'Geographic substation visualization', category: 'Dashboard' },
+  { id: 'meter-map', name: 'Meter Map', description: 'Geographic meter visualization', category: 'Dashboard' },
+  { id: 'sarfi-chart', name: 'SARFI Chart', description: 'SARFI metrics visualization', category: 'Dashboard' },
+  { id: 'root-cause-chart', name: 'Root Cause Chart', description: 'Root cause analysis chart', category: 'Dashboard' },
+  { id: 'insight-chart', name: 'Insight Chart', description: 'Insight for improvement analysis', category: 'Dashboard' },
+  { id: 'affected-customer-chart', name: 'Affected Customer Chart', description: 'Customer impact visualization', category: 'Dashboard' },
+  { id: 'affected-equipment-chart', name: 'Affected Equipment Chart', description: 'Equipment impact visualization', category: 'Dashboard' },
+  { id: 'event-list', name: 'Event List', description: 'Recent events list widget', category: 'Dashboard' },
+  { id: 'sarfi-70-monitor', name: 'SARFI-70 Monitor', description: 'SARFI-70 threshold monitoring', category: 'Dashboard' },
+  
+  // Other Core Modules
   { id: 'events', name: 'Event Management', description: 'PQ events monitoring and management', category: 'Core' },
   { id: 'analytics', name: 'Impact Analysis', description: 'Event impact and analytics', category: 'Analytics' },
   { id: 'assets', name: 'Asset Management', description: 'Meters, substations, and equipment', category: 'Core' },
@@ -165,11 +177,17 @@ export const defaultRolePermissions: Record<SystemRole, RolePermission[]> = {
     // Manual Implementator has all permissions except deletion and management functions
     const restrictedModules = ['userManagement', 'systemSettings'];
     const noDeleteModules = ['events', 'assets', 'customerTransformer', 'services', 'scada'];
+    const dashboardWidgets = ['stats-cards', 'substation-map', 'meter-map', 'sarfi-chart', 
+                              'root-cause-chart', 'insight-chart', 'affected-customer-chart', 
+                              'affected-equipment-chart', 'event-list', 'sarfi-70-monitor'];
     
     let permissions: PermissionAction[] = ['read'];
     
     if (restrictedModules.includes(module.id)) {
       // Only read access for user management and system settings
+      permissions = ['read'];
+    } else if (dashboardWidgets.includes(module.id)) {
+      // Dashboard widgets: read-only (no customization for manual implementators)
       permissions = ['read'];
     } else if (noDeleteModules.includes(module.id)) {
       // Can create, read, update but not delete
@@ -189,14 +207,31 @@ export const defaultRolePermissions: Record<SystemRole, RolePermission[]> = {
     };
   }),
   
-  watcher: systemModules.map((module, index) => ({
-    id: `watcher_${index}`,
-    role: 'watcher' as SystemRole,
-    module: module.id,
-    permissions: ['read'] as PermissionAction[],
-    description: 'Read-only access to all functions',
-    updated_at: new Date().toISOString()
-  }))
+  watcher: systemModules.map((module, index) => {
+    const dashboardWidgets = ['stats-cards', 'substation-map', 'meter-map', 'sarfi-chart', 
+                              'root-cause-chart', 'insight-chart', 'affected-customer-chart', 
+                              'affected-equipment-chart', 'event-list', 'sarfi-70-monitor'];
+    
+    // Watchers have limited dashboard access by default
+    // Only basic monitoring widgets: stats-cards, event-list, meter-map
+    const watcherAllowedWidgets = ['stats-cards', 'event-list', 'meter-map'];
+    
+    let permissions: PermissionAction[] = ['read'];
+    
+    // For dashboard widgets, only grant access to allowed widgets
+    if (dashboardWidgets.includes(module.id) && !watcherAllowedWidgets.includes(module.id)) {
+      permissions = []; // No access to advanced dashboard widgets
+    }
+    
+    return {
+      id: `watcher_${index}`,
+      role: 'watcher' as SystemRole,
+      module: module.id,
+      permissions,
+      description: 'Limited read-only access to basic monitoring',
+      updated_at: new Date().toISOString()
+    };
+  })
 };
 
 // In-memory storage for modified permissions (in production, this would be in the database)
@@ -331,5 +366,34 @@ export async function hasPermission(
   }
   
   return modulePermission.permissions.includes(action);
+}
+
+/**
+ * Get all dashboard widgets that a role has read access to
+ * 
+ * @param role - The user's system role
+ * @returns Array of widget IDs that the role can access
+ */
+export async function getAllowedDashboardWidgets(role: SystemRole): Promise<string[]> {
+  const permissions = await fetchRolePermissions(role);
+  const dashboardWidgets = ['stats-cards', 'substation-map', 'meter-map', 'sarfi-chart', 
+                            'root-cause-chart', 'insight-chart', 'affected-customer-chart', 
+                            'affected-equipment-chart', 'event-list', 'sarfi-70-monitor'];
+  
+  return dashboardWidgets.filter(widgetId => {
+    const permission = permissions.find(p => p.module === widgetId);
+    return permission && permission.permissions.includes('read');
+  });
+}
+
+/**
+ * Check if a role can access a specific dashboard widget
+ * 
+ * @param role - The user's system role
+ * @param widgetId - The widget ID to check
+ * @returns true if role can access the widget, false otherwise
+ */
+export async function canAccessDashboardWidget(role: SystemRole, widgetId: string): Promise<boolean> {
+  return hasPermission(role, widgetId, 'read');
 }
 

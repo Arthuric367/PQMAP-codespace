@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './components/LoginPage';
@@ -7,6 +7,7 @@ import CriticalMessageBar from './components/CriticalMessageBar';
 import NotificationBell from './components/NotificationBell';
 import GlobalNotificationStatus from './components/GlobalNotificationStatus';
 import TyphoonModeIndicator from './components/TyphoonModeIndicator';
+import GlobalSearch from './components/GlobalSearch';
 import Dashboard from './components/Dashboard/Dashboard';
 import EventManagement from './components/EventManagement/EventManagement';
 import EventGroupingMaintenance from './components/EventManagement/EventGroupingMaintenance';
@@ -28,11 +29,30 @@ function AppContent() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedMeterId, setSelectedMeterId] = useState<string | null>(null);
+  const [highlightWidgetId, setHighlightWidgetId] = useState<string | null>(null);
 
   // Handle navigation to Asset Management with selected meter
   const handleNavigateToMeter = (meterId: string) => {
     setSelectedMeterId(meterId);
     setCurrentView('assets');
+  };
+
+  // Handle navigation from GlobalSearch
+  const handleGlobalSearchNavigate = (view: string, widgetId?: string) => {
+    setCurrentView(view);
+    if (widgetId) {
+      // Delay to allow Dashboard to render first
+      setTimeout(() => {
+        setHighlightWidgetId(widgetId);
+        // Scroll to widget
+        const widgetElement = document.getElementById(`widget-${widgetId}`);
+        if (widgetElement) {
+          widgetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        // Clear highlight after 3 seconds
+        setTimeout(() => setHighlightWidgetId(null), 3000);
+      }, 100);
+    }
   };
 
   if (loading) {
@@ -59,15 +79,21 @@ function AppContent() {
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
       <main className="flex-1 overflow-y-auto">
-        {/* Header Bar with Notification Bell */}
-        <div className="sticky top-0 z-40 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-end gap-3 shadow-sm">
+        {/* Header Bar with Global Search and Notification Features */}
+        <div className="sticky top-0 z-40 bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-3 shadow-sm">
+          <GlobalSearch onNavigate={handleGlobalSearchNavigate} />
           <TyphoonModeIndicator />
           <GlobalNotificationStatus />
           <NotificationBell />
         </div>
         
         {currentView !== 'reporting' && <CriticalMessageBar />}
-        {currentView === 'dashboard' && <Dashboard onNavigateToMeter={handleNavigateToMeter} />}
+        {currentView === 'dashboard' && (
+          <Dashboard 
+            onNavigateToMeter={handleNavigateToMeter} 
+            highlightWidgetId={highlightWidgetId}
+          />
+        )}
         {currentView === 'events' && <EventManagement />}
         {currentView === 'eventGrouping' && <EventGroupingMaintenance />}
         {currentView === 'idrReports' && <IDRReports />}
