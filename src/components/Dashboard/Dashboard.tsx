@@ -77,7 +77,7 @@ export default function Dashboard({ onNavigateToMeter }: DashboardProps) {
       const [eventsRes, substationsRes, sarfiRes] = await Promise.all([
         supabase
           .from('pq_events')
-          .select('*, substation:substations(*)', { count: 'exact' })
+          .select('*, substation:substations(*), meter:pq_meters(*)', { count: 'exact' })
           .gte('timestamp', '2023-01-01')
           .order('timestamp', { ascending: false })
           .limit(5000),
