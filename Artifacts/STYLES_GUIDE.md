@@ -3574,6 +3574,122 @@ className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
 </div>
 ```
 
+### DateTime Filter Pattern with User-Friendly Display
+
+**IMPORTANT RULE**: When implementing date & time filters in config modals, use `datetime-local` HTML5 inputs with user-friendly format display and backward compatibility helpers.
+
+**Standard Implementation:**
+
+Reference: `MapConfigModal.tsx`, `InsightChartConfigModal.tsx`
+
+#### 1. Helper Functions
+
+```typescript
+// Format datetime to user-friendly display
+const formatDateTime = (dateTimeString: string): string => {
+  if (!dateTimeString) return '';
+  
+  const date = new Date(dateTimeString);
+  if (isNaN(date.getTime())) return dateTimeString; // Return as-is if invalid
+  
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const day = date.getDate();
+  const month = months[date.getMonth()];
+  const year = date.getFullYear();
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 || 12;
+  const displayMinutes = minutes.toString().padStart(2, '0');
+  
+  return `${day} ${month} ${year}, ${displayHours}:${displayMinutes} ${ampm}`;
+};
+
+// Ensure datetime format for backward compatibility
+const ensureDateTimeFormat = (dateString: string, isEndDate: boolean = false): string => {
+  if (!dateString) return '';
+  
+  // Check if it's already in datetime format (contains 'T' or has time)
+  if (dateString.includes('T') || dateString.includes(':')) {
+    return dateString;
+  }
+  
+  // Old date-only format - add default time
+  // Start date: 00:00:00, End date: 23:59:59
+  return isEndDate ? `${dateString}T23:59` : `${dateString}T00:00`;
+};
+```
+
+#### 2. State Initialization with Backward Compatibility
+
+```typescript
+const [startDate, setStartDate] = useState(ensureDateTimeFormat(filters.startDate || '', false));
+const [endDate, setEndDate] = useState(ensureDateTimeFormat(filters.endDate || '', true));
+```
+
+#### 3. UI Component
+
+```tsx
+{/* Date Range Filter */}
+<div>
+  <h3 className="text-sm font-semibold text-slate-700 mb-3">Date & Time Range</h3>
+  <div className="grid grid-cols-2 gap-4">
+    <div>
+      <label className="block text-sm font-medium text-slate-600 mb-1">Start Date & Time</label>
+      <input
+        type="datetime-local"
+        value={startDate}
+        onChange={(e) => setStartDate(e.target.value)}
+        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      {startDate && (
+        <p className="text-xs text-slate-500 mt-1">{formatDateTime(startDate)}</p>
+      )}
+    </div>
+    <div>
+      <label className="block text-sm font-medium text-slate-600 mb-1">End Date & Time</label>
+      <input
+        type="datetime-local"
+        value={endDate}
+        onChange={(e) => setEndDate(e.target.value)}
+        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      {endDate && (
+        <p className="text-xs text-slate-500 mt-1">{formatDateTime(endDate)}</p>
+      )}
+    </div>
+  </div>
+</div>
+```
+
+#### 4. Profile Display (if using profiles)
+
+```tsx
+<div className="flex items-center gap-2 text-xs text-slate-600">
+  <span>{formatDateTime(profile.start_date)} to {formatDateTime(profile.end_date)}</span>
+</div>
+```
+
+**Key Features:**
+- **datetime-local Input**: Native browser datetime picker
+- **Smart Defaults**: T00:00 for start dates, T23:59 for end dates
+- **User-Friendly Display**: "15 Jan 2026, 2:30 PM" format
+- **Backward Compatibility**: Converts old date-only values automatically
+- **Visual Feedback**: Helper text below inputs shows formatted datetime
+- **ISO 8601 Format**: Internal storage uses standard datetime format
+
+**When to Use:**
+- Dashboard widgets with time-sensitive filtering
+- Config modals requiring precise timestamp selection
+- Any component where time of day matters (not just date)
+
+**Components Using This Pattern:**
+- `SubstationMap.tsx` + `MapConfigModal.tsx`
+- `InsightChart.tsx` + `InsightChartConfigModal.tsx`
+- Any dashboard widget with datetime filtering
+
+---
+
 ### Date Range Preset Options
 
 **Standard Presets**:

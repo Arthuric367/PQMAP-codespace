@@ -8,9 +8,44 @@ interface MapConfigModalProps {
   onClose: () => void;
 }
 
+// Helper function to format datetime to user-friendly display
+const formatDateTime = (dateTimeString: string): string => {
+  if (!dateTimeString) return '';
+  
+  const date = new Date(dateTimeString);
+  if (isNaN(date.getTime())) return dateTimeString; // Return as-is if invalid
+  
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const day = date.getDate();
+  const month = months[date.getMonth()];
+  const year = date.getFullYear();
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 || 12;
+  const displayMinutes = minutes.toString().padStart(2, '0');
+  
+  return `${day} ${month} ${year}, ${displayHours}:${displayMinutes} ${ampm}`;
+};
+
+// Helper function to ensure datetime format (add default time if only date provided)
+const ensureDateTimeFormat = (dateString: string, isEndDate: boolean = false): string => {
+  if (!dateString) return '';
+  
+  // Check if it's already in datetime format (contains 'T' or has time)
+  if (dateString.includes('T') || dateString.includes(':')) {
+    return dateString;
+  }
+  
+  // Old date-only format - add default time
+  // Start date: 00:00:00, End date: 23:59:59
+  return isEndDate ? `${dateString}T23:59` : `${dateString}T00:00`;
+};
+
 export default function MapConfigModal({ filters, onApply, onClose }: MapConfigModalProps) {
-  const [startDate, setStartDate] = useState(filters.startDate || '');
-  const [endDate, setEndDate] = useState(filters.endDate || '');
+  // Convert old date-only values to datetime format for backward compatibility
+  const [startDate, setStartDate] = useState(ensureDateTimeFormat(filters.startDate || '', false));
+  const [endDate, setEndDate] = useState(ensureDateTimeFormat(filters.endDate || '', true));
   const [includeFalseEvents, setIncludeFalseEvents] = useState(filters.includeFalseEvents ?? false);
   const [motherEventsOnly, setMotherEventsOnly] = useState(filters.motherEventsOnly ?? true);
   const [voltageLevels, setVoltageLevels] = useState<string[]>(filters.voltageLevels || []);
@@ -147,25 +182,35 @@ export default function MapConfigModal({ filters, onApply, onClose }: MapConfigM
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Start Date
+                  Start Date & Time
                 </label>
                 <input
-                  type="date"
+                  type="datetime-local"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
+                {startDate && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    {formatDateTime(startDate)}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  End Date
+                  End Date & Time
                 </label>
                 <input
-                  type="date"
+                  type="datetime-local"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
+                {endDate && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    {formatDateTime(endDate)}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -299,7 +344,7 @@ export default function MapConfigModal({ filters, onApply, onClose }: MapConfigM
                               </div>
                             )}
                             <div className="text-xs text-slate-500 mt-1">
-                              {profile.start_date} to {profile.end_date}
+                              {formatDateTime(profile.start_date)} to {formatDateTime(profile.end_date)}
                             </div>
                           </button>
                         </div>
