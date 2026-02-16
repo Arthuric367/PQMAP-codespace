@@ -80,11 +80,13 @@ function AppContent() {
       />
       <main className="flex-1 overflow-y-auto">
         {/* Header Bar with Global Search and Notification Features */}
-        <div className="sticky top-0 z-40 bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-3 shadow-sm">
+        <div className="sticky top-0 z-40 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm">
           <GlobalSearch onNavigate={handleGlobalSearchNavigate} />
-          <TyphoonModeIndicator />
-          <GlobalNotificationStatus />
-          <NotificationBell />
+          <div className="flex items-center gap-3">
+            <TyphoonModeIndicator />
+            <GlobalNotificationStatus />
+            <NotificationBell />
+          </div>
         </div>
         
         {currentView !== 'reporting' && <CriticalMessageBar />}

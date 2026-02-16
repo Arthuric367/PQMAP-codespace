@@ -138,6 +138,18 @@ export default function EventDetails({ event: initialEvent, substation: initialS
 
   // PSBG Cause management state
   const [showPSBGConfig, setShowPSBGConfig] = useState(false);
+  
+  // Map view state for voltage_dip events
+  const [eventLocations, setEventLocations] = useState<Array<{
+    eventId: string;
+    isMother: boolean;
+    latitude: number;
+    longitude: number;
+    voltageLevel: string;
+    substationCode: string;
+    timestamp: string;
+  }>>([]);
+  const [hoveredEventId, setHoveredEventId] = useState<string | null>(null);
   const [psbgOptions, setPsbgOptions] = useState<string[]>([
     'VEGETATION',
     'DAMAGED BY THIRD PARTY',
@@ -1069,6 +1081,95 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     setRemarkValues(initialRemarks);
   }, [currentEvent.id, childEvents]);
 
+  // Load geographic locations for mother and child events (voltage_dip only)
+  useEffect(() => {
+    if (currentEvent.event_type !== 'voltage_dip') {
+      setEventLocations([]);
+      return;
+    }
+
+    const loadEventLocations = async () => {
+      const allEvents = [currentEvent, ...childEvents];
+      const locations: typeof eventLocations = [];
+
+      for (const event of allEvents) {
+        let latitude: number | null = null;
+        let longitude: number | null = null;
+        let voltageLevel = 'N/A';
+        let substationCode = 'N/A';
+
+        // Try to get location from meter first
+        if (event.meter_id) {
+          const { data: meter } = await supabase
+            .from('pq_meters')
+            .select('latitude, longitude, voltage_level, meter_id')
+            .eq('id', event.meter_id)
+            .single();
+
+          if (meter?.latitude && meter?.longitude) {
+            latitude = meter.latitude;
+            longitude = meter.longitude;
+            voltageLevel = meter.voltage_level || 'N/A';
+            substationCode = meter.meter_id || 'N/A';
+          }
+        }
+
+        // Fall back to substation if meter location not available
+        if (!latitude || !longitude) {
+          if (event.substation_id) {
+            const { data: substation } = await supabase
+              .from('substations')
+              .select('latitude, longitude, voltage_level, code')
+              .eq('id', event.substation_id)
+              .single();
+
+            if (substation?.latitude && substation?.longitude) {
+              latitude = substation.latitude;
+              longitude = substation.longitude;
+              voltageLevel = substation.voltage_level || 'N/A';
+              substationCode = substation.code || 'N/A';
+            }
+          }
+        }
+
+        // Add to locations if coordinates found
+        if (latitude && longitude) {
+          locations.push({
+            eventId: event.id,
+            isMother: event.id === currentEvent.id,
+            latitude,
+            longitude,
+            voltageLevel,
+            substationCode,
+            timestamp: event.timestamp
+          });
+        }
+      }
+
+      setEventLocations(locations);
+    };
+
+    loadEventLocations();
+  }, [currentEvent.id, currentEvent.event_type, childEvents]);
+
+  // Hong Kong geographic bounds (same as SubstationMap)
+  const HK_BOUNDS = {
+    north: 22.58,
+    south: 22.15,
+    west: 113.83,
+    east: 114.41
+  };
+
+  const MAP_WIDTH = 800;
+  const MAP_HEIGHT = 480;
+
+  // Convert latitude/longitude to pixel coordinates
+  const latLngToPixel = (lat: number, lng: number): { x: number; y: number } => {
+    const x = ((lng - HK_BOUNDS.west) / (HK_BOUNDS.east - HK_BOUNDS.west)) * MAP_WIDTH;
+    const y = ((HK_BOUNDS.north - lat) / (HK_BOUNDS.north - HK_BOUNDS.south)) * MAP_HEIGHT;
+    return { x, y };
+  };
+
   return (
     <div className="space-y-6">
       {/* Back Navigation - only show when viewing child event */}
@@ -1185,6 +1286,97 @@ export default function EventDetails({ event: initialEvent, substation: initialS
         </div>
         <p className="text-sm text-slate-600 mt-1">ID: {currentEvent.id.substring(0, 8)}</p>
       </div>
+
+      {/* Event Location Map - Only for voltage_dip events */}
+      {currentEvent.event_type === 'voltage_dip' && eventLocations.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 p-6">
+          <div className="mb-4">
+            <h3 className="text-lg font-bold text-slate-900">Event Locations</h3>
+            <p className="text-sm text-slate-600 mt-1">
+              Geographic distribution of mother and child events
+            </p>
+          </div>
+
+          {/* Map Container */}
+          <div
+            className="relative bg-slate-50 rounded-xl overflow-hidden border border-slate-200"
+            style={{
+              width: MAP_WIDTH,
+              height: MAP_HEIGHT,
+              backgroundImage: 'url(/hong-kong-map.png)',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              margin: '0 auto'
+            }}
+          >
+            <svg
+              width={MAP_WIDTH}
+              height={MAP_HEIGHT}
+              className="absolute inset-0"
+            >
+              {eventLocations.map(location => {
+                const { x, y } = latLngToPixel(location.latitude, location.longitude);
+                const color = location.isMother ? '#ef4444' : '#22c55e'; // Red for mother, Green for children
+                const radius = location.isMother ? 12 : 8;
+
+                return (
+                  <g key={location.eventId}>
+                    <circle
+                      cx={x}
+                      cy={y}
+                      r={radius}
+                      fill={color}
+                      opacity={0.7}
+                      stroke="white"
+                      strokeWidth={2}
+                      className="cursor-pointer transition-all hover:opacity-90"
+                      onMouseEnter={() => setHoveredEventId(location.eventId)}
+                      onMouseLeave={() => setHoveredEventId(null)}
+                    />
+                  </g>
+                );
+              })}
+            </svg>
+
+            {/* Tooltip */}
+            {hoveredEventId && (() => {
+              const hoveredLocation = eventLocations.find(loc => loc.eventId === hoveredEventId);
+              if (!hoveredLocation) return null;
+
+              const { x, y } = latLngToPixel(hoveredLocation.latitude, hoveredLocation.longitude);
+              const tooltipX = x + 15;
+              const tooltipY = y - 15;
+
+              return (
+                <div
+                  className="absolute bg-white rounded-lg shadow-xl border border-slate-200 px-3 py-2 z-20 pointer-events-none"
+                  style={{
+                    left: `${tooltipX}px`,
+                    top: `${tooltipY}px`,
+                    transform: 'translateY(-100%)'
+                  }}
+                >
+                  <p className="text-sm font-semibold text-slate-900">
+                    {hoveredLocation.voltageLevel} / {hoveredLocation.substationCode}
+                  </p>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Legend */}
+          <div className="flex items-center justify-center gap-6 mt-4">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-red-500"></div>
+              <span className="text-sm text-slate-600">Mother Event</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-green-500"></div>
+              <span className="text-sm text-slate-600">Child Events</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tab Navigation */}
       <div className="border-b border-slate-200">
