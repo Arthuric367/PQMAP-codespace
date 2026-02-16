@@ -92,7 +92,11 @@ type VoltageDipBenchmarkEventMock = {
 
 
 
-type ReportingTab = 'pqSummary' | 'complianceSummary' | 'voltageCurrentProfile' | 'meterCommunication' | 'dynamicReport' | 'pqsisMaintenance' | 'meterRawData';
+type ReportingTab = 'pqSummary' | 'meterCommunication' | 'dynamicReport' | 'meterRawData';
+
+// Hidden tabs (code kept for reference):
+// - 'complianceSummary': Removed as per Feb 2026 - PQ Standards, Voltage Dip Benchmarking, Individual Harmonics, EN50160 hidden
+// - 'pqsisMaintenance': Moved to PQServices.tsx as third tab
 
 type MeterRawDataView = 'raw' | 'daily' | 'weekly';
 
@@ -5704,10 +5708,10 @@ export default function Reporting() {
     () =>
       [
         { id: 'pqSummary', label: 'PQ Summary' },
-        { id: 'complianceSummary', label: 'Compliance Summary' },
+        // { id: 'complianceSummary', label: 'Compliance Summary' }, // HIDDEN: Feb 2026 - Standards reports moved
         { id: 'meterCommunication', label: 'Meter Communication' },
         { id: 'dynamicReport', label: 'Dynamic Report' },
-        { id: 'pqsisMaintenance', label: 'PQSIS Maintenance' },
+        // { id: 'pqsisMaintenance', label: 'PQSIS Maintenance' }, // MOVED: To PQServices.tsx
         { id: 'meterRawData', label: 'Meter Raw Data' }
       ] as const,
     []
@@ -5916,13 +5920,17 @@ export default function Reporting() {
       <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
         {activeTab === 'pqSummary' && <PQSummaryTab selectedReportView={pqSummaryReportView} />}
 
+        {/* HIDDEN: Compliance Summary Tab (Feb 2026)
         {activeTab === 'complianceSummary' && <ComplianceSummaryTab selectedReportView={complianceReportView} />}
+        */}
 
         {activeTab === 'meterCommunication' && <MeterCommunicationTab />}
 
         {activeTab === 'dynamicReport' && <ReportBuilder events={[]} substations={[]} />}
 
+        {/* MOVED: PQSIS Maintenance moved to PQServices.tsx (Feb 2026)
         {activeTab === 'pqsisMaintenance' && <PQSISMaintenanceTab />}
+        */}
 
         {activeTab === 'meterRawData' && <MeterRawDataTab selectedView={meterRawDataView} />}
       </div>

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Wrench,
-  Plus,
   Search,
   Download,
   Filter,
@@ -20,6 +19,7 @@ import {
   Check,
   Edit2,
   Trash2,
+  Database,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Customer, PQServiceRecord, ServiceType } from '../types/database';
@@ -28,8 +28,62 @@ import ViewDetailsModal from './PQServices/ViewDetailsModal';
 import EventDetails from './EventManagement/EventDetails';
 import * as XLSX from 'xlsx';
 
+// PQSIS Types
+type PQSISRecord = {
+  caseNo: string;
+  customerName: string;
+  customerGroup: string;
+  requestDate: string;
+  serviceType: string;
+  service: string;
+  serviceCharging: number;
+  chargedDepartment: string;
+  serviceCompletionDate: string;
+  closedCase: string;
+  inProgressCase: string;
+  completedBeforeTargetDate: string;
+  plannedReplyDate: string;
+  actualReplyDate: string;
+  plannedReportIssueDate: string;
+  actualReportIssueDate: string;
+  idrNumber?: string;
+};
+
+type PQSISServiceType = 
+  | 'Harmonics' 
+  | 'Supply Enquiry' 
+  | 'Site Survey' 
+  | 'Technical Services' 
+  | 'PQ Site Investigation' 
+  | 'Enquiry' 
+  | 'All';
+
+type PQSISColumn = 
+  | 'Customer Group'
+  | 'Request Date'
+  | 'Service Type'
+  | 'Service'
+  | 'Service Charging'
+  | 'Charged Dept'
+  | 'Completion Date'
+  | 'Closed Case'
+  | 'In-Progress'
+  | 'Before Target'
+  | 'Planned Reply'
+  | 'Actual Reply'
+  | 'Planned Report'
+  | 'Actual Report'
+  | 'IDR Number';
+
+function classNames(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(' ');
+}
+
 export default function PQServices() {
   // State Management
+  // Main View State
+  const [mainView, setMainView] = useState<'customers' | 'pqsis'>('customers');
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<PQServiceRecord[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -55,7 +109,7 @@ export default function PQServices() {
   const [serviceToDelete, setServiceToDelete] = useState<PQServiceRecord | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
-  type EventDetailsTab = 'overview' | 'technical' | 'impact' | 'services' | 'children' | 'timeline' | 'idr';
+  type EventDetailsTab = 'overview' | 'technical' | 'impact' | 'services' | 'timeline' | 'idr';
   const [eventDetailsInitialTab, setEventDetailsInitialTab] = useState<EventDetailsTab>('overview');
   const [selectedEventData, setSelectedEventData] = useState<{
     event: any;
@@ -74,10 +128,29 @@ export default function PQServices() {
   const [showImportModal, setShowImportModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // PQSIS States
+  const [pqsisRecords, setPqsisRecords] = useState<PQSISRecord[]>([]);
+  const [filteredPqsisRecords, setFilteredPqsisRecords] = useState<PQSISRecord[]>([]);
+  const [pqsisServiceTypeFilter, setPqsisServiceTypeFilter] = useState<PQSISServiceType>('All');
+  const [pqsisIdrSearch, setPqsisIdrSearch] = useState('');
+  const [pqsisCustomerSearch, setPqsisCustomerSearch] = useState('');
+  const [pqsisSelectedColumns, setPqsisSelectedColumns] = useState<Set<PQSISColumn>>(new Set([
+    'Service Type',
+    'Service',
+    'Completion Date',
+    'Closed Case',
+    'In-Progress',
+    'Before Target',
+    'IDR Number'
+  ]));
+  const [pqsisCurrentPage, setPqsisCurrentPage] = useState(1);
+  const [pqsisItemsPerPage] = useState(50);
+
   // Load data
   useEffect(() => {
     loadCustomers();
     loadServices();
+    loadPQSISRecords();
   }, []);
 
   const loadCustomers = async () => {
@@ -144,6 +217,82 @@ export default function PQServices() {
       setLoading(false);
     }
   };
+
+  const loadPQSISRecords = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pq_service_records')
+        .select('*, customer:customers(name)')
+        .order('service_date', { ascending: false });
+
+      if (error) throw error;
+
+      // Transform service records to PQSIS records
+      const pqsisData: PQSISRecord[] = (data || []).map(record => ({
+        caseNo: record.case_number || record.id.toString(),
+        customerName: record.customer?.name || 'Unknown',
+        customerGroup: record.customer_group || 'N/A',
+        requestDate: new Date(record.service_date).toLocaleDateString(),
+        serviceType: record.service_type || 'N/A',
+        service: record.description || 'N/A',
+        serviceCharging: record.service_charging || 0,
+        chargedDepartment: record.charged_department || 'N/A',
+        serviceCompletionDate: record.completion_date 
+          ? new Date(record.completion_date).toLocaleDateString() 
+          : 'N/A',
+        closedCase: record.status === 'completed' ? 'Yes' : 'No',
+        inProgressCase: record.status === 'in_progress' ? 'Yes' : 'No',
+        completedBeforeTargetDate: record.completed_before_target ? 'Yes' : 'No',
+        plannedReplyDate: record.planned_reply_date 
+          ? new Date(record.planned_reply_date).toLocaleDateString() 
+          : 'N/A',
+        actualReplyDate: record.actual_reply_date 
+          ? new Date(record.actual_reply_date).toLocaleDateString() 
+          : 'N/A',
+        plannedReportIssueDate: record.planned_report_date 
+          ? new Date(record.planned_report_date).toLocaleDateString() 
+          : 'N/A',
+        actualReportIssueDate: record.actual_report_date 
+          ? new Date(record.actual_report_date).toLocaleDateString() 
+          : 'N/A',
+        idrNumber: record.idr_no || undefined,
+      }));
+
+      setPqsisRecords(pqsisData);
+    } catch (err) {
+      console.error('Error loading PQSIS records:', err);
+    }
+  };
+
+  // PQSIS Filtering
+  useEffect(() => {
+    let filtered = pqsisRecords;
+
+    // Service Type filter
+    if (pqsisServiceTypeFilter !== 'All') {
+      filtered = filtered.filter(r => r.serviceType === pqsisServiceTypeFilter);
+    }
+
+    // IDR search
+    if (pqsisIdrSearch) {
+      const search = pqsisIdrSearch.toLowerCase();
+      filtered = filtered.filter(r => 
+        r.idrNumber?.toLowerCase().includes(search)
+      );
+    }
+
+    // Customer search
+    if (pqsisCustomerSearch) {
+      const search = pqsisCustomerSearch.toLowerCase();
+      filtered = filtered.filter(r => 
+        r.customerName.toLowerCase().includes(search) ||
+        r.customerGroup.toLowerCase().includes(search)
+      );
+    }
+
+    setFilteredPqsisRecords(filtered);
+    setPqsisCurrentPage(1); // Reset to first page when filters change
+  }, [pqsisRecords, pqsisServiceTypeFilter, pqsisIdrSearch, pqsisCustomerSearch]);
 
   // Dashboard metrics
   const getDashboardMetrics = () => {
@@ -570,16 +719,56 @@ export default function PQServices() {
 
   const serviceTypeLabels = getServiceTypeLabels();
 
+  // Handle main view tab change
+  const handleMainViewChange = (view: 'customers' | 'pqsis') => {
+    setMainView(view);
+    if (view === 'pqsis') {
+      setSelectedCustomer(null); // Clear customer selection when switching to PQSIS
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
-      {/* Dashboard Section */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Wrench className="w-8 h-8 text-slate-700" />
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">PQ Services</h1>
-              <p className="text-slate-600 mt-1">Customer-centric power quality service logging</p>
+      {/* Main View Tabs */}
+      <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
+        <div className="border-b border-slate-200">
+          <div className="flex">
+            <button
+              onClick={() => handleMainViewChange('customers')}
+              className={`flex-1 px-8 py-4 font-bold text-lg transition-colors ${
+                mainView === 'customers'
+                  ? 'text-blue-600 border-b-4 border-blue-600 bg-blue-50'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              Customer Services
+            </button>
+            <button
+              onClick={() => handleMainViewChange('pqsis')}
+              className={`flex-1 px-8 py-4 font-bold text-lg transition-colors flex items-center justify-center gap-2 ${
+                mainView === 'pqsis'
+                  ? 'text-blue-600 border-b-4 border-blue-600 bg-blue-50'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <Database className="w-5 h-5" />
+              PQSIS Maintenance
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Customer Services View */}
+      {mainView === 'customers' && (
+        <>
+          {/* Dashboard Section */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Wrench className="w-8 h-8 text-slate-700" />
+                <div>
+                  <h1 className="text-3xl font-bold text-slate-900">PQ Services</h1>
+                  <p className="text-slate-600 mt-1">Customer-centric power quality service logging</p>
             </div>
           </div>
 
@@ -1651,6 +1840,593 @@ export default function PQServices() {
 
             {/* Footer */}
             <div className="border-t border-slate-200 px-6 py-4 flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setServiceToDelete(null);
+                }}
+                disabled={isDeleting}
+                className="px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!serviceToDelete?.id) return;
+
+                  setIsDeleting(true);
+                  try {
+                    const { error } = await supabase
+                      .from('pq_service_records')
+                      .delete()
+                      .eq('id', serviceToDelete.id);
+
+                    if (error) throw error;
+
+                    // Reload services
+                    await loadServices();
+                    setShowDeleteModal(false);
+                    setServiceToDelete(null);
+                    alert('PQ service record deleted successfully');
+                  } catch (error) {
+                    console.error('Error deleting service:', error);
+                    alert('Failed to delete service record. Please try again.');
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                disabled={isDeleting}
+                className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+        </>
+      )}
+
+      {/* PQSIS Maintenance View */}
+      {mainView === 'pqsis' && (
+        <div className="space-y-6">
+          {/* PQSIS Header */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <Database className="w-6 h-6 text-slate-700" />
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">PQSIS Maintenance</h2>
+                <p className="text-sm text-slate-600 mt-1">An overview of service records uploaded from PQSIS</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    const exportData = filteredPqsisRecords.map(r => ({
+                      'Case No.': r.caseNo,
+                      'Customer Name': r.customerName,
+                      'Customer Group': r.customerGroup,
+                      'Request Date': r.requestDate,
+                      'Service Type': r.serviceType,
+                      'Service': r.service,
+                      'Service Charging (k)': r.serviceCharging,
+                      'Charged Department': r.chargedDepartment,
+                      'Service Completion Date': r.serviceCompletionDate,
+                      'Closed Case': r.closedCase,
+                      'In-Progress Case': r.inProgressCase,
+                      'Completed before Target Date': r.completedBeforeTargetDate,
+                      'Planned Reply Date': r.plannedReplyDate,
+                      'Actual Reply Date': r.actualReplyDate,
+                      'Planned Report Issue Date': r.plannedReportIssueDate,
+                      'Actual Report Issue Date': r.actualReportIssueDate,
+                      'IDR Number': r.idrNumber || ''
+                    }));
+
+                    const wb = XLSX.utils.book_new();
+                    
+                    const summary = [
+                      ['PQSIS Export Summary'],
+                      ['Export Date:', new Date().toLocaleDateString()],
+                      ['Service Type Filter:', pqsisServiceTypeFilter],
+                      ['IDR Search:', pqsisIdrSearch || 'None'],
+                      ['Customer Search:', pqsisCustomerSearch || 'None'],
+                      ['Total Records:', filteredPqsisRecords.length.toString()],
+                      [],
+                    ];
+
+                    const ws = XLSX.utils.aoa_to_sheet(summary);
+                    XLSX.utils.sheet_add_json(ws, exportData, { origin: -1 });
+                    XLSX.utils.book_append_sheet(wb, ws, 'PQSIS Data');
+
+                    const fileName = `PQSIS_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+                    XLSX.writeFile(wb, fileName);
+                  } catch (error) {
+                    console.error('Export error:', error);
+                    alert('Failed to export data');
+                  }
+                }}
+                disabled={filteredPqsisRecords.length === 0}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50"
+              >
+                <Download className="w-4 h-4" />
+                Export to Excel
+              </button>
+            </div>
+          </div>
+
+          {/* Select Columns Section */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
+            <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+              <Database className="w-4 h-4" />
+              Select Columns to Display:
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+              {['Customer Group', 'Request Date', 'Service Type', 'Service', 'Service Charging', 'Charged Dept', 'Completion Date', 'Closed Case', 'In-Progress', 'Before Target', 'Planned Reply', 'Actual Reply', 'Planned Report', 'Actual Report', 'IDR Number'].map((column) => (
+                <label
+                  key={column}
+                  className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg hover:bg-blue-50 cursor-pointer transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={pqsisSelectedColumns.has(column as PQSISColumn)}
+                    onChange={() => {
+                      setPqsisSelectedColumns(prev => {
+                        const next = new Set(prev);
+                        if (next.has(column as PQSISColumn)) {
+                          next.delete(column as PQSISColumn);
+                        } else {
+                          next.add(column as PQSISColumn);
+                        }
+                        return next;
+                      });
+                    }}
+                    className="w-4 h-4 text-blue-600 rounded"
+                  />
+                  <span className="text-xs font-medium text-slate-700">{column}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <Filter className="w-4 h-4 text-slate-700" />
+              <h3 className="text-sm font-bold text-slate-900">Filter</h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Service Type</label>
+                <select
+                  value={pqsisServiceTypeFilter}
+                  onChange={(e) => setPqsisServiceTypeFilter(e.target.value as PQSISServiceType)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                >
+                  <option value="All">All Types</option>
+                  <option value="Harmonics">Harmonics</option>
+                  <option value="Supply Enquiry">Supply Enquiry</option>
+                  <option value="Site Survey">Site Survey</option>
+                  <option value="Technical Services">Technical Services</option>
+                  <option value="PQ Site Investigation">PQ Site Investigation</option>
+                  <option value="Enquiry">Enquiry</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">IDR Number</label>
+                <input
+                  type="text"
+                  value={pqsisIdrSearch}
+                  onChange={(e) => setPqsisIdrSearch(e.target.value)}
+                  placeholder="Search IDR..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Customer Name</label>
+                <input
+                  type="text"
+                  value={pqsisCustomerSearch}
+                  onChange={(e) => setPqsisCustomerSearch(e.target.value)}
+                  placeholder="Search customer..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-sm text-slate-600">
+                Showing <span className="font-bold text-slate-900">{filteredPqsisRecords.length}</span> of{' '}
+                <span className="font-bold text-slate-900">{pqsisRecords.length}</span> records
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setPqsisServiceTypeFilter('All');
+                  setPqsisIdrSearch('');
+                  setPqsisCustomerSearch('');
+                }}
+                className="text-sm text-blue-600 hover:text-blue-700 font-semibold"
+              >
+                Clear All Filters
+              </button>
+            </div>
+          </div>
+
+          {/* Results Table */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-900 text-white">
+                  <tr>
+                    <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Case No.</th>
+                    <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Customer Name</th>
+                    {pqsisSelectedColumns.has('Customer Group') && (
+                      <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Customer Group</th>
+                    )}
+                    {pqsisSelectedColumns.has('Request Date') && (
+                      <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Request Date</th>
+                    )}
+                    {pqsisSelectedColumns.has('Service Type') && (
+                      <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Service Type</th>
+                    )}
+                    {pqsisSelectedColumns.has('Service') && (
+                      <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Service</th>
+                    )}
+                    {pqsisSelectedColumns.has('Service Charging') && (
+                      <th className="px-3 py-3 text-right font-bold whitespace-nowrap">Service Charging (k)</th>
+                    )}
+                    {pqsisSelectedColumns.has('Charged Dept') && (
+                      <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Charged Dept</th>
+                    )}
+                    {pqsisSelectedColumns.has('Completion Date') && (
+                      <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Completion Date</th>
+                    )}
+                    {pqsisSelectedColumns.has('Closed Case') && (
+                      <th className="px-3 py-3 text-center font-bold whitespace-nowrap">Closed Case</th>
+                    )}
+                    {pqsisSelectedColumns.has('In-Progress') && (
+                      <th className="px-3 py-3 text-center font-bold whitespace-nowrap">In-Progress</th>
+                    )}
+                    {pqsisSelectedColumns.has('Before Target') && (
+                      <th className="px-3 py-3 text-center font-bold whitespace-nowrap">Before Target</th>
+                    )}
+                    {pqsisSelectedColumns.has('Planned Reply') && (
+                      <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Planned Reply</th>
+                    )}
+                    {pqsisSelectedColumns.has('Actual Reply') && (
+                      <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Actual Reply</th>
+                    )}
+                    {pqsisSelectedColumns.has('Planned Report') && (
+                      <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Planned Report</th>
+                    )}
+                    {pqsisSelectedColumns.has('Actual Report') && (
+                      <th className="px-3 py-3 text-left font-bold whitespace-nowrap">Actual Report</th>
+                    )}
+                    {pqsisSelectedColumns.has('IDR Number') && (
+                      <th className="px-3 py-3 text-left font-bold whitespace-nowrap">IDR Number</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredPqsisRecords.slice((pqsisCurrentPage - 1) * pqsisItemsPerPage, pqsisCurrentPage * pqsisItemsPerPage).length === 0 ? (
+                    <tr>
+                      <td colSpan={17} className="px-3 py-8 text-center text-slate-500">
+                        <Database className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                        <p>No PQSIS records found. Upload a CSV file to get started.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredPqsisRecords.slice((pqsisCurrentPage - 1) * pqsisItemsPerPage, pqsisCurrentPage * pqsisItemsPerPage).map((record, idx) => (
+                      <tr key={idx} className="hover:bg-blue-50">
+                        <td className="px-3 py-2 text-slate-700 font-semibold">{record.caseNo}</td>
+                        <td className="px-3 py-2 text-slate-700">{record.customerName}</td>
+                        {pqsisSelectedColumns.has('Customer Group') && (
+                          <td className="px-3 py-2 text-slate-700">{record.customerGroup}</td>
+                        )}
+                        {pqsisSelectedColumns.has('Request Date') && (
+                          <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.requestDate}</td>
+                        )}
+                        {pqsisSelectedColumns.has('Service Type') && (
+                          <td className="px-3 py-2 text-slate-700">{record.serviceType}</td>
+                        )}
+                        {pqsisSelectedColumns.has('Service') && (
+                          <td className="px-3 py-2 text-slate-700">{record.service}</td>
+                        )}
+                        {pqsisSelectedColumns.has('Service Charging') && (
+                          <td className="px-3 py-2 text-slate-700 text-right">{record.serviceCharging.toFixed(1)}</td>
+                        )}
+                        {pqsisSelectedColumns.has('Charged Dept') && (
+                          <td className="px-3 py-2 text-slate-700">{record.chargedDepartment}</td>
+                        )}
+                        {pqsisSelectedColumns.has('Completion Date') && (
+                          <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.serviceCompletionDate}</td>
+                        )}
+                        {pqsisSelectedColumns.has('Closed Case') && (
+                          <td className="px-3 py-2 text-center">
+                            <span className={classNames(
+                              'px-2 py-1 rounded-full text-xs font-semibold',
+                              record.closedCase === 'Yes' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'
+                            )}>
+                              {record.closedCase}
+                            </span>
+                          </td>
+                        )}
+                        {pqsisSelectedColumns.has('In-Progress') && (
+                          <td className="px-3 py-2 text-center">
+                            <span className={classNames(
+                              'px-2 py-1 rounded-full text-xs font-semibold',
+                              record.inProgressCase === 'Yes' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
+                            )}>
+                              {record.inProgressCase}
+                            </span>
+                          </td>
+                        )}
+                        {pqsisSelectedColumns.has('Before Target') && (
+                          <td className="px-3 py-2 text-center">
+                            <span className={classNames(
+                              'px-2 py-1 rounded-full text-xs font-semibold',
+                              record.completedBeforeTargetDate === 'Yes' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                            )}>
+                              {record.completedBeforeTargetDate}
+                            </span>
+                          </td>
+                        )}
+                        {pqsisSelectedColumns.has('Planned Reply') && (
+                          <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.plannedReplyDate}</td>
+                        )}
+                        {pqsisSelectedColumns.has('Actual Reply') && (
+                          <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.actualReplyDate}</td>
+                        )}
+                        {pqsisSelectedColumns.has('Planned Report') && (
+                          <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.plannedReportIssueDate}</td>
+                        )}
+                        {pqsisSelectedColumns.has('Actual Report') && (
+                          <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{record.actualReportIssueDate}</td>
+                        )}
+                        {pqsisSelectedColumns.has('IDR Number') && (
+                          <td className="px-3 py-2 text-slate-700 font-mono text-xs">{record.idrNumber || '-'}</td>
+                        )}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {Math.ceil(filteredPqsisRecords.length / pqsisItemsPerPage) > 1 && (
+              <div className="px-4 py-4 border-t border-slate-200 flex items-center justify-between">
+                <div className="text-sm text-slate-600">
+                  Page {pqsisCurrentPage} of {Math.ceil(filteredPqsisRecords.length / pqsisItemsPerPage)}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPqsisCurrentPage(Math.max(1, pqsisCurrentPage - 1))}
+                    disabled={pqsisCurrentPage === 1}
+                    className="px-3 py-1 border border-slate-300 rounded-lg text-sm font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPqsisCurrentPage(Math.min(Math.ceil(filteredPqsisRecords.length / pqsisItemsPerPage), pqsisCurrentPage + 1))}
+                    disabled={pqsisCurrentPage === Math.ceil(filteredPqsisRecords.length / pqsisItemsPerPage)}
+                    className="px-3 py-1 border border-slate-300 rounded-lg text-sm font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modals (shared between both views) */}
+      {selectedCustomer && (
+        <EditServiceModal
+          isOpen={showEditModal}
+          onClose={() => {
+            setShowEditModal(false);
+            setSelectedService(null);
+          }}
+          onSuccess={() => {
+            loadServices();
+            setShowEditModal(false);
+            setSelectedService(null);
+          }}
+          customerId={selectedCustomer.id}
+          customerName={selectedCustomer.name}
+          serviceToEdit={selectedService}
+        />
+      )}
+
+      <ViewDetailsModal
+        isOpen={showDetailsModal}
+        onClose={() => {
+          setShowDetailsModal(false);
+          setSelectedService(null);
+        }}
+        service={selectedService}
+        onViewEvent={handleViewEvent}
+      />
+
+      {/* Event Details Modal */}
+      {showEventDetailsModal && selectedEventData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl max-h-[95vh] flex flex-col">
+            <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-6 rounded-t-2xl flex items-center justify-between flex-shrink-0">
+              <h2 className="text-xl font-bold">Event Details</h2>
+              <button
+                onClick={() => {
+                  console.log('❌ [PQServices] Closing event details modal');
+                  setShowEventDetailsModal(false);
+                  setSelectedEventData(null);
+                }}
+                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            {/* Event Details Component */}
+            <div className="p-6">
+              <EventDetails
+                event={selectedEventData.event}
+                substation={selectedEventData.substation}
+                impacts={selectedEventData.impacts}
+                initialTab={eventDetailsInitialTab}
+                onStatusChange={async (eventId, status) => {
+                  console.log('🔄 [PQServices] Status change requested:', { eventId, status });
+                  // Reload services after status change
+                  await loadServices();
+                }}
+                onEventDeleted={() => {
+                  console.log('🗑️ [PQServices] Event deleted, reloading services');
+                  setShowEventDetailsModal(false);
+                  setSelectedEventData(null);
+                  setEventDetailsInitialTab('overview');
+                  loadServices();
+                }}
+                onEventUpdated={() => {
+                  console.log('🔄 [PQServices] Event updated, reloading services');
+                  loadServices();
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PQSIS Import Results Modal */}
+      {showImportModal && importResults && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 rounded-t-2xl flex-shrink-0">
+              <h2 className="text-2xl font-bold">Import Results</h2>
+              <p className="text-blue-100 mt-1">PQSIS CSV Import Summary</p>
+            </div>
+
+            {/* Content - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <Check className="w-8 h-8 text-green-600" />
+                    <div>
+                      <p className="text-sm text-green-700 font-medium">Successful</p>
+                      <p className="text-3xl font-bold text-green-900">{importResults.success}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <X className="w-8 h-8 text-red-600" />
+                    <div>
+                      <p className="text-sm text-red-700 font-medium">Failed</p>
+                      <p className="text-3xl font-bold text-red-900">{importResults.failed}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Error Details */}
+              {importResults.errors.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-orange-500" />
+                    Error Details ({importResults.errors.length})
+                  </h3>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {importResults.errors.map((error, idx) => (
+                      <div key={idx} className="bg-white border border-slate-200 rounded-lg p-3 text-sm">
+                        <p className="font-semibold text-slate-900">Row {error.row}</p>
+                        <p className="text-red-600 mt-1">{error.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Success Message */}
+              {importResults.success > 0 && importResults.failed === 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+                  <Check className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-bold text-green-900">Import Completed Successfully!</p>
+                    <p className="text-sm text-green-700 mt-1">
+                      All {importResults.success} records have been imported to the database.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-slate-200 p-4 flex justify-end flex-shrink-0">
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportResults(null);
+                }}
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Service Modal */}
+      {showDeleteModal && serviceToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-red-600 to-red-700 text-white p-6 rounded-t-2xl">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <AlertTriangle className="w-6 h-6" />
+                Delete Service Record
+              </h2>
+              <p className="text-red-100 mt-1 text-sm">This action cannot be undone</p>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <p className="text-slate-700 mb-4">
+                Are you sure you want to delete this PQ service record?
+              </p>
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                <p className="text-sm text-slate-600">Customer</p>
+                <p className="font-semibold text-slate-900">{serviceToDelete.customer?.name}</p>
+                <p className="text-sm text-slate-600 mt-2">Service Date</p>
+                <p className="font-semibold text-slate-900">
+                  {new Date(serviceToDelete.service_date).toLocaleDateString('en-GB')}
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-slate-200 p-4 flex justify-end gap-3">
               <button
                 onClick={() => {
                   setShowDeleteModal(false);
