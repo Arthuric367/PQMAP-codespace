@@ -42,6 +42,8 @@ export default function SubstationMap({ substations, events }: SubstationMapProp
   const [isExporting, setIsExporting] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   
+  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   const [filters, setFilters] = useState<SubstationMapFilters>(() => {
     const saved = localStorage.getItem('substationMapFilters');
     if (saved) {
@@ -76,6 +78,15 @@ export default function SubstationMap({ substations, events }: SubstationMapProp
   useEffect(() => {
     localStorage.setItem('substationMapFilters', JSON.stringify(filters));
   }, [filters]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -202,8 +213,39 @@ export default function SubstationMap({ substations, events }: SubstationMapProp
   };
 
   const handleBubbleHover = (substationId: string | null) => {
-    setHoveredSubstation(substationId);
-    setShowTooltipPanel(substationId !== null);
+    // Clear any existing timeout
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+    
+    if (substationId !== null) {
+      // Immediately show tooltip on hover
+      setHoveredSubstation(substationId);
+      setShowTooltipPanel(true);
+    } else {
+      // Delay hiding tooltip by 300ms
+      hideTimeoutRef.current = setTimeout(() => {
+        setHoveredSubstation(null);
+        setShowTooltipPanel(false);
+      }, 300);
+    }
+  };
+
+  const handleTooltipMouseEnter = () => {
+    // Cancel hide when mouse enters tooltip panel
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+  };
+
+  const handleTooltipMouseLeave = () => {
+    // Delay hiding tooltip when mouse leaves panel
+    hideTimeoutRef.current = setTimeout(() => {
+      setHoveredSubstation(null);
+      setShowTooltipPanel(false);
+    }, 300);
   };
 
   const handleExportMap = async () => {
@@ -320,7 +362,12 @@ export default function SubstationMap({ substations, events }: SubstationMapProp
 
           {/* Fixed-Position Tooltip Panel */}
           {showTooltipPanel && hoveredBubble && hoveredSubstationData && (
-            <div className="absolute top-4 right-4 bg-white rounded-lg shadow-2xl border border-slate-200 p-4 z-20" style={{ width: '800px' }}>
+            <div 
+              className="absolute top-4 right-4 bg-white rounded-lg shadow-2xl border border-slate-200 p-4 z-20" 
+              style={{ width: '800px' }}
+              onMouseEnter={handleTooltipMouseEnter}
+              onMouseLeave={handleTooltipMouseLeave}
+            >
               {/* Header */}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
@@ -334,7 +381,14 @@ export default function SubstationMap({ substations, events }: SubstationMapProp
                   </div>
                 </div>
                 <button
-                  onClick={() => setShowTooltipPanel(false)}
+                  onClick={() => {
+                    if (hideTimeoutRef.current) {
+                      clearTimeout(hideTimeoutRef.current);
+                      hideTimeoutRef.current = null;
+                    }
+                    setShowTooltipPanel(false);
+                    setHoveredSubstation(null);
+                  }}
                   className="p-1 hover:bg-slate-100 rounded"
                 >
                   <X className="w-4 h-4 text-slate-400" />
