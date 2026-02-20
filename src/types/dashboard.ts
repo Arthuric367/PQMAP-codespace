@@ -97,8 +97,8 @@ export const WIDGET_CATALOG: Record<WidgetId, WidgetConfig> = {
   },
   'affected-equipment-chart': {
     id: 'affected-equipment-chart',
-    title: 'Affected Equipment',
-    description: 'Equipment failure analysis by type',
+    title: 'Equipment Type Analysis',
+    description: 'Top equipment types analysis from IDR records with percentage breakdown, total event count, and filters (date range, child events, false events)',
     defaultSize: 'half',
     locked: true,
   },

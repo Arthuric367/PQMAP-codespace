@@ -14,6 +14,7 @@ import RootCauseChart from './RootCauseChart';
 import InsightChart from './InsightChart';
 import SARFI70Monitor from './SARFI70Monitor';
 import AffectedCustomerChart from './AffectedCustomerChart';
+import AffectedEquipmentChart from './AffectedEquipmentChart';
 
 interface DashboardProps {
   onNavigateToMeter?: (meterId: string) => void;
@@ -140,6 +141,7 @@ export default function Dashboard({ onNavigateToMeter, highlightWidgetId }: Dash
   };
 
   const renderWidget = (widgetId: WidgetId) => {
+    console.log(`[Dashboard] 🎨 renderWidget called for: ${widgetId}`);
     const isHighlighted = highlightWidgetId === widgetId;
     const highlightClass = isHighlighted 
       ? 'ring-4 ring-blue-500 ring-opacity-50 shadow-2xl transition-all duration-300' 
@@ -161,11 +163,31 @@ export default function Dashboard({ onNavigateToMeter, highlightWidgetId }: Dash
           return <InsightChart events={events} />;
         case 'affected-customer-chart':
           return <AffectedCustomerChart />;
+        case 'affected-equipment-chart':
+          console.log('[Dashboard] 📊 Rendering affected-equipment-chart widget');
+          return (
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg flex items-center justify-center">
+                  <span className="text-white text-lg">📊</span>
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">Equipment Type Analysis</h3>
+              </div>
+              <AffectedEquipmentChart
+                startDate={undefined}
+                endDate={undefined}
+                includeChildEvents={true}
+                includeFalseEvents={false}
+                topN={10}
+              />
+            </div>
+          );
         case 'event-list':
           return <EventList events={events} substations={substations} />;
         case 'sarfi-70-monitor':
           return <SARFI70Monitor events={events} substations={substations} />;
         default:
+          console.warn('[Dashboard] ⚠️ Unknown widget ID:', widgetId);
           return null;
       }
     })();
@@ -214,7 +236,25 @@ export default function Dashboard({ onNavigateToMeter, highlightWidgetId }: Dash
     .filter(w => w.visible)
     .sort((a, b) => a.row - b.row);
 
+  console.log('[Dashboard] Total widgets in layout:', layout.widgets.length);
+  console.log('[Dashboard] Layout widgets:', layout.widgets.map(w => ({ id: w.id, visible: w.visible, row: w.row, width: w.width })));
   console.log('[Dashboard] Rendering visible widgets:', visibleWidgets);
+  
+  // Debug: Check if affected-equipment-chart exists
+  const affectedEquipmentWidget = layout.widgets.find(w => w.id === 'affected-equipment-chart');
+  if (affectedEquipmentWidget) {
+    console.log('[Dashboard] 🔍 affected-equipment-chart found:', {
+      visible: affectedEquipmentWidget.visible,
+      row: affectedEquipmentWidget.row,
+      width: affectedEquipmentWidget.width,
+      col: affectedEquipmentWidget.col
+    });
+    if (!affectedEquipmentWidget.visible) {
+      console.warn('[Dashboard] ⚠️ affected-equipment-chart is NOT VISIBLE in layout');
+    }
+  } else {
+    console.warn('[Dashboard] ⚠️ affected-equipment-chart NOT FOUND in layout');
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -269,6 +309,17 @@ export default function Dashboard({ onNavigateToMeter, highlightWidgetId }: Dash
         }
         
         console.log(`[Dashboard] Rendering ${widget.id} as single widget (width: ${widget.width === 12 ? 'full' : 'half'})`);
+        
+        // If it's a half-width widget without a pair, render it in a grid so it only takes half width
+        if (isHalfWidth) {
+          return (
+            <div key={widget.id} className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <div>{renderWidget(widget.id)}</div>
+            </div>
+          );
+        }
+        
+        // Full-width widget
         return <div key={widget.id}>{renderWidget(widget.id)}</div>;
       })}
     </div>
