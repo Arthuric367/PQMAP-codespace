@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Plus, Trash2, Save, AlertCircle, Activity } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Substation, PQMeter, SeverityLevel } from '../../types/database';
@@ -31,6 +32,8 @@ export default function CreateVoltageDipWorkspace() {
   const [meters, setMeters] = useState<PQMeter[]>([]);
   const [meterSearchTerm, setMeterSearchTerm] = useState<Record<string, string>>({});
   const [showMeterDropdown, setShowMeterDropdown] = useState<Record<string, boolean>>({});
+  const [dropdownPosition, setDropdownPosition] = useState<Record<string, { top: number; left: number; width: number }>>({});
+  const meterInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [systemFlags, setSystemFlags] = useState<SystemFlags>({
@@ -49,7 +52,8 @@ export default function CreateVoltageDipWorkspace() {
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (!target.closest('.meter-dropdown-container')) {
+      // Check if click is outside both the input container and the portal dropdown
+      if (!target.closest('.meter-dropdown-container') && !target.closest('.meter-dropdown-portal')) {
         setShowMeterDropdown({});
       }
     };
@@ -485,53 +489,76 @@ export default function CreateVoltageDipWorkspace() {
                   </td>
                   <td className="px-3 py-3 relative meter-dropdown-container">
                     <input
+                      ref={(el) => { meterInputRefs.current[row.id] = el; }}
                       type="text"
                       value={meterSearchTerm[row.id] || meters.find(m => m.id === row.meter_id)?.meter_id || ''}
                       onChange={(e) => {
                         setMeterSearchTerm({ ...meterSearchTerm, [row.id]: e.target.value });
                         setShowMeterDropdown({ ...showMeterDropdown, [row.id]: true });
+                        const rect = meterInputRefs.current[row.id]?.getBoundingClientRect();
+                        if (rect) {
+                          setDropdownPosition({ ...dropdownPosition, [row.id]: { top: rect.bottom + window.scrollY, left: rect.left + window.scrollX, width: rect.width } });
+                        }
                       }}
-                      onFocus={() => setShowMeterDropdown({ ...showMeterDropdown, [row.id]: true })}
+                      onFocus={() => {
+                        setShowMeterDropdown({ ...showMeterDropdown, [row.id]: true });
+                        const rect = meterInputRefs.current[row.id]?.getBoundingClientRect();
+                        if (rect) {
+                          setDropdownPosition({ ...dropdownPosition, [row.id]: { top: rect.bottom + window.scrollY, left: rect.left + window.scrollX, width: rect.width } });
+                        }
+                      }}
                       placeholder="Search meter..."
                       className={`w-44 px-2 py-1 border rounded focus:ring-2 focus:ring-blue-500 ${
                         validationErrors[`${row.id}_meter_id`] ? 'border-red-500' : 'border-slate-300'
                       }`}
                     />
-                    {showMeterDropdown[row.id] && (
-                      <div className="absolute z-10 mt-1 w-64 bg-white border border-slate-300 rounded shadow-lg max-h-48 overflow-y-auto">
+                    {showMeterDropdown[row.id] && dropdownPosition[row.id] && createPortal(
+                      <div 
+                        className="meter-dropdown-portal bg-white border border-slate-300 rounded shadow-lg max-h-96 overflow-y-auto"
+                        style={{ 
+                          position: 'fixed',
+                          top: `${dropdownPosition[row.id].top}px`,
+                          left: `${dropdownPosition[row.id].left}px`,
+                          width: '256px',
+                          zIndex: 9999,
+                          backgroundColor: 'white',
+                          boxShadow: '0 10px 25px rgba(0,0,0,0.3)'
+                        }}
+                      >
                         {meters
-                          .filter(m => {
-                            // Filter by substation if selected, otherwise show all
-                            const matchesSubstation = !row.substation_id || m.substation_id === row.substation_id;
-                            // Filter by search term
-                            const searchTerm = (meterSearchTerm[row.id] || '').toLowerCase();
-                            const matchesSearch = !searchTerm || m.meter_id.toLowerCase().includes(searchTerm);
-                            return matchesSubstation && matchesSearch;
-                          })
-                          .map(m => (
-                            <button
-                              key={m.id}
-                              type="button"
-                              onClick={() => {
-                                updateRow(row.id, 'meter_id', m.id);
-                                setMeterSearchTerm({ ...meterSearchTerm, [row.id]: m.meter_id });
-                                setShowMeterDropdown({ ...showMeterDropdown, [row.id]: false });
-                              }}
-                              className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm"
-                            >
-                              {m.meter_id}
-                            </button>
-                          ))}
-                        {meters.filter(m => {
+                        .filter(m => {
+                          // Filter by substation if selected, otherwise show all
                           const matchesSubstation = !row.substation_id || m.substation_id === row.substation_id;
+                          // Filter by search term
                           const searchTerm = (meterSearchTerm[row.id] || '').toLowerCase();
                           const matchesSearch = !searchTerm || m.meter_id.toLowerCase().includes(searchTerm);
                           return matchesSubstation && matchesSearch;
-                        }).length === 0 && (
-                          <div className="px-3 py-2 text-sm text-slate-500 italic">No meters found</div>
-                        )}
-                      </div>
-                    )}
+                        })
+                        .map(m => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => {
+                              updateRow(row.id, 'meter_id', m.id);
+                              setMeterSearchTerm({ ...meterSearchTerm, [row.id]: m.meter_id });
+                              setShowMeterDropdown({ ...showMeterDropdown, [row.id]: false });
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm"
+                          >
+                            {m.meter_id}
+                          </button>
+                        ))}
+                      {meters.filter(m => {
+                        const matchesSubstation = !row.substation_id || m.substation_id === row.substation_id;
+                        const searchTerm = (meterSearchTerm[row.id] || '').toLowerCase();
+                        const matchesSearch = !searchTerm || m.meter_id.toLowerCase().includes(searchTerm);
+                        return matchesSubstation && matchesSearch;
+                      }).length === 0 && (
+                        <div className="px-3 py-2 text-sm text-slate-500 italic">No meters found</div>
+                      )}
+                    </div>,
+                    document.body
+                  )}
                   </td>
                   <td className="px-3 py-3">
                     <input

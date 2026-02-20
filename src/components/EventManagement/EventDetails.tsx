@@ -82,6 +82,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
   const [matchedIDRs, setMatchedIDRs] = useState<IDRRecord[]>([]);
   const [selectedMatchedIDRId, setSelectedMatchedIDRId] = useState<string | null>(null);
   const [searchingIDRs, setSearchingIDRs] = useState(false);
+  const [availableOutageTypes, setAvailableOutageTypes] = useState<string[]>([]);
   
   const [idrFormData, setIDRFormData] = useState({
     idr_no: '',
@@ -322,6 +323,31 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     loadUsedPsbgOptions();
   }, []);
 
+  // Load available outage types when Match IDR panel opens
+  useEffect(() => {
+    const loadOutageTypes = async () => {
+      if (!showMatchIDRPanel) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('idr_records')
+          .select('outage_type')
+          .not('outage_type', 'is', null);
+
+        if (error) throw error;
+
+        // Extract unique outage types
+        const uniqueTypes = [...new Set(data.map(record => record.outage_type).filter(Boolean))] as string[];
+        setAvailableOutageTypes(uniqueTypes.sort());
+        console.log('✅ Loaded outage types:', uniqueTypes);
+      } catch (error) {
+        console.error('Error loading outage types:', error);
+      }
+    };
+
+    loadOutageTypes();
+  }, [showMatchIDRPanel]);
+
   const loadIDRRecord = async (eventId: string) => {
     setLoadingIDR(true);
     try {
@@ -473,7 +499,15 @@ export default function EventDetails({ event: initialEvent, substation: initialS
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      const { error } = await supabase
+      // Get the selected IDR record to retrieve idr_no
+      const selectedIDR = matchedIDRs.find(idr => idr.id === selectedMatchedIDRId);
+      if (!selectedIDR) {
+        toast.error('Selected IDR not found');
+        return;
+      }
+
+      // Update idr_records table - link IDR to event
+      const { error: idrError } = await supabase
         .from('idr_records')
         .update({
           event_id: currentEvent.id,
@@ -483,12 +517,38 @@ export default function EventDetails({ event: initialEvent, substation: initialS
         })
         .eq('id', selectedMatchedIDRId);
 
-      if (error) throw error;
+      if (idrError) throw idrError;
+
+      // Update pqevents table - set idr_no
+      const { error: eventError } = await supabase
+        .from('pqevents')
+        .update({
+          idr_no: selectedIDR.idr_no,
+        })
+        .eq('id', currentEvent.id);
+
+      if (eventError) throw eventError;
+
+      // Log audit trail
+      await EventAuditService.logIDRUpdated(
+        currentEvent.id,
+        ['idr_no', 'event_id', 'is_mapped'],
+        {
+          idr_no: { from: null, to: selectedIDR.idr_no },
+          event_id: { from: null, to: currentEvent.id },
+          is_mapped: { from: false, to: true }
+        }
+      );
 
       toast.success('IDR matched and mapped to event successfully');
       setShowMatchIDRPanel(false);
       handleResetMatchFilters();
       await loadIDRRecord(currentEvent.id);
+      
+      // Notify parent component to refresh event data
+      if (onEventUpdated) {
+        onEventUpdated();
+      }
     } catch (error: any) {
       console.error('Error matching IDR:', error);
       toast.error('Failed to match IDR to event');
@@ -3188,10 +3248,15 @@ export default function EventDetails({ event: initialEvent, substation: initialS
               <div className="flex items-center gap-2">
                 {!isEditingIDR ? (
                   <>
-                    {/* Match IDR Button */}
-                    {!idrRecord && (
+                    {/* Match IDR Button - Show for voltage_dip events (with or without IDR) */}
+                    {currentEvent.event_type === 'voltage_dip' && (
                       <button
-                        onClick={() => setShowMatchIDRPanel(true)}
+                        onClick={() => {
+                          console.log('🔍 Match IDR button clicked');
+                          console.log('Current showMatchIDRPanel state:', showMatchIDRPanel);
+                          setShowMatchIDRPanel(true);
+                          console.log('Setting showMatchIDRPanel to true');
+                        }}
                         className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all text-sm font-semibold shadow-sm"
                       >
                         <FileText className="w-4 h-4" />
@@ -3199,8 +3264,8 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                       </button>
                     )}
 
-                    {/* Export Button */}
-                    {idrRecord && (
+                    {/* Export Button - Show for voltage_dip events WITH IDR */}
+                    {idrRecord && currentEvent.event_type === 'voltage_dip' && (
                       <button
                         onClick={async () => {
                           try {
@@ -4044,24 +4109,24 @@ export default function EventDetails({ event: initialEvent, substation: initialS
           </div>
         </div>
       )}
-    </div>
-  );
 
-  {/* PSBG Config Modal */}
-  {showPSBGConfig && (
-    <PSBGConfigModal
-      isOpen={showPSBGConfig}
-      onClose={() => setShowPSBGConfig(false)}
-      onSave={setPsbgOptions}
-      currentOptions={psbgOptions}
-      usedOptions={usedPsbgOptions}
-    />
-  )}
+      {/* PSBG Config Modal */}
+      {showPSBGConfig && (
+        <PSBGConfigModal
+          isOpen={showPSBGConfig}
+          onClose={() => setShowPSBGConfig(false)}
+          onSave={setPsbgOptions}
+          currentOptions={psbgOptions}
+          usedOptions={usedPsbgOptions}
+        />
+      )}
 
-  {/* Match IDR Panel Modal */}
-  {showMatchIDRPanel && (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col">
+      {/* Match IDR Panel Modal */}
+      {showMatchIDRPanel && (() => {
+        console.log('🎯 Rendering Match IDR Panel Modal - showMatchIDRPanel:', showMatchIDRPanel);
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <div>
@@ -4138,9 +4203,9 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="ALL">ALL</option>
-                <option value="Momentary">Momentary</option>
-                <option value="Sustained">Sustained</option>
-                <option value="Voltage Dip">Voltage Dip</option>
+                {availableOutageTypes.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -4308,5 +4373,8 @@ export default function EventDetails({ event: initialEvent, substation: initialS
         </div>
       </div>
     </div>
-  )}
+    );
+  })()}
+    </div>
+  );
 }
