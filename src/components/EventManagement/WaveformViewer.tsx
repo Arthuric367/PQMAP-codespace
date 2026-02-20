@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { ZoomIn, ZoomOut, RotateCcw, Activity } from 'lucide-react';
+import HarmonicSpectrumChart from './HarmonicSpectrumChart';
 
 interface WaveformData {
   timestamp: string;
@@ -271,57 +272,9 @@ const WaveformViewer: React.FC<WaveformViewerProps> = ({ csvData, event, eventTy
           </div>
         </div>
 
-        {/* Harmonic Charts Placeholder */}
+        {/* Harmonic Spectrum Chart */}
         <div className="p-6">
-          <div className="space-y-6">
-            {/* Channel Ua */}
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
-                <h4 className="text-sm font-semibold text-orange-600">Channel Ua - {harmonicView.toUpperCase()}</h4>
-              </div>
-              <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-lg p-12">
-                <p className="text-center text-slate-500 font-medium">
-                  📊 Harmonic histogram chart - To be implemented later
-                </p>
-                <p className="text-center text-xs text-slate-400 mt-2">
-                  Will show harmonic components 2-62+ with magnitude bars
-                </p>
-              </div>
-            </div>
-
-            {/* Channel Ub */}
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                <h4 className="text-sm font-semibold text-purple-600">Channel Ub - {harmonicView.toUpperCase()}</h4>
-              </div>
-              <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-lg p-12">
-                <p className="text-center text-slate-500 font-medium">
-                  📊 Harmonic histogram chart - To be implemented later
-                </p>
-                <p className="text-center text-xs text-slate-400 mt-2">
-                  Will show harmonic components 2-62+ with magnitude bars
-                </p>
-              </div>
-            </div>
-
-            {/* Channel Uc */}
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                <h4 className="text-sm font-semibold text-green-600">Channel Uc - {harmonicView.toUpperCase()}</h4>
-              </div>
-              <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-lg p-12">
-                <p className="text-center text-slate-500 font-medium">
-                  📊 Harmonic histogram chart - To be implemented later
-                </p>
-                <p className="text-center text-xs text-slate-400 mt-2">
-                  Will show harmonic components 2-62+ with magnitude bars
-                </p>
-              </div>
-            </div>
-          </div>
+          <HarmonicSpectrumChart eventId={event?.id} />
         </div>
 
         {/* Info Footer */}

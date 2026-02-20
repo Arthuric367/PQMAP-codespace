@@ -2290,14 +2290,6 @@ export default function EventDetails({ event: initialEvent, substation: initialS
                 </div>
                 <div className="text-sm text-blue-700 mt-1">Detailed Records</div>
               </div>
-              <div className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg text-center">
-                <div className="text-3xl font-bold text-purple-900">
-                  {currentImpacts.length > 0 
-                    ? Math.round(currentImpacts.reduce((sum, imp) => sum + (imp.estimated_downtime_min || 0), 0) / currentImpacts.length)
-                    : 0}
-                </div>
-                <div className="text-sm text-purple-700 mt-1">Avg Downtime (min)</div>
-              </div>
             </div>
 
             {/* Customer Impact Table */}
@@ -2382,7 +2374,7 @@ export default function EventDetails({ event: initialEvent, substation: initialS
             ) : (
               <div className="text-center py-12 text-slate-500">
                 <Users className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-                <p>No detailed customer impact records available</p>
+                <p>No Sensitive Customers Affected.</p>
                 {currentEvent.customer_count && currentEvent.customer_count > 0 && (
                   <p className="text-sm mt-2">Total affected: {currentEvent.customer_count} customers</p>
                 )}
