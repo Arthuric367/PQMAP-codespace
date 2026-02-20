@@ -5,6 +5,7 @@ import { getLatestMeterReading } from '../services/meterReadingsService';
 import { Database, Activity, X, Check, Info, Filter, Download, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BarChart3, Clock, Zap, AlertCircle, Wrench, Radio, Network, FileSpreadsheet, User, FileText, DollarSign, Calendar, MapPin } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import TreeViewModal from './MeterHierarchy/TreeViewModal';
+import WaveformViewer from './EventManagement/WaveformViewer';
 import { calculateAvailabilityPercent, getExpectedCount, getTimeRangeDates } from '../utils/availability';
 
 interface FilterState {
@@ -21,13 +22,21 @@ interface FilterState {
 type EnergyReportType =
   | 'voltage'
   | 'current'
+  | 'tdd'
+  | 'current_thd'
+  | 'v1_hd'
+  | 'v2_hd'
+  | 'v3_hd'
+  | 'i1_hd'
+  | 'i2_hd'
+  | 'i3_hd'
+  | 'v_thd'
+  | 'v_tehd'
+  | 'v_tohd'
   | 'v_magnitude'
   | 'frequency'
   | 'v_unbalance'
-  | 'flicker'
-  | 'v_thd'
-  | 'v_tehd'
-  | 'v_tohd';
+  | 'flicker';
 
 type EnergyReportRangePreset = '24h' | '7d' | '30d' | 'all' | 'custom';
 
@@ -48,6 +57,28 @@ type EnergyReportRow = {
   vThdB?: number;
   vThdC?: number;
   vThdAvg?: number;
+  tddA?: number;
+  tddB?: number;
+  tddC?: number;
+  iThdA?: number;
+  iThdB?: number;
+  iThdC?: number;
+  v1Hd?: number;
+  v2Hd?: number;
+  v3Hd?: number;
+  i1Hd?: number;
+  i2Hd?: number;
+  i3Hd?: number;
+};
+
+type WaveformRow = {
+  id: string;
+  timestamp: string;
+  duration_ms: number;
+  v1: number;
+  v2: number;
+  v3: number;
+  csvData: string;
 };
 
 interface AssetManagementProps {
@@ -113,6 +144,17 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
   const [energyReportRows, setEnergyReportRows] = useState<EnergyReportRow[]>([]);
   const [energyReportPage, setEnergyReportPage] = useState(1);
   const energyReportRowsPerPage = 50;
+  
+  // Waveform list states
+  const [showWaveformList, setShowWaveformList] = useState(false);
+  const [waveformRows, setWaveformRows] = useState<WaveformRow[]>([]);
+  const [waveformPreset, setWaveformPreset] = useState<EnergyReportRangePreset>('24h');
+  const [waveformCustomStart, setWaveformCustomStart] = useState('');
+  const [waveformCustomEnd, setWaveformCustomEnd] = useState('');
+  const [waveformPage, setWaveformPage] = useState(1);
+  const waveformRowsPerPage = 10;
+  const [selectedWaveformCsv, setSelectedWaveformCsv] = useState<string | null>(null);
+  const [showWaveformModal, setShowWaveformModal] = useState(false);
   
   // Filter states
   const [showFilterPanel, setShowFilterPanel] = useState(false);
@@ -556,6 +598,28 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
         return 'Voltage';
       case 'current':
         return 'Current';
+      case 'tdd':
+        return 'TDD';
+      case 'current_thd':
+        return 'Current THD';
+      case 'v1_hd':
+        return 'V1 HD';
+      case 'v2_hd':
+        return 'V2 HD';
+      case 'v3_hd':
+        return 'V3 HD';
+      case 'i1_hd':
+        return 'I1 HD';
+      case 'i2_hd':
+        return 'I2 HD';
+      case 'i3_hd':
+        return 'I3 HD';
+      case 'v_thd':
+        return 'Voltage THD';
+      case 'v_tehd':
+        return 'Voltage TEHD';
+      case 'v_tohd':
+        return 'Voltage TOHD';
       case 'v_magnitude':
         return 'V-Magnitude';
       case 'frequency':
@@ -564,12 +628,6 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
         return 'V-Unbalance';
       case 'flicker':
         return 'Flicker';
-      case 'v_thd':
-        return 'Voltage THD';
-      case 'v_tehd':
-        return 'Voltage TEHD';
-      case 'v_tohd':
-        return 'Voltage TOHD';
       default:
         return report;
     }
@@ -591,6 +649,49 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
       hash = Math.imul(hash, 16777619);
     }
     return hash >>> 0;
+  };
+
+  const generateMockWaveformData = (meterId: string): WaveformRow[] => {
+    const now = Date.now();
+    const intervalMs = 10 * 60 * 1000; // 10-minute intervals
+    const days = 30;
+    const totalWaveforms = days * 24 * 6; // ~4320 waveforms
+    const baseSeed = hashStringToSeed(`${meterId}:waveform`);
+    const rows: WaveformRow[] = [];
+
+    for (let i = 0; i < totalWaveforms; i++) {
+      const timestamp = new Date(now - i * intervalMs).toISOString();
+      const rng = mulberry32(baseSeed + i);
+      
+      const v1 = 220 + (rng() - 0.5) * 10;
+      const v2 = 220 + (rng() - 0.5) * 10;
+      const v3 = 220 + (rng() - 0.5) * 10;
+      const duration_ms = Math.floor(100 + rng() * 300); // 100-400ms
+      
+      // Generate mock CSV waveform data (100 points per phase)
+      const points = 100;
+      const csvLines = ['Timestamp,V1,V2,V3'];
+      for (let j = 0; j < points; j++) {
+        const t = (j / points) * duration_ms;
+        const phase = (j / points) * Math.PI * 2;
+        const v1Wave = v1 * Math.sin(phase) + (rng() - 0.5) * 5;
+        const v2Wave = v2 * Math.sin(phase - (2 * Math.PI / 3)) + (rng() - 0.5) * 5;
+        const v3Wave = v3 * Math.sin(phase - (4 * Math.PI / 3)) + (rng() - 0.5) * 5;
+        csvLines.push(`${t.toFixed(2)},${v1Wave.toFixed(2)},${v2Wave.toFixed(2)},${v3Wave.toFixed(2)}`);
+      }
+      
+      rows.push({
+        id: `waveform-${i}`,
+        timestamp,
+        duration_ms,
+        v1,
+        v2,
+        v3,
+        csvData: csvLines.join('\n')
+      });
+    }
+
+    return rows;
   };
 
   const generateMockEnergyReportRows = (meterId: string, report: EnergyReportType): EnergyReportRow[] => {
@@ -640,6 +741,50 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
           const pst = 0.2 + rng() * 0.8;
           const plt = 0.15 + rng() * 0.6;
           rows.push({ timestamp, pst, plt });
+          break;
+        }
+        case 'tdd': {
+          const tddA = 3.0 + rng() * 4.0;
+          const tddB = 3.0 + rng() * 4.0;
+          const tddC = 3.0 + rng() * 4.0;
+          rows.push({ timestamp, tddA, tddB, tddC });
+          break;
+        }
+        case 'current_thd': {
+          const iThdA = 2.0 + rng() * 3.0;
+          const iThdB = 2.0 + rng() * 3.0;
+          const iThdC = 2.0 + rng() * 3.0;
+          rows.push({ timestamp, iThdA, iThdB, iThdC });
+          break;
+        }
+        case 'v1_hd': {
+          const v1Hd = 1.0 + rng() * 2.0;
+          rows.push({ timestamp, v1Hd });
+          break;
+        }
+        case 'v2_hd': {
+          const v2Hd = 1.0 + rng() * 2.0;
+          rows.push({ timestamp, v2Hd });
+          break;
+        }
+        case 'v3_hd': {
+          const v3Hd = 1.0 + rng() * 2.0;
+          rows.push({ timestamp, v3Hd });
+          break;
+        }
+        case 'i1_hd': {
+          const i1Hd = 2.0 + rng() * 3.0;
+          rows.push({ timestamp, i1Hd });
+          break;
+        }
+        case 'i2_hd': {
+          const i2Hd = 2.0 + rng() * 3.0;
+          rows.push({ timestamp, i2Hd });
+          break;
+        }
+        case 'i3_hd': {
+          const i3Hd = 2.0 + rng() * 3.0;
+          rows.push({ timestamp, i3Hd });
           break;
         }
         case 'v_thd':
@@ -2951,7 +3096,7 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
               {/* Energy Profile Tab */}
               {activeTab === 'realtime' && (
                 <div className="p-6">
-                  {!selectedEnergyReport ? (
+                  {!selectedEnergyReport && !showWaveformList ? (
                     <div className="space-y-6">
                       {/* Realtime PQ Data Dashboard */}
                       {realtimeData && (
@@ -3137,50 +3282,132 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
                         </div>
                       )}
 
-                      {/* Energy Profile Report Buttons */}
+                      {/* Meter Report Buttons */}
                       <div>
-                        <h3 className="text-lg font-bold text-slate-900">Energy Profile</h3>
+                        <h3 className="text-lg font-bold text-slate-900">Meter Report</h3>
                         <p className="text-sm text-slate-600 mt-1">
                           Select a report to view 10-minute interval data
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {([
-                          'voltage',
-                          'current',
-                          'v_magnitude',
-                          'frequency',
-                          'v_unbalance',
-                          'flicker',
-                          'v_thd',
-                          'v_tehd',
-                          'v_tohd'
-                        ] as EnergyReportType[]).map((report) => (
-                          <button
-                            key={report}
-                            onClick={() => {
-                              if (!selectedMeter) return;
-                              setSelectedEnergyReport(report);
-                              setEnergyReportPreset('24h');
-                              setEnergyReportCustomStart('');
-                              setEnergyReportCustomEnd('');
-                              setEnergyReportPage(1);
-                              setEnergyReportRows(generateMockEnergyReportRows(selectedMeter.id, report));
-                            }}
-                            className="px-4 py-3 bg-white border border-slate-200 rounded-lg text-left hover:bg-slate-50 transition-colors"
-                            title={`Open ${energyReportLabel(report)} report`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold text-slate-900">{energyReportLabel(report)}</span>
-                              <BarChart3 className="w-5 h-5 text-slate-400" />
-                            </div>
-                            <div className="text-xs text-slate-500 mt-1">10-minute interval</div>
-                          </button>
-                        ))}
+                      <div className="space-y-6">
+                        {/* Meter Group */}
+                        <div>
+                          <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                            <Zap className="w-4 h-4 text-orange-500" />
+                            Meter (Voltage / Current)
+                          </h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {(['voltage', 'current'] as EnergyReportType[]).map((report) => (
+                              <button
+                                key={report}
+                                onClick={() => {
+                                  if (!selectedMeter) return;
+                                  setSelectedEnergyReport(report);
+                                  setEnergyReportPreset('24h');
+                                  setEnergyReportCustomStart('');
+                                  setEnergyReportCustomEnd('');
+                                  setEnergyReportPage(1);
+                                  setEnergyReportRows(generateMockEnergyReportRows(selectedMeter.id, report));
+                                }}
+                                className="px-4 py-3 bg-white border border-slate-200 rounded-lg text-left hover:bg-slate-50 transition-colors"
+                                title={`Open ${energyReportLabel(report)} report`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-slate-900">{energyReportLabel(report)}</span>
+                                  <BarChart3 className="w-5 h-5 text-slate-400" />
+                                </div>
+                                <div className="text-xs text-slate-500 mt-1">10-minute interval</div>
+                              </button>
+                            ))}
+                            <button
+                              onClick={() => {
+                                if (!selectedMeter) return;
+                                setShowWaveformList(true);
+                                setWaveformPreset('24h');
+                                setWaveformCustomStart('');
+                                setWaveformCustomEnd('');
+                                setWaveformPage(1);
+                                setWaveformRows(generateMockWaveformData(selectedMeter.id));
+                              }}
+                              className="px-4 py-3 bg-white border border-slate-200 rounded-lg text-left hover:bg-slate-50 transition-colors"
+                              title="Open Waveform list"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold text-slate-900">Waveform</span>
+                                <Activity className="w-5 h-5 text-slate-400" />
+                              </div>
+                              <div className="text-xs text-slate-500 mt-1">Captured waveforms</div>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Individual Harmonic Group */}
+                        <div>
+                          <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                            <Activity className="w-4 h-4 text-purple-500" />
+                            Individual Harmonic
+                          </h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {(['tdd', 'current_thd', 'v1_hd', 'v2_hd', 'v3_hd', 'i1_hd', 'i2_hd', 'i3_hd', 'v_thd', 'v_tehd', 'v_tohd'] as EnergyReportType[]).map((report) => (
+                              <button
+                                key={report}
+                                onClick={() => {
+                                  if (!selectedMeter) return;
+                                  setSelectedEnergyReport(report);
+                                  setEnergyReportPreset('24h');
+                                  setEnergyReportCustomStart('');
+                                  setEnergyReportCustomEnd('');
+                                  setEnergyReportPage(1);
+                                  setEnergyReportRows(generateMockEnergyReportRows(selectedMeter.id, report));
+                                }}
+                                className="px-4 py-3 bg-white border border-slate-200 rounded-lg text-left hover:bg-slate-50 transition-colors"
+                                title={`Open ${energyReportLabel(report)} report`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-slate-900">{energyReportLabel(report)}</span>
+                                  <BarChart3 className="w-5 h-5 text-slate-400" />
+                                </div>
+                                <div className="text-xs text-slate-500 mt-1">10-minute interval</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* EN50160 Group */}
+                        <div>
+                          <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-blue-500" />
+                            EN50160
+                          </h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {(['v_magnitude', 'frequency', 'v_unbalance', 'flicker', 'v_thd', 'v_tehd', 'v_tohd'] as EnergyReportType[]).map((report) => (
+                              <button
+                                key={report}
+                                onClick={() => {
+                                  if (!selectedMeter) return;
+                                  setSelectedEnergyReport(report);
+                                  setEnergyReportPreset('24h');
+                                  setEnergyReportCustomStart('');
+                                  setEnergyReportCustomEnd('');
+                                  setEnergyReportPage(1);
+                                  setEnergyReportRows(generateMockEnergyReportRows(selectedMeter.id, report));
+                                }}
+                                className="px-4 py-3 bg-white border border-slate-200 rounded-lg text-left hover:bg-slate-50 transition-colors"
+                                title={`Open ${energyReportLabel(report)} report`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-slate-900">{energyReportLabel(report)}</span>
+                                  <BarChart3 className="w-5 h-5 text-slate-400" />
+                                </div>
+                                <div className="text-xs text-slate-500 mt-1">10-minute interval</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  ) : (() => {
+                  ) : selectedEnergyReport ? (() => {
                     const reportName = energyReportLabel(selectedEnergyReport);
                     const meterSubstation = selectedMeter ? substationMap[selectedMeter.substation_id] : undefined;
 
@@ -3228,7 +3455,7 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
                               setEnergyReportPage(1);
                             }}
                             className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                            title="Back to Energy Profile"
+                            title="Back to Meter Report"
                           >
                             <ChevronLeft className="w-5 h-5" />
                           </button>
@@ -3445,7 +3672,220 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
                         </div>
                       </div>
                     );
-                  })()}
+                  })() : showWaveformList ? (() => {
+                    // Get meter's substation
+                    const meterSubstation = selectedMeter ? substationMap[selectedMeter.substation_id] : undefined;
+                    
+                    // Filter by date range
+                    const now = new Date();
+                    let filteredWaveforms = [...waveformRows];
+                    
+                    if (waveformPreset === '24h') {
+                      const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                      filteredWaveforms = waveformRows.filter(row => new Date(row.timestamp) >= cutoff);
+                    } else if (waveformPreset === '7d') {
+                      const cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                      filteredWaveforms = waveformRows.filter(row => new Date(row.timestamp) >= cutoff);
+                    } else if (waveformPreset === '30d') {
+                      const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                      filteredWaveforms = waveformRows.filter(row => new Date(row.timestamp) >= cutoff);
+                    } else if (waveformPreset === 'custom' && waveformCustomStart && waveformCustomEnd) {
+                      const start = new Date(waveformCustomStart);
+                      const end = new Date(waveformCustomEnd);
+                      filteredWaveforms = waveformRows.filter(row => {
+                        const dt = new Date(row.timestamp);
+                        return dt >= start && dt <= end;
+                      });
+                    }
+
+                    // Pagination
+                    const totalPages = Math.ceil(filteredWaveforms.length / waveformRowsPerPage);
+                    const safePage = Math.max(1, Math.min(waveformPage, totalPages || 1));
+                    const startIdx = (safePage - 1) * waveformRowsPerPage;
+                    const pageWaveforms = filteredWaveforms.slice(startIdx, startIdx + waveformRowsPerPage);
+
+                    return (
+                      <div className="space-y-4">
+                        {/* Header with back */}
+                        <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setShowWaveformList(false);
+                          setWaveformPage(1);
+                        }}
+                        className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                        title="Back to Meter Report"
+                      >
+                        <ChevronLeft className="w-5 h-5" />
+                      </button>
+                      <div className="min-w-0">
+                        <h3 className="text-lg font-bold text-slate-900 truncate">Waveform Captures</h3>
+                        <p className="text-sm text-slate-600 truncate">Voltage waveforms for {selectedMeter?.meter_id}</p>
+                      </div>
+                    </div>
+
+                    {/* Current meter info */}
+                    <div className="bg-white border border-slate-200 rounded-lg p-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="bg-slate-50 rounded-lg p-3">
+                          <div className="text-xs font-semibold text-slate-600">Meter ID</div>
+                          <div className="text-sm font-bold text-slate-900 mt-1">{selectedMeter?.meter_id}</div>
+                        </div>
+                        <div className="bg-slate-50 rounded-lg p-3">
+                          <div className="text-xs font-semibold text-slate-600">Name</div>
+                          <div className="text-sm font-bold text-slate-900 mt-1">{selectedMeter?.site_id || selectedMeter?.location || '-'}</div>
+                        </div>
+                        <div className="bg-slate-50 rounded-lg p-3">
+                          <div className="text-xs font-semibold text-slate-600">Substation</div>
+                          <div className="text-sm font-bold text-slate-900 mt-1">{meterSubstation?.name || 'Unknown'}</div>
+                        </div>
+                        <div className="bg-slate-50 rounded-lg p-3">
+                          <div className="text-xs font-semibold text-slate-600">Area</div>
+                          <div className="text-sm font-bold text-slate-900 mt-1">{selectedMeter?.area || '-'}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Filter section */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">Range</label>
+                          <select
+                            value={waveformPreset}
+                            onChange={(e) => {
+                              setWaveformPreset(e.target.value as EnergyReportRangePreset);
+                              setWaveformPage(1);
+                            }}
+                            className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm"
+                          >
+                            <option value="24h">Latest 24h</option>
+                            <option value="7d">Latest 7d</option>
+                            <option value="30d">Latest 30d</option>
+                            <option value="all">All</option>
+                            <option value="custom">Custom</option>
+                          </select>
+                        </div>
+
+                        {waveformPreset === 'custom' && (
+                          <>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 mb-1">Start</label>
+                              <input
+                                type="datetime-local"
+                                value={waveformCustomStart}
+                                onChange={(e) => {
+                                  setWaveformCustomStart(e.target.value);
+                                  setWaveformPage(1);
+                                }}
+                                className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 mb-1">End</label>
+                              <input
+                                type="datetime-local"
+                                value={waveformCustomEnd}
+                                onChange={(e) => {
+                                  setWaveformCustomEnd(e.target.value);
+                                  setWaveformPage(1);
+                                }}
+                                className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm"
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        <div className="ml-auto text-sm text-slate-600">
+                          {filteredWaveforms.length} waveforms
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Waveform table */}
+                    <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left font-semibold text-slate-700 border-b border-slate-200">Timestamp</th>
+                              <th className="px-4 py-3 text-right font-semibold text-slate-700 border-b border-slate-200">Duration (ms)</th>
+                              <th className="px-4 py-3 text-right font-semibold text-slate-700 border-b border-slate-200">V1 (V)</th>
+                              <th className="px-4 py-3 text-right font-semibold text-slate-700 border-b border-slate-200">V2 (V)</th>
+                              <th className="px-4 py-3 text-right font-semibold text-slate-700 border-b border-slate-200">V3 (V)</th>
+                              <th className="px-4 py-3 text-center font-semibold text-slate-700 border-b border-slate-200">Waveform</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredWaveforms.length === 0 ? (
+                              <tr>
+                                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                                  No waveforms found for selected date range
+                                </td>
+                              </tr>
+                            ) : (
+                              pageWaveforms.map((row) => (
+                                <tr key={row.id} className="hover:bg-slate-50">
+                                  <td className="px-4 py-2 border-b border-slate-100 text-slate-700">
+                                    {new Date(row.timestamp).toLocaleString()}
+                                  </td>
+                                  <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">
+                                    {row.duration_ms}
+                                  </td>
+                                  <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">
+                                    {row.v1.toFixed(2)}
+                                  </td>
+                                  <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">
+                                    {row.v2.toFixed(2)}
+                                  </td>
+                                  <td className="px-4 py-2 border-b border-slate-100 text-right text-slate-900">
+                                    {row.v3.toFixed(2)}
+                                  </td>
+                                  <td className="px-4 py-2 border-b border-slate-100 text-center">
+                                    <button
+                                      onClick={() => {
+                                        setSelectedWaveformCsv(row.csvData);
+                                        setShowWaveformModal(true);
+                                      }}
+                                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-semibold"
+                                    >
+                                      View
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Pagination */}
+                      {totalPages > 1 && (
+                        <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-white">
+                          <div className="text-sm text-slate-600">Page {safePage} of {totalPages}</div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setWaveformPage(prev => Math.max(1, prev - 1))}
+                              disabled={safePage === 1}
+                              className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <ChevronLeft className="w-5 h-5" />
+                            </button>
+                            <span className="px-3 py-1.5 bg-slate-100 rounded-lg font-semibold text-slate-900">{safePage}</span>
+                            <button
+                              onClick={() => setWaveformPage(prev => Math.min(totalPages, prev + 1))}
+                              disabled={safePage === totalPages}
+                              className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <ChevronRight className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                      </div>
+                    );
+                  })() : null}
                 </div>
               )}
             </div>
@@ -3867,6 +4307,65 @@ export default function AssetManagement({ selectedMeterId, onClearSelectedMeter 
               <button
                 onClick={() => setShowAvailabilityReport(false)}
                 className="px-6 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg font-semibold transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Waveform Modal */}
+      {showWaveformModal && selectedWaveformCsv && selectedMeter && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-slate-200">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Waveform Viewer</h2>
+                <p className="text-sm text-slate-600 mt-1">Meter: {selectedMeter.meter_id}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowWaveformModal(false);
+                  setSelectedWaveformCsv(null);
+                }}
+                className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <WaveformViewer
+                csvData={selectedWaveformCsv}
+                event={{
+                  id: 'waveform-preview',
+                  meter_id: selectedMeter.meter_id,
+                  event_type: 'voltage_dip' as EventType,
+                  start_time: new Date().toISOString(),
+                  end_time: new Date().toISOString(),
+                  status: 'closed' as EventStatus,
+                  max_magnitude: 0,
+                  min_magnitude: 0,
+                  duration_ms: 0,
+                  event_count: 1,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                } as unknown as PQEvent}
+                eventType="voltage_dip"
+              />
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-slate-200 bg-slate-50">
+              <button
+                onClick={() => {
+                  setShowWaveformModal(false);
+                  setSelectedWaveformCsv(null);
+                }}
+                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition-colors"
               >
                 Close
               </button>
