@@ -832,15 +832,15 @@ export default function PQServices() {
           </div>
         </div>
 
-        {/* Compact Dashboard: 30% Metrics + 70% Chart */}
+        {/* Compact Dashboard: 1:5 Ratio (Metrics:Chart) */}
         <div className="grid grid-cols-12 gap-3 h-[320px]">
-          {/* Left: Vertical Metrics (30%) */}
-          <div className="col-span-12 lg:col-span-4 space-y-2">
+          {/* Left: Vertical Metrics (1 part = ~16.67%) */}
+          <div className="col-span-12 lg:col-span-2 space-y-2">
             {/* Total Customers */}
             <div className="bg-white rounded-lg shadow-md p-3 border border-slate-100 h-[calc((100%-1rem)/3)]">
               <div className="flex items-center gap-2 mb-1">
                 <Users className="w-4 h-4 text-blue-600" />
-                <p className="text-[11px] font-semibold text-slate-600">Total Customers</p>
+                <p className="text-sm font-semibold text-slate-600">Total Customers</p>
               </div>
               <p className="text-xl font-bold text-slate-900">{metrics.totalCustomers}</p>
             </div>
@@ -849,7 +849,7 @@ export default function PQServices() {
             <div className="bg-white rounded-lg shadow-md p-3 border border-slate-100 h-[calc((100%-1rem)/3)]">
               <div className="flex items-center gap-2 mb-1">
                 <Wrench className="w-4 h-4 text-green-600" />
-                <p className="text-[11px] font-semibold text-slate-600">Total Services</p>
+                <p className="text-sm font-semibold text-slate-600">Total Services</p>
               </div>
               <p className="text-xl font-bold text-slate-900">{metrics.totalServices}</p>
             </div>
@@ -858,14 +858,14 @@ export default function PQServices() {
             <div className="bg-white rounded-lg shadow-md p-3 border border-slate-100 h-[calc((100%-1rem)/3)]">
               <div className="flex items-center gap-2 mb-1">
                 <Calendar className="w-4 h-4 text-purple-600" />
-                <p className="text-[11px] font-semibold text-slate-600">This Month</p>
+                <p className="text-sm font-semibold text-slate-600">This Month</p>
               </div>
               <p className="text-xl font-bold text-slate-900">{metrics.thisMonthServices}</p>
             </div>
           </div>
 
-          {/* Right: Vertical Bar Chart (70%) */}
-          <div className="col-span-12 lg:col-span-8">
+          {/* Right: Vertical Bar Chart (5 parts = ~83.33%) */}
+          <div className="col-span-12 lg:col-span-10">
             <div className="bg-white rounded-lg shadow-md p-3 border border-slate-100 h-full">
               <div className="flex items-center gap-2 mb-2">
                 <BarChart3 className="w-4 h-4 text-slate-700" />
@@ -880,10 +880,10 @@ export default function PQServices() {
                   const heightPercentage = (count / maxCount) * 100;
 
                   return (
-                    <div key={key} className="flex-1 flex flex-col items-center gap-2">
+                    <div key={key} className="flex-1 flex flex-col items-center gap-2 h-full">
                       {/* Bar */}
-                      <div className="w-full flex flex-col justify-end items-center" style={{ height: 'calc(100% - 3rem)' }}>
-                        <div className="w-full relative">
+                      <div className="w-full flex-1 flex flex-col justify-end items-center">
+                        <div className="w-full h-full relative flex flex-col justify-end">
                           <div
                             className="w-full bg-gradient-to-t from-blue-500 to-indigo-500 rounded-t-lg transition-all duration-500 relative group cursor-pointer hover:from-blue-600 hover:to-indigo-600"
                             style={{ height: `${heightPercentage}%`, minHeight: count > 0 ? '20px' : '0px' }}
@@ -1021,7 +1021,7 @@ export default function PQServices() {
                 Customers ({getFilteredCustomers().length})
               </h2>
             </div>
-            <div className="divide-y divide-slate-200 max-h-[600px] overflow-y-auto">
+            <div className="divide-y divide-slate-200 max-h-[500px] overflow-y-auto">
               {getFilteredCustomers().map((customer) => {
                 const stats = getCustomerStats(customer.id);
                 const isSelected = selectedCustomer?.id === customer.id;
@@ -1033,7 +1033,7 @@ export default function PQServices() {
                       setSelectedCustomer(customer);
                       setActiveTab('main');
                     }}
-                    className={`w-full text-left p-4 hover:bg-slate-50 transition-colors ${
+                    className={`w-full text-left p-3 hover:bg-slate-50 transition-colors ${
                       isSelected ? 'bg-blue-50 border-l-4 border-blue-600' : ''
                     }`}
                   >
@@ -1045,9 +1045,9 @@ export default function PQServices() {
                             <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
                           )}
                         </div>
-                        <p className="text-xs text-slate-600">{customer.account_number}</p>
-                        <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                          <span className="px-2 py-0.5 bg-slate-100 rounded font-medium">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs text-slate-600">{customer.account_number}</p>
+                          <span className="px-2 py-0.5 bg-slate-100 rounded font-medium text-xs text-slate-500">
                             {stats.totalServices} services
                           </span>
                         </div>
@@ -1597,40 +1597,6 @@ export default function PQServices() {
               <Users className="w-20 h-20 mx-auto mb-4 text-slate-300" />
               <h3 className="text-xl font-bold text-slate-900 mb-2">No Customer Selected</h3>
               <p className="text-slate-600">Select a customer from the list to view details and service history</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Recent Activities */}
-      <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-lg p-6 text-white">
-        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-          <Calendar className="w-6 h-6" />
-          Recent Activities
-        </h2>
-        <div className="space-y-3">
-          {recentActivities.map((service) => (
-            <div key={service.id} className="p-4 bg-white/10 rounded-lg backdrop-blur">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-semibold">{service.customer?.name}</p>
-                  <div className="flex items-center gap-2 mt-1 text-sm opacity-75">
-                    <span>{new Date(service.service_date).toLocaleDateString('en-GB')}</span>
-                    <span>•</span>
-                    <span>{serviceTypeLabels[service.service_type]}</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm opacity-75">Engineer</p>
-                  <p className="font-medium">{service.engineer?.full_name || 'Not assigned'}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {recentActivities.length === 0 && (
-            <div className="p-8 text-center opacity-50">
-              <p>No recent activities</p>
             </div>
           )}
         </div>
